@@ -6,11 +6,50 @@ use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::chunk::{Chunk, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
 use crate::mesher::build_chunk_mesh;
-use crate::noise::{fbm_2d, fbm_3d, perlin_2d, ridged_fbm_2d};
+use crate::noise::NoiseGenerator;
 
 pub const SEA_LEVEL: i32 = 24;
 pub const VIEW_DISTANCE: i32 = 8;
 pub const MAX_CHUNKS_PER_FRAME: usize = 4;
+
+/// Rappresenta il Seed del mondo (numerico o derivato da stringa/testo)
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WorldSeed(pub u64);
+
+impl Default for WorldSeed {
+    fn default() -> Self {
+        Self(133742)
+    }
+}
+
+impl WorldSeed {
+    pub fn from_str(s: &str) -> Self {
+        let trimmed = s.trim();
+        if let Ok(num) = trimmed.parse::<u64>() {
+            Self(num)
+        } else {
+            // Algoritmo di hashing FNV-1a a 64 bit deterministico per le stringhe
+            let mut hash: u64 = 0xcbf29ce484222325;
+            for byte in trimmed.as_bytes() {
+                hash ^= *byte as u64;
+                hash = hash.wrapping_mul(0x100000001b3);
+            }
+            Self(hash)
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BiomeType {
+    Ocean,
+    FrozenOcean,
+    Beach,
+    Plains,
+    Forest,
+    Desert,
+    SnowyTundra,
+    Mountains,
+}
 
 #[derive(Resource)]
 pub struct WorldGrid {
@@ -20,10 +59,14 @@ pub struct WorldGrid {
     pub last_player_chunk: IVec2,
     pub generation_queue: Vec<IVec2>,
     pub save_dir: PathBuf,
+    pub seed: WorldSeed,
+    pub noise: NoiseGenerator,
 }
 
 impl Default for WorldGrid {
     fn default() -> Self {
+        let seed = WorldSeed::default();
+        let noise = NoiseGenerator::new(seed.0);
         Self {
             chunks: HashMap::default(),
             chunk_entities: HashMap::default(),
@@ -31,11 +74,27 @@ impl Default for WorldGrid {
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
             generation_queue: Vec::new(),
             save_dir: PathBuf::from("saves/world/chunks"),
+            seed,
+            noise,
         }
     }
 }
 
 impl WorldGrid {
+    pub fn new(seed: WorldSeed) -> Self {
+        let noise = NoiseGenerator::new(seed.0);
+        Self {
+            chunks: HashMap::default(),
+            chunk_entities: HashMap::default(),
+            modified_chunks: HashSet::default(),
+            last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
+            generation_queue: Vec::new(),
+            save_dir: PathBuf::from(format!("saves/world_{}/chunks", seed.0)),
+            seed,
+            noise,
+        }
+    }
+
     #[inline]
     pub fn world_to_chunk_coord(wx: i32, wz: i32) -> (IVec2, usize, usize) {
         let cx = wx.div_euclid(CHUNK_WIDTH as i32);
@@ -111,36 +170,60 @@ impl WorldGrid {
     }
 }
 
-/// Calcola l'altezza della superficie terrestre in base a mare, pianure, fiumi e montagne
-pub fn calculate_surface_height(wx: f64, wz: f64) -> (i32, bool) {
-    // 1. Continentalness (Oceani vs Continenti)
-    let cont = fbm_2d(wx * 0.003, wz * 0.003, 3, 0.5, 2.0);
+/// Determina il bioma, l'altezza della superficie e la presenza di fiumi
+pub fn calculate_biome_and_height(
+    wx: f64,
+    wz: f64,
+    noise: &NoiseGenerator,
+) -> (BiomeType, i32, bool) {
+    let cont = noise.fbm_2d(wx * 0.0025, wz * 0.0025, 3, 0.5, 2.0);
+    let temp = noise.fbm_2d(wx * 0.0018 + 500.0, wz * 0.0018 + 500.0, 3, 0.5, 2.0);
+    let humid = noise.fbm_2d(wx * 0.0020 - 500.0, wz * 0.0020 - 500.0, 3, 0.5, 2.0);
+    let mountain = noise.ridged_fbm_2d(wx * 0.006, wz * 0.006, 4, 0.5, 2.0);
+    let hills = noise.fbm_2d(wx * 0.012, wz * 0.012, 3, 0.5, 2.0);
 
-    // 2. Colline e alture base
-    let hills = fbm_2d(wx * 0.012, wz * 0.012, 3, 0.5, 2.0);
-
-    // 3. Montagne aguzze (Ridged Multi-Fractal)
-    let mountain = ridged_fbm_2d(wx * 0.007, wz * 0.007, 4, 0.5, 2.0);
-
-    // Base height calcolata
-    let base_height = if cont < -0.15 {
-        // Bacino oceanico profondo
-        12.0 + (cont + 0.15) * 20.0
-    } else if cont < 0.1 {
-        // Coste, spiagge e pianure
-        (SEA_LEVEL as f64) + hills * 6.0
+    let (biome, base_height) = if cont < -0.15 {
+        // Bacino oceanico
+        let ocean_h = 12.0 + (cont + 0.15) * 20.0;
+        if temp < -0.25 {
+            (BiomeType::FrozenOcean, ocean_h)
+        } else {
+            (BiomeType::Ocean, ocean_h)
+        }
+    } else if cont < 0.02 {
+        // Costa e spiaggia
+        (BiomeType::Beach, (SEA_LEVEL as f64) + hills * 2.0)
     } else {
-        // Altopiani e catene montuose
-        let mountain_weight = ((cont - 0.1) * 3.0).clamp(0.0, 1.0);
-        (SEA_LEVEL as f64 + 6.0) + hills * 8.0 + mountain * 24.0 * mountain_weight
+        // Entroterra
+        if cont > 0.10 && mountain > 0.35 {
+            // Catena montuosa
+            let m_h = (SEA_LEVEL as f64 + 6.0) + hills * 6.0 + mountain * 28.0;
+            (BiomeType::Mountains, m_h)
+        } else if temp > 0.26 && humid < -0.05 {
+            // Deserto caldo
+            let d_h = (SEA_LEVEL as f64 + 3.0) + hills * 5.0;
+            (BiomeType::Desert, d_h)
+        } else if temp < -0.22 {
+            // Tundra innevata
+            let t_h = (SEA_LEVEL as f64 + 4.0) + hills * 6.0;
+            (BiomeType::SnowyTundra, t_h)
+        } else if humid > 0.15 {
+            // Foresta
+            let f_h = (SEA_LEVEL as f64 + 4.0) + hills * 7.0;
+            (BiomeType::Forest, f_h)
+        } else {
+            // Pianura
+            let p_h = (SEA_LEVEL as f64 + 3.0) + hills * 5.0;
+            (BiomeType::Plains, p_h)
+        }
     };
 
-    // 4. Fiumi: intagliano canyon e valli che scendono verso il mare
-    let river_noise = perlin_2d(wx * 0.005 + 120.0, wz * 0.005 + 240.0).abs();
-    let is_river = river_noise < 0.045 && cont > -0.1;
+    // Fiumi: scavano valli fluviali sinuose verso il mare
+    let river_noise = noise.perlin_2d(wx * 0.004 + 100.0, wz * 0.004 + 200.0).abs();
+    let is_river = river_noise < 0.038 && cont > -0.10 && biome != BiomeType::Desert;
 
     let final_height = if is_river {
-        let river_factor = (river_noise / 0.045).clamp(0.0, 1.0);
+        let river_factor = (river_noise / 0.038).clamp(0.0, 1.0);
         let river_bed = (SEA_LEVEL as f64 - 3.0).min(base_height - 4.0);
         river_bed + (base_height - river_bed) * river_factor
     } else {
@@ -148,84 +231,173 @@ pub fn calculate_surface_height(wx: f64, wz: f64) -> (i32, bool) {
     };
 
     let clamped = (final_height.round() as i32).clamp(3, (CHUNK_HEIGHT - 6) as i32);
-    (clamped, is_river)
+    (biome, clamped, is_river)
 }
 
-fn pseudo_hash(x: i32, z: i32) -> u32 {
-    let mut h = (x as u32).wrapping_mul(0x45d9f3b) ^ (z as u32).wrapping_mul(0x27d4eb2d);
+fn pseudo_hash_3d(x: i32, y: i32, z: i32, seed: u64) -> u32 {
+    let mut h = (x as u32).wrapping_mul(0x45d9f3b)
+        ^ (y as u32).wrapping_mul(0x1b192e23)
+        ^ (z as u32).wrapping_mul(0x27d4eb2d)
+        ^ (seed as u32);
     h = ((h >> 16) ^ h).wrapping_mul(0x45d9f3b);
     (h >> 16) ^ h
 }
 
-/// Genera un singolo chunk con montagne, mare, fiumi, caverne 3D e alberi
-pub fn generate_chunk(cx: i32, cz: i32) -> Chunk {
+/// Genera un singolo chunk con biomi, minerali, caverne 3D, fiumi e alberi basati sul Seed
+pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Chunk {
     let mut chunk = Chunk::new();
     let world_base_x = cx * CHUNK_WIDTH as i32;
     let world_base_z = cz * CHUNK_DEPTH as i32;
 
-    // Cache delle altezze superficiali per questa colonna 16x16
     let mut surface_heights = [[0i32; CHUNK_DEPTH]; CHUNK_WIDTH];
+    let mut biomes = [[BiomeType::Plains; CHUNK_DEPTH]; CHUNK_WIDTH];
     let mut river_flags = [[false; CHUNK_DEPTH]; CHUNK_WIDTH];
 
     for lx in 0..CHUNK_WIDTH {
         for lz in 0..CHUNK_DEPTH {
             let wx = (world_base_x + lx as i32) as f64;
             let wz = (world_base_z + lz as i32) as f64;
-            let (h, is_river) = calculate_surface_height(wx, wz);
+            let (biome, h, is_river) = calculate_biome_and_height(wx, wz, noise);
             surface_heights[lx][lz] = h;
+            biomes[lx][lz] = biome;
             river_flags[lx][lz] = is_river;
         }
     }
 
-    // 1. Riempimento blocchi di base (Roccia, Terra, Sabbia, Erba, Neve, Acqua)
+    // 1. Terreno e Stratificazione geologica dei Biomi
+    for lx in 0..CHUNK_WIDTH {
+        for lz in 0..CHUNK_DEPTH {
+            let wx = world_base_x + lx as i32;
+            let wz = world_base_z + lz as i32;
+            let h = surface_heights[lx][lz];
+            let biome = biomes[lx][lz];
+
+            // Bedrock indistruttibile alla base
+            chunk.set(lx as i32, 0, lz as i32, BlockType::Bedrock);
+            if pseudo_hash_3d(wx, 1, wz, seed) % 2 == 0 {
+                chunk.set(lx as i32, 1, lz as i32, BlockType::Bedrock);
+            }
+
+            for y in 1..=h {
+                let block = match biome {
+                    BiomeType::Desert => {
+                        if y == h || y >= h - 3 {
+                            BlockType::Sand
+                        } else if y >= h - 7 {
+                            BlockType::Sandstone
+                        } else {
+                            BlockType::Stone
+                        }
+                    }
+                    BiomeType::Ocean | BiomeType::FrozenOcean => {
+                        if y == h {
+                            if pseudo_hash_3d(wx, y, wz, seed) % 5 == 0 {
+                                BlockType::Gravel
+                            } else {
+                                BlockType::Sand
+                            }
+                        } else if y >= h - 3 {
+                            BlockType::Dirt
+                        } else {
+                            BlockType::Stone
+                        }
+                    }
+                    BiomeType::Beach => {
+                        if y >= h - 3 {
+                            BlockType::Sand
+                        } else {
+                            BlockType::Stone
+                        }
+                    }
+                    BiomeType::SnowyTundra => {
+                        if y == h {
+                            BlockType::Snow
+                        } else if y >= h - 3 {
+                            BlockType::Dirt
+                        } else {
+                            BlockType::Stone
+                        }
+                    }
+                    BiomeType::Mountains => {
+                        if y == h {
+                            if h > 52 {
+                                BlockType::Snow
+                            } else if h > 42 {
+                                BlockType::Stone
+                            } else {
+                                BlockType::Grass
+                            }
+                        } else if y >= h - 2 && h <= 42 {
+                            BlockType::Dirt
+                        } else {
+                            BlockType::Stone
+                        }
+                    }
+                    BiomeType::Plains | BiomeType::Forest => {
+                        if y == h {
+                            BlockType::Grass
+                        } else if y >= h - 3 {
+                            BlockType::Dirt
+                        } else {
+                            BlockType::Stone
+                        }
+                    }
+                };
+
+                chunk.set(lx as i32, y, lz as i32, block);
+            }
+
+            // Riempimento liquidi fino a SEA_LEVEL per oceani, laghi e fiumi
+            if h < SEA_LEVEL {
+                for y in (h + 1)..=SEA_LEVEL {
+                    let liquid = if biome == BiomeType::FrozenOcean && y == SEA_LEVEL {
+                        BlockType::Ice
+                    } else {
+                        BlockType::Water
+                    };
+                    chunk.set(lx as i32, y, lz as i32, liquid);
+                }
+            }
+        }
+    }
+
+    // 2. Generazione Vene di Minerali nel Sottosuolo (Carbone, Ferro, Oro, Diamante)
     for lx in 0..CHUNK_WIDTH {
         for lz in 0..CHUNK_DEPTH {
             let wx = world_base_x + lx as i32;
             let wz = world_base_z + lz as i32;
             let h = surface_heights[lx][lz];
 
-            // Bedrock indistruttibile sul fondo
-            chunk.set(lx as i32, 0, lz as i32, BlockType::Bedrock);
-            if pseudo_hash(wx, wz) % 2 == 0 {
-                chunk.set(lx as i32, 1, lz as i32, BlockType::Bedrock);
-            }
+            for y in 2..(h - 4) {
+                if chunk.get(lx as i32, y, lz as i32) == BlockType::Stone {
+                    let hash = pseudo_hash_3d(wx, y, wz, seed);
 
-            for y in 1..=h {
-                let block = if y == h {
-                    if h < SEA_LEVEL {
-                        BlockType::Sand
-                    } else if h <= SEA_LEVEL + 2 {
-                        BlockType::Sand
-                    } else if h > 52 {
-                        BlockType::Snow
-                    } else if h > 44 {
-                        BlockType::Stone
-                    } else {
-                        BlockType::Grass
+                    // Diamante: rarissimo e profondo (quota 2-15)
+                    if y <= 15 && hash % 199 == 0 {
+                        chunk.set(lx as i32, y, lz as i32, BlockType::DiamondOre);
                     }
-                } else if y >= h - 3 {
-                    if h <= SEA_LEVEL + 2 {
-                        BlockType::Sand
-                    } else {
-                        BlockType::Dirt
+                    // Oro: raro (quota 3-28)
+                    else if y <= 28 && hash % 113 == 0 {
+                        chunk.set(lx as i32, y, lz as i32, BlockType::GoldOre);
                     }
-                } else {
-                    BlockType::Stone
-                };
-
-                chunk.set(lx as i32, y, lz as i32, block);
-            }
-
-            // Riempimento dell'acqua fino a SEA_LEVEL per mari, fiumi e laghi
-            if h < SEA_LEVEL {
-                for y in (h + 1)..=SEA_LEVEL {
-                    chunk.set(lx as i32, y, lz as i32, BlockType::Water);
+                    // Ferro: comune (quota 4-46)
+                    else if y <= 46 && hash % 43 == 0 {
+                        chunk.set(lx as i32, y, lz as i32, BlockType::IronOre);
+                    }
+                    // Carbone: abbondante (quota 6-58)
+                    else if y <= 58 && hash % 27 == 0 {
+                        chunk.set(lx as i32, y, lz as i32, BlockType::CoalOre);
+                    }
+                    // Sacche di ghiaia sotterranee
+                    else if hash % 79 == 0 {
+                        chunk.set(lx as i32, y, lz as i32, BlockType::Gravel);
+                    }
                 }
             }
         }
     }
 
-    // 2. Caverne e Gallerie Sotterranee con Rumore 3D
+    // 3. Caverne e Gallerie Sotterranee 3D
     for lx in 0..CHUNK_WIDTH {
         for lz in 0..CHUNK_DEPTH {
             let wx = (world_base_x + lx as i32) as f64;
@@ -240,20 +412,19 @@ pub fn generate_chunk(cx: i32, cz: i32) -> Chunk {
             for y in 3..max_cave_y {
                 let wy = y as f64;
 
-                // Non forare il fondale di mare/fiume per non prosciugare l'acqua
+                // Protezione fondali idrici
                 if h <= SEA_LEVEL && y >= h - 4 {
                     continue;
                 }
 
-                // Tunnel tortuosi (spaghetti caves)
-                let n1 = fbm_3d(wx * 0.04, wy * 0.06, wz * 0.04, 2, 0.5, 2.0);
-                let n2 = fbm_3d(wx * 0.04 + 31.4, wy * 0.06, wz * 0.04 + 73.1, 2, 0.5, 2.0);
-
+                // Tunnel tortuosi 3D
+                let n1 = noise.fbm_3d(wx * 0.04, wy * 0.06, wz * 0.04, 2, 0.5, 2.0);
+                let n2 = noise.fbm_3d(wx * 0.04 + 31.4, wy * 0.06, wz * 0.04 + 73.1, 2, 0.5, 2.0);
                 let is_tunnel = (n1 * n1 + n2 * n2) < 0.013;
 
-                // Grandi stanze ipogee (cheese caves)
+                // Grandi caverne ipogee
                 let is_room = if y < 30 {
-                    let n_room = fbm_3d(wx * 0.025, wy * 0.04, wz * 0.025, 2, 0.5, 2.0);
+                    let n_room = noise.fbm_3d(wx * 0.025, wy * 0.04, wz * 0.025, 2, 0.5, 2.0);
                     n_room < -0.44
                 } else {
                     false
@@ -266,50 +437,100 @@ pub fn generate_chunk(cx: i32, cz: i32) -> Chunk {
         }
     }
 
-    // 3. Alberi procedurali
+    // 4. Vegetazione e Strutture Superficiali (Alberi & Cactus)
     for lx in 2..(CHUNK_WIDTH - 2) {
         for lz in 2..(CHUNK_DEPTH - 2) {
             let wx = world_base_x + lx as i32;
             let wz = world_base_z + lz as i32;
             let h = surface_heights[lx][lz];
+            let biome = biomes[lx][lz];
+            let is_river = river_flags[lx][lz];
 
-            if h > SEA_LEVEL + 2
-                && h < 44
-                && !river_flags[lx][lz]
-                && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass
-                && pseudo_hash(wx, wz) % 37 == 0
-                && h + 6 < CHUNK_HEIGHT as i32
-            {
-                // Tronco
-                for ty in (h + 1)..=(h + 4) {
-                    chunk.set(lx as i32, ty, lz as i32, BlockType::Wood);
-                }
+            if is_river || h <= SEA_LEVEL + 1 || h + 6 >= CHUNK_HEIGHT as i32 {
+                continue;
+            }
 
-                // Chioma foglie
-                for dx in -2_i32..=2_i32 {
-                    for dz in -2_i32..=2_i32 {
-                        for dy in (h + 3)..=(h + 6) {
-                            if dy == h + 6 && (dx.abs() > 1 || dz.abs() > 1) {
-                                continue;
-                            }
-                            if dx.abs() == 2 && dz.abs() == 2 && dy >= h + 5 {
-                                continue;
-                            }
-                            let tx = lx as i32 + dx;
-                            let tz = lz as i32 + dz;
-                            if Chunk::in_bounds(tx, dy, tz)
-                                && chunk.get(tx, dy, tz) == BlockType::Air
-                            {
-                                chunk.set(tx, dy, tz, BlockType::Leaves);
-                            }
+            let hash = pseudo_hash_3d(wx, h, wz, seed);
+
+            match biome {
+                BiomeType::Desert => {
+                    // Cactus nel deserto
+                    if hash % 41 == 0 && chunk.get(lx as i32, h, lz as i32) == BlockType::Sand {
+                        let cactus_h = 2 + (hash % 2) as i32;
+                        for cy in 1..=cactus_h {
+                            chunk.set(lx as i32, h + cy, lz as i32, BlockType::Cactus);
                         }
                     }
                 }
+                BiomeType::Forest => {
+                    // Alberi densi nella foresta
+                    if hash % 16 == 0 && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass {
+                        spawn_tree(&mut chunk, lx as i32, h, lz as i32, false);
+                    }
+                }
+                BiomeType::Plains => {
+                    // Alberi sparsi nelle pianure
+                    if hash % 45 == 0 && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass {
+                        spawn_tree(&mut chunk, lx as i32, h, lz as i32, false);
+                    }
+                }
+                BiomeType::SnowyTundra => {
+                    // Pini conici nella tundra innevata
+                    if hash % 35 == 0 && chunk.get(lx as i32, h, lz as i32) == BlockType::Snow {
+                        spawn_tree(&mut chunk, lx as i32, h, lz as i32, true);
+                    }
+                }
+                _ => {}
             }
         }
     }
 
     chunk
+}
+
+fn spawn_tree(chunk: &mut Chunk, lx: i32, h: i32, lz: i32, is_pine: bool) {
+    let trunk_h = if is_pine { 5 } else { 4 };
+    for ty in (h + 1)..=(h + trunk_h) {
+        chunk.set(lx, ty, lz, BlockType::Wood);
+    }
+
+    if is_pine {
+        // Pino conico
+        for dy in (h + 3)..=(h + 6) {
+            let radius: i32 = if dy == h + 6 { 0 } else if dy >= h + 5 { 1 } else { 2 };
+            for dx in -radius..=radius {
+                for dz in -radius..=radius {
+                    if radius == 2 && dx.abs() == 2 && dz.abs() == 2 {
+                        continue;
+                    }
+                    let tx = lx + dx;
+                    let tz = lz + dz;
+                    if Chunk::in_bounds(tx, dy, tz) && chunk.get(tx, dy, tz) == BlockType::Air {
+                        chunk.set(tx, dy, tz, BlockType::Leaves);
+                    }
+                }
+            }
+        }
+    } else {
+        // Quercia a chioma rotonda
+        for dx in -2_i32..=2_i32 {
+            for dz in -2_i32..=2_i32 {
+                for dy in (h + 3)..=(h + 6) {
+                    if dy == h + 6 && (dx.abs() > 1 || dz.abs() > 1) {
+                        continue;
+                    }
+                    if dx.abs() == 2 && dz.abs() == 2 && dy >= h + 5 {
+                        continue;
+                    }
+                    let tx = lx + dx;
+                    let tz = lz + dz;
+                    if Chunk::in_bounds(tx, dy, tz) && chunk.get(tx, dy, tz) == BlockType::Air {
+                        chunk.set(tx, dy, tz, BlockType::Leaves);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Aggiorna o crea la mesh per il chunk indicato
@@ -377,7 +598,6 @@ pub fn world_streaming_system(
     let pz = cam_transform.translation.z as i32;
     let (player_chunk, _, _) = WorldGrid::world_to_chunk_coord(px, pz);
 
-    // Se il giocatore ha cambiato chunk o la coda è vuota, ricalcoliamo la coda di caricamento
     if player_chunk != world.last_player_chunk {
         world.last_player_chunk = player_chunk;
 
@@ -385,14 +605,12 @@ pub fn world_streaming_system(
         for dx in -VIEW_DISTANCE..=VIEW_DISTANCE {
             for dz in -VIEW_DISTANCE..=VIEW_DISTANCE {
                 let coord = player_chunk + IVec2::new(dx, dz);
-                // Il chunk ha bisogno di essere caricato o rimesso se non ha una mesh attiva
                 if !world.chunk_entities.contains_key(&coord) {
                     needed_chunks.push(coord);
                 }
             }
         }
 
-        // Ordina per vicinanza al giocatore (carica prima i chunk più vicini)
         needed_chunks.sort_by_key(|c| {
             let diff = *c - player_chunk;
             diff.x * diff.x + diff.y * diff.y
@@ -400,7 +618,6 @@ pub fn world_streaming_system(
 
         world.generation_queue = needed_chunks;
 
-        // Unload dei chunk fuori dalla view distance (+ 2 di margine per evitare oscillazioni)
         let max_dist = VIEW_DISTANCE + 2;
         let mut chunks_to_remove = Vec::new();
 
@@ -412,22 +629,18 @@ pub fn world_streaming_system(
         }
 
         for coord in chunks_to_remove {
-            // Despawn della mesh 3D dalla GPU
             if let Some(entity) = world.chunk_entities.remove(&coord) {
                 commands.entity(entity).despawn();
             }
 
-            // Se il chunk è stato modificato, salvalo su disco e conservalo in memoria
             if world.modified_chunks.contains(&coord) {
                 let _ = world.save_chunk_to_disk(&coord);
             } else {
-                // I chunk non modificati possono essere rimossi dalla RAM per risparmiare memoria
                 world.chunks.remove(&coord);
             }
         }
     }
 
-    // Carica e genera fino a MAX_CHUNKS_PER_FRAME per frame per mantenere 60 FPS stabili
     let mut generated_this_frame = 0;
 
     while generated_this_frame < MAX_CHUNKS_PER_FRAME && !world.generation_queue.is_empty() {
@@ -436,18 +649,19 @@ pub fn world_streaming_system(
             continue;
         }
 
-        // Se il chunk non è in RAM, prova a caricarlo da disco; se non esiste sul disco, generalo
+        let seed = world.seed.0;
+        let noise = world.noise.clone();
+
         if !world.chunks.contains_key(&coord) {
             if let Some(loaded_chunk) = world.load_chunk_from_disk(&coord) {
                 world.chunks.insert(coord, loaded_chunk);
                 world.modified_chunks.insert(coord);
             } else {
-                let chunk = generate_chunk(coord.x, coord.y);
+                let chunk = generate_chunk(coord.x, coord.y, &noise, seed);
                 world.chunks.insert(coord, chunk);
             }
         }
 
-        // Effettua subito il meshing per il chunk
         update_chunk_mesh(
             &coord,
             &mut commands,
@@ -456,7 +670,6 @@ pub fn world_streaming_system(
             &mut materials,
         );
 
-        // Se necessario, aggiorna i vicini già esistenti ai bordi per evitare cuciture
         for neighbor_coord in [
             coord + IVec2::new(-1, 0),
             coord + IVec2::new(1, 0),

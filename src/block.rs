@@ -14,6 +14,15 @@ pub enum BlockType {
     Water = 9,
     Snow = 10,
     Bedrock = 11,
+    CoalOre = 12,
+    IronOre = 13,
+    GoldOre = 14,
+    DiamondOre = 15,
+    Sandstone = 16,
+    Cactus = 17,
+    Gravel = 18,
+    Ice = 19,
+    Glass = 20,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -40,7 +49,10 @@ impl BlockType {
     #[inline]
     #[allow(dead_code)]
     pub fn is_transparent(&self) -> bool {
-        matches!(self, BlockType::Air | BlockType::Water | BlockType::Leaves)
+        matches!(
+            self,
+            BlockType::Air | BlockType::Water | BlockType::Leaves | BlockType::Glass | BlockType::Ice
+        )
     }
 
     pub fn from_u8(val: u8) -> Self {
@@ -56,6 +68,15 @@ impl BlockType {
             9 => BlockType::Water,
             10 => BlockType::Snow,
             11 => BlockType::Bedrock,
+            12 => BlockType::CoalOre,
+            13 => BlockType::IronOre,
+            14 => BlockType::GoldOre,
+            15 => BlockType::DiamondOre,
+            16 => BlockType::Sandstone,
+            17 => BlockType::Cactus,
+            18 => BlockType::Gravel,
+            19 => BlockType::Ice,
+            20 => BlockType::Glass,
             _ => BlockType::Air,
         }
     }
@@ -89,6 +110,15 @@ impl BlockType {
                 _ => ([0.88, 0.90, 0.92], face_shade(face)),
             },
             BlockType::Bedrock => ([0.15, 0.15, 0.16], face_shade(face)),
+            BlockType::CoalOre => ([0.30, 0.30, 0.30], face_shade(face)),
+            BlockType::IronOre => ([0.68, 0.56, 0.46], face_shade(face)),
+            BlockType::GoldOre => ([0.82, 0.72, 0.25], face_shade(face)),
+            BlockType::DiamondOre => ([0.32, 0.82, 0.85], face_shade(face)),
+            BlockType::Sandstone => ([0.80, 0.74, 0.52], face_shade(face)),
+            BlockType::Cactus => ([0.22, 0.60, 0.24], face_shade(face)),
+            BlockType::Gravel => ([0.46, 0.45, 0.45], face_shade(face)),
+            BlockType::Ice => ([0.62, 0.82, 0.96], face_shade(face)),
+            BlockType::Glass => ([0.85, 0.92, 0.96], face_shade(face)),
         };
 
         [

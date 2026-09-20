@@ -120,6 +120,12 @@ pub fn player_hand_input_system(
         hand.selected_block = BlockType::Water;
     } else if keys.just_pressed(KeyCode::Digit9) {
         hand.selected_block = BlockType::Snow;
+    } else if keys.just_pressed(KeyCode::Digit0) {
+        hand.selected_block = BlockType::Glass;
+    } else if keys.just_pressed(KeyCode::Minus) {
+        hand.selected_block = BlockType::DiamondOre;
+    } else if keys.just_pressed(KeyCode::Equal) {
+        hand.selected_block = BlockType::Cactus;
     }
 }
 
