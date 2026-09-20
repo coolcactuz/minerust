@@ -3,6 +3,7 @@ mod camera;
 mod chunk;
 mod interaction;
 mod inventory;
+mod menu;
 mod mesher;
 mod noise;
 mod physics;
@@ -17,6 +18,11 @@ use interaction::block_interaction_system;
 use inventory::{
     inventory_input_system, inventory_interaction_system, setup_inventory_ui,
     update_inventory_ui_system, Inventory,
+};
+use menu::{
+    fps_limiter_system, menu_button_click_system, menu_button_hover_system, menu_input_system,
+    setup_menu_ui, update_menu_visibility_system, update_settings_button_text_system,
+    FpsLimiter, GraphicsSettings, MenuState,
 };
 use physics::{
     player_physics_system, setup_physics_ui, update_physics_hud_system, PlayerPhysics,
@@ -49,7 +55,24 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .init_resource::<Inventory>()
-        .add_systems(Startup, (setup, setup_inventory_ui, setup_physics_ui))
+        .init_resource::<MenuState>()
+        .init_resource::<GraphicsSettings>()
+        .init_resource::<FpsLimiter>()
+        .add_systems(
+            Startup,
+            (setup, setup_inventory_ui, setup_physics_ui, setup_menu_ui),
+        )
+        .add_systems(
+            Update,
+            (
+                menu_input_system,
+                update_menu_visibility_system,
+                menu_button_hover_system,
+                menu_button_click_system,
+                update_settings_button_text_system,
+                fps_limiter_system,
+            ),
+        )
         .add_systems(
             Update,
             (

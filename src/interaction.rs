@@ -4,6 +4,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
+use crate::menu::MenuState;
 use crate::world::{update_chunk_mesh, WorldGrid};
 
 pub struct RaycastHit {
@@ -92,11 +93,17 @@ pub fn block_interaction_system(
     camera_query: Query<(&Transform, &FpsCamera)>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     inventory: Res<Inventory>,
+    menu: Option<Res<MenuState>>,
     mut world: ResMut<WorldGrid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut gizmos: Gizmos,
 ) {
+    if let Some(menu) = menu {
+        if menu.is_open() {
+            return;
+        }
+    }
     if inventory.is_open {
         return;
     }

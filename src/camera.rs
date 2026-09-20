@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::inventory::Inventory;
+use crate::menu::MenuState;
 
 #[derive(Component)]
 pub struct FpsCamera {
@@ -25,8 +26,14 @@ pub fn camera_look_system(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
     cursor_options: Query<&CursorOptions, With<PrimaryWindow>>,
     inventory: Option<Res<Inventory>>,
+    menu: Option<Res<MenuState>>,
     mut query: Query<(&mut FpsCamera, &mut Transform)>,
 ) {
+    if let Some(menu) = menu {
+        if menu.is_open() {
+            return;
+        }
+    }
     if let Some(inv) = inventory {
         if inv.is_open {
             return;
@@ -65,7 +72,13 @@ pub fn cursor_grab_system(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     inventory: Option<Res<Inventory>>,
+    menu: Option<Res<MenuState>>,
 ) {
+    if let Some(menu) = menu {
+        if menu.is_open() {
+            return;
+        }
+    }
     if let Some(inv) = inventory {
         if inv.is_open {
             return;

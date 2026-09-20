@@ -4,6 +4,7 @@ use bevy::text::FontSize;
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
+use crate::menu::MenuState;
 use crate::world::{calculate_biome_and_height, WorldGrid};
 
 pub const PLAYER_HALF_WIDTH: f32 = 0.3;
@@ -93,9 +94,15 @@ pub fn player_physics_system(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     inventory: Option<Res<Inventory>>,
+    menu: Option<Res<MenuState>>,
     world: Res<WorldGrid>,
     mut query: Query<(&FpsCamera, &mut Transform, &mut PlayerPhysics)>,
 ) {
+    if let Some(menu) = menu {
+        if menu.is_open() {
+            return;
+        }
+    }
     if let Some(inv) = inventory {
         if inv.is_open {
             return;

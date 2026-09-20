@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::chunk::{Chunk, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
+use crate::menu::GraphicsSettings;
 use crate::mesher::build_chunk_mesh;
 use crate::noise::NoiseGenerator;
 
@@ -594,6 +595,7 @@ pub fn world_streaming_system(
     mut world: ResMut<WorldGrid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    settings: Option<Res<GraphicsSettings>>,
 ) {
     let Ok(cam_transform) = camera_query.single() else {
         return;
@@ -603,12 +605,15 @@ pub fn world_streaming_system(
     let pz = cam_transform.translation.z as i32;
     let (player_chunk, _, _) = WorldGrid::world_to_chunk_coord(px, pz);
 
-    if player_chunk != world.last_player_chunk {
+    let view_dist = settings.as_ref().map_or(VIEW_DISTANCE, |s| s.view_distance);
+    let settings_changed = settings.as_ref().map_or(false, |s| s.is_changed());
+
+    if player_chunk != world.last_player_chunk || settings_changed {
         world.last_player_chunk = player_chunk;
 
         let mut needed_chunks = Vec::new();
-        for dx in -VIEW_DISTANCE..=VIEW_DISTANCE {
-            for dz in -VIEW_DISTANCE..=VIEW_DISTANCE {
+        for dx in -view_dist..=view_dist {
+            for dz in -view_dist..=view_dist {
                 let coord = player_chunk + IVec2::new(dx, dz);
                 // Chunk needs to be loaded if it has no active GPU mesh
                 if !world.chunk_entities.contains_key(&coord) {
@@ -624,7 +629,7 @@ pub fn world_streaming_system(
 
         world.generation_queue = needed_chunks;
 
-        let max_dist = VIEW_DISTANCE + 2;
+        let max_dist = view_dist + 2;
         let mut chunks_to_remove = Vec::new();
 
         for coord in world.chunks.keys() {

@@ -4,6 +4,7 @@ use bevy::text::FontSize;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::block::{BlockFace, BlockType};
+use crate::menu::MenuState;
 
 pub const HOTBAR_SLOTS: usize = 9;
 
@@ -99,6 +100,9 @@ pub struct HotbarIconUi(pub usize);
 pub struct InventoryModal;
 
 #[derive(Component)]
+pub struct HotbarRoot;
+
+#[derive(Component)]
 pub struct InventorySlotBtn(pub BlockType);
 
 pub fn setup_inventory_ui(mut commands: Commands) {
@@ -124,6 +128,7 @@ pub fn setup_inventory_ui(mut commands: Commands) {
             },
             BackgroundColor(Color::srgba(0.08, 0.08, 0.10, 0.85)),
             BorderColor::all(Color::srgba(0.3, 0.3, 0.35, 0.9)),
+            HotbarRoot,
         ))
         .with_children(|parent| {
             for i in 0..HOTBAR_SLOTS {
@@ -308,7 +313,12 @@ pub fn inventory_input_system(
     scroll: Res<AccumulatedMouseScroll>,
     mut inventory: ResMut<Inventory>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    menu: Option<Res<MenuState>>,
 ) {
+    if menu.map_or(false, |m| m.is_open()) {
+        return;
+    }
+
     let Ok(mut cursor) = cursor_options.single_mut() else {
         return;
     };
@@ -391,13 +401,29 @@ pub fn inventory_interaction_system(
 
 pub fn update_inventory_ui_system(
     inventory: Res<Inventory>,
+    menu: Option<Res<MenuState>>,
     mut modal_query: Query<&mut Visibility, With<InventoryModal>>,
+    mut hotbar_query: Query<&mut Visibility, (With<HotbarRoot>, Without<InventoryModal>)>,
     mut slots_query: Query<(&HotbarSlotUi, &mut Node, &mut BorderColor), Without<HotbarIconUi>>,
     mut icons_query: Query<(&HotbarIconUi, &mut BackgroundColor)>,
 ) {
+    let menu_open = menu.map_or(false, |m| m.is_open());
+
+    // 0. Show/Hide hotbar HUD based on menu state
+    if let Ok(mut vis) = hotbar_query.single_mut() {
+        let target_vis = if menu_open {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+        if *vis != target_vis {
+            *vis = target_vis;
+        }
+    }
+
     // 1. Show/Hide inventory modal window
     if let Ok(mut vis) = modal_query.single_mut() {
-        let target_vis = if inventory.is_open {
+        let target_vis = if inventory.is_open && !menu_open {
             Visibility::Inherited
         } else {
             Visibility::Hidden
