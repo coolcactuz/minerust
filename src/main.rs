@@ -2,15 +2,21 @@ mod block;
 mod camera;
 mod chunk;
 mod interaction;
+mod inventory;
 mod mesher;
 mod noise;
+mod texture;
 mod world;
 
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 
 use camera::{camera_look_system, camera_move_system, cursor_grab_system, FpsCamera};
-use interaction::{block_interaction_system, player_hand_input_system, PlayerHand};
+use interaction::block_interaction_system;
+use inventory::{
+    inventory_input_system, inventory_interaction_system, setup_inventory_ui,
+    update_inventory_ui_system, Inventory,
+};
 use world::{
     calculate_biome_and_height, generate_chunk, update_chunk_mesh, world_streaming_system,
     WorldGrid, WorldSeed,
@@ -37,15 +43,17 @@ fn main() {
         }))
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
-        .init_resource::<PlayerHand>()
-        .add_systems(Startup, setup)
+        .init_resource::<Inventory>()
+        .add_systems(Startup, (setup, setup_inventory_ui))
         .add_systems(
             Update,
             (
                 cursor_grab_system,
                 camera_look_system,
                 camera_move_system,
-                player_hand_input_system,
+                inventory_input_system,
+                inventory_interaction_system,
+                update_inventory_ui_system,
                 block_interaction_system,
                 world_streaming_system,
             ),
@@ -58,7 +66,22 @@ fn setup(
     mut world: ResMut<WorldGrid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
+    // 0. Texture Atlas 128x128 pixel-art e Materiale PBR condiviso con Alpha Mask per trasparenze (Vetro)
+    let atlas_image = texture::create_texture_atlas();
+    let atlas_handle = images.add(atlas_image);
+
+    let block_mat = materials.add(StandardMaterial {
+        base_color_texture: Some(atlas_handle),
+        perceptual_roughness: 0.85,
+        reflectance: 0.15,
+        cull_mode: None,
+        alpha_mode: AlphaMode::Mask(0.5),
+        ..default()
+    });
+    world.block_material = Some(block_mat);
+
     let seed = world.seed.0;
     let noise = world.noise.clone();
 
@@ -99,19 +122,17 @@ fn setup(
     ));
 
     println!("\n=======================================================");
-    println!("⛏️  MINERUST: MOTORE DI GENERAZIONE PROCEDURALE DEFINITIVO");
+    println!("⛏️  MINERUST: TEXTURE ATLAS & INVENTARIO COMPLETATI");
     println!("=======================================================");
     println!("* SEED DEL MONDO: {}", seed);
     println!("* BIOMA DI SPAWN: {:?}", spawn_biome);
-    println!("* NOTA: Puoi avviare un mondo specifico con:");
-    println!("        cargo run -- --seed <numero_o_testo>");
-    println!("* BIOMI: Pianure, Foreste, Deserti con Cactus, Tundra Innevata,");
-    println!("         Montagne con cime innevate, Oceani/Laghi, Fiumi");
-    println!("* SOTTOSUOLO: Caverne 3D e vene di Carbone, Ferro, Oro, Diamante");
     println!("* CONTROLLI:");
-    println!("  - WASD + Mouse (clicca per bloccare, ESC per sbloccare)");
-    println!("  - Spazio/Shift: Vola su/giù | Ctrl: Scatto");
-    println!("  - Click Sinistro: Spacca blocco | Click Destro: Piazza blocco");
-    println!("  - Tasti 1-0, -, =: Seleziona blocco (inclusi Vetro, Diamante, Cactus)");
+    println!("  - WASD + Mouse: Movimento e visuale");
+    println!("  - Click Sinistro: Spacca blocco (o blocca cursore se sbloccato)");
+    println!("  - Click Destro: Piazza blocco selezionato");
+    println!("  - Tasti 1-9 o Rotellina del Mouse: Seleziona slot rapido nella Hotbar");
+    println!("  - Tasto 'E': Apri / Chiudi Inventario Completo (clicca per equipaggiare)");
+    println!("  - Tasto ESC: Chiudi inventario / Sblocca cursore");
+    println!("  - Spazio / Shift: Vola su / giù | Ctrl: Scatto veloce");
     println!("=======================================================\n");
 }

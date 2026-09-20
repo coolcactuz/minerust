@@ -4,6 +4,7 @@ use bevy::render::mesh::{Indices, PrimitiveTopology};
 
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{Chunk, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
+use crate::texture::{block_texture, get_tile_uvs};
 
 pub fn build_chunk_mesh(
     chunk: &Chunk,
@@ -53,6 +54,7 @@ pub fn build_chunk_mesh(
                     BlockType::Air
                 };
                 if should_render_face(top_neighbor) {
+                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::Top));
                     add_quad(
                         &mut positions,
                         &mut normals,
@@ -66,7 +68,8 @@ pub fn build_chunk_mesh(
                             [fx + 1.0, fy + 1.0, fz + 1.0],
                         ],
                         [0.0, 1.0, 0.0],
-                        block.color(BlockFace::Top),
+                        tile_uvs,
+                        1.0,
                     );
                 }
 
@@ -74,6 +77,7 @@ pub fn build_chunk_mesh(
                 if wy > 0 {
                     let bottom_neighbor = get_block_at(wx, wy - 1, wz);
                     if should_render_face(bottom_neighbor) {
+                        let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::Bottom));
                         add_quad(
                             &mut positions,
                             &mut normals,
@@ -87,7 +91,8 @@ pub fn build_chunk_mesh(
                                 [fx + 1.0, fy, fz],
                             ],
                             [0.0, -1.0, 0.0],
-                            block.color(BlockFace::Bottom),
+                            tile_uvs,
+                            0.5,
                         );
                     }
                 }
@@ -95,6 +100,7 @@ pub fn build_chunk_mesh(
                 // North / Front (+Z)
                 let north_neighbor = get_block_at(wx, wy, wz + 1);
                 if should_render_face(north_neighbor) {
+                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::North));
                     add_quad(
                         &mut positions,
                         &mut normals,
@@ -108,13 +114,15 @@ pub fn build_chunk_mesh(
                             [fx, fy + 1.0, fz + 1.0],
                         ],
                         [0.0, 0.0, 1.0],
-                        block.color(BlockFace::North),
+                        tile_uvs,
+                        0.85,
                     );
                 }
 
                 // South / Back (-Z)
                 let south_neighbor = get_block_at(wx, wy, wz - 1);
                 if should_render_face(south_neighbor) {
+                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::South));
                     add_quad(
                         &mut positions,
                         &mut normals,
@@ -122,19 +130,21 @@ pub fn build_chunk_mesh(
                         &mut colors,
                         &mut indices,
                         [
-                            [fx, fy + 1.0, fz],
+                            [fx + 1.0, fy + 1.0, fz],
                             [fx + 1.0, fy + 1.0, fz],
                             [fx + 1.0, fy, fz],
                             [fx, fy, fz],
                         ],
                         [0.0, 0.0, -1.0],
-                        block.color(BlockFace::South),
+                        tile_uvs,
+                        0.85,
                     );
                 }
 
                 // East / Right (+X)
                 let east_neighbor = get_block_at(wx + 1, wy, wz);
                 if should_render_face(east_neighbor) {
+                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::East));
                     add_quad(
                         &mut positions,
                         &mut normals,
@@ -148,13 +158,15 @@ pub fn build_chunk_mesh(
                             [fx + 1.0, fy, fz + 1.0],
                         ],
                         [1.0, 0.0, 0.0],
-                        block.color(BlockFace::East),
+                        tile_uvs,
+                        0.7,
                     );
                 }
 
                 // West / Left (-X)
                 let west_neighbor = get_block_at(wx - 1, wy, wz);
                 if should_render_face(west_neighbor) {
+                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::West));
                     add_quad(
                         &mut positions,
                         &mut normals,
@@ -168,7 +180,8 @@ pub fn build_chunk_mesh(
                             [fx, fy, fz],
                         ],
                         [-1.0, 0.0, 0.0],
-                        block.color(BlockFace::West),
+                        tile_uvs,
+                        0.7,
                     );
                 }
             }
@@ -197,24 +210,19 @@ fn add_quad(
     indices: &mut Vec<u32>,
     verts: [[f32; 3]; 4],
     norm: [f32; 3],
-    color: [f32; 4],
+    quad_uvs: [[f32; 2]; 4],
+    shade: f32,
 ) {
     let start_idx = positions.len() as u32;
 
     for v in &verts {
         positions.push(*v);
         normals.push(norm);
-        colors.push(color);
+        colors.push([shade, shade, shade, 1.0]);
     }
 
-    uvs.extend_from_slice(&[
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [1.0, 1.0],
-        [0.0, 1.0],
-    ]);
+    uvs.extend_from_slice(&quad_uvs);
 
-    // Winding standard di Bevy Cuboid: 0, 1, 2, 2, 3, 0
     indices.extend_from_slice(&[
         start_idx,
         start_idx + 1,

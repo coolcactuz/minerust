@@ -61,6 +61,7 @@ pub struct WorldGrid {
     pub save_dir: PathBuf,
     pub seed: WorldSeed,
     pub noise: NoiseGenerator,
+    pub block_material: Option<Handle<StandardMaterial>>,
 }
 
 impl Default for WorldGrid {
@@ -76,6 +77,7 @@ impl Default for WorldGrid {
             save_dir: PathBuf::from("saves/world/chunks"),
             seed,
             noise,
+            block_material: None,
         }
     }
 }
@@ -92,6 +94,7 @@ impl WorldGrid {
             save_dir: PathBuf::from(format!("saves/world_{}/chunks", seed.0)),
             seed,
             noise,
+            block_material: None,
         }
     }
 
@@ -555,6 +558,15 @@ pub fn update_chunk_mesh(
         (coord.y * CHUNK_DEPTH as i32) as f32,
     );
 
+    let material = world.block_material.clone().unwrap_or_else(|| {
+        materials.add(StandardMaterial {
+            cull_mode: None,
+            perceptual_roughness: 0.85,
+            reflectance: 0.15,
+            ..default()
+        })
+    });
+
     if let Some(&entity) = world.chunk_entities.get(coord) {
         if let Some(mesh) = new_mesh {
             commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
@@ -563,13 +575,6 @@ pub fn update_chunk_mesh(
             world.chunk_entities.remove(coord);
         }
     } else if let Some(mesh) = new_mesh {
-        let material = materials.add(StandardMaterial {
-            cull_mode: None,
-            perceptual_roughness: 0.85,
-            reflectance: 0.15,
-            ..default()
-        });
-
         let entity = commands
             .spawn((
                 Mesh3d(meshes.add(mesh)),

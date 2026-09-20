@@ -3,20 +3,8 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
+use crate::inventory::Inventory;
 use crate::world::{update_chunk_mesh, WorldGrid};
-
-#[derive(Resource)]
-pub struct PlayerHand {
-    pub selected_block: BlockType,
-}
-
-impl Default for PlayerHand {
-    fn default() -> Self {
-        Self {
-            selected_block: BlockType::Cobblestone,
-        }
-    }
-}
 
 pub struct RaycastHit {
     pub hit_block: IVec3,
@@ -98,48 +86,21 @@ pub fn voxel_raycast(
     None
 }
 
-pub fn player_hand_input_system(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut hand: ResMut<PlayerHand>,
-) {
-    if keys.just_pressed(KeyCode::Digit1) {
-        hand.selected_block = BlockType::Cobblestone;
-    } else if keys.just_pressed(KeyCode::Digit2) {
-        hand.selected_block = BlockType::Dirt;
-    } else if keys.just_pressed(KeyCode::Digit3) {
-        hand.selected_block = BlockType::Wood;
-    } else if keys.just_pressed(KeyCode::Digit4) {
-        hand.selected_block = BlockType::Leaves;
-    } else if keys.just_pressed(KeyCode::Digit5) {
-        hand.selected_block = BlockType::Planks;
-    } else if keys.just_pressed(KeyCode::Digit6) {
-        hand.selected_block = BlockType::Stone;
-    } else if keys.just_pressed(KeyCode::Digit7) {
-        hand.selected_block = BlockType::Sand;
-    } else if keys.just_pressed(KeyCode::Digit8) {
-        hand.selected_block = BlockType::Water;
-    } else if keys.just_pressed(KeyCode::Digit9) {
-        hand.selected_block = BlockType::Snow;
-    } else if keys.just_pressed(KeyCode::Digit0) {
-        hand.selected_block = BlockType::Glass;
-    } else if keys.just_pressed(KeyCode::Minus) {
-        hand.selected_block = BlockType::DiamondOre;
-    } else if keys.just_pressed(KeyCode::Equal) {
-        hand.selected_block = BlockType::Cactus;
-    }
-}
-
 pub fn block_interaction_system(
     mut commands: Commands,
     cursor_options: Query<&CursorOptions, With<PrimaryWindow>>,
     camera_query: Query<(&Transform, &FpsCamera)>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
-    hand: Res<PlayerHand>,
+    inventory: Res<Inventory>,
     mut world: ResMut<WorldGrid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut gizmos: Gizmos,
 ) {
+    if inventory.is_open {
+        return;
+    }
+
     let Ok(cursor) = cursor_options.single() else {
         return;
     };
@@ -173,7 +134,7 @@ pub fn block_interaction_system(
         }
         // Tasto destro: Piazza blocco
         else if mouse_buttons.just_pressed(MouseButton::Right) {
-            let affected = world.set_block(hit.place_pos, hand.selected_block);
+            let affected = world.set_block(hit.place_pos, inventory.selected_block());
             dirty_coords.extend(affected);
         }
 

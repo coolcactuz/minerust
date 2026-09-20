@@ -2,6 +2,8 @@ use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
+use crate::inventory::Inventory;
+
 #[derive(Component)]
 pub struct FpsCamera {
     pub yaw: f32,
@@ -24,8 +26,15 @@ impl Default for FpsCamera {
 pub fn camera_look_system(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
     cursor_options: Query<&CursorOptions, With<PrimaryWindow>>,
+    inventory: Option<Res<Inventory>>,
     mut query: Query<(&mut FpsCamera, &mut Transform)>,
 ) {
+    if let Some(inv) = inventory {
+        if inv.is_open {
+            return;
+        }
+    }
+
     let Ok(cursor) = cursor_options.single() else {
         return;
     };
@@ -55,8 +64,15 @@ pub fn camera_look_system(
 pub fn camera_move_system(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    inventory: Option<Res<Inventory>>,
     mut query: Query<(&FpsCamera, &mut Transform)>,
 ) {
+    if let Some(inv) = inventory {
+        if inv.is_open {
+            return;
+        }
+    }
+
     let dt = time.delta_secs();
 
     for (fps, mut transform) in &mut query {
@@ -107,7 +123,14 @@ pub fn cursor_grab_system(
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
+    inventory: Option<Res<Inventory>>,
 ) {
+    if let Some(inv) = inventory {
+        if inv.is_open {
+            return;
+        }
+    }
+
     let Ok(mut cursor) = cursor_options.single_mut() else {
         return;
     };
