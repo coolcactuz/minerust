@@ -325,6 +325,14 @@ pub fn player_physics_system(
     transform.translation = feet + Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0);
 }
 
+#[derive(Default)]
+pub struct FpsTracker {
+    pub fps: f32,
+    pub frame_time_ms: f32,
+    timer: f32,
+    frames: u32,
+}
+
 pub fn setup_physics_ui(mut commands: Commands) {
     commands
         .spawn((
@@ -341,7 +349,7 @@ pub fn setup_physics_ui(mut commands: Commands) {
         ))
         .with_children(|parent| {
             parent.spawn((
-                Text::new("Pos: (0.0, 0.0, 0.0) | Mode: Walking 🚶 [F: Fly]"),
+                Text::new("FPS: -- | X: 0.0 Y: 0.0 Z: 0.0 | Mode: Walking 🚶 [F: Fly]"),
                 TextFont {
                     font_size: FontSize::Px(12.0),
                     ..default()
@@ -353,9 +361,22 @@ pub fn setup_physics_ui(mut commands: Commands) {
 }
 
 pub fn update_physics_hud_system(
+    time: Res<Time>,
+    mut fps: Local<FpsTracker>,
     query: Query<(&Transform, &PlayerPhysics), With<FpsCamera>>,
     mut text_query: Query<&mut Text, With<PhysicsDebugText>>,
 ) {
+    let dt = time.delta_secs();
+    fps.timer += dt;
+    fps.frames += 1;
+
+    if fps.timer >= 0.25 {
+        fps.fps = fps.frames as f32 / fps.timer;
+        fps.frame_time_ms = (fps.timer / fps.frames as f32) * 1000.0;
+        fps.timer = 0.0;
+        fps.frames = 0;
+    }
+
     let Ok((transform, physics)) = query.single() else {
         return;
     };
@@ -378,7 +399,7 @@ pub fn update_physics_hud_system(
     };
 
     *text = Text::new(format!(
-        "X: {:.1} Y: {:.1} Z: {:.1} | {} | [F] Toggle Flight",
-        px, py, pz, mode_str
+        "FPS: {:.0} ({:.1} ms) | X: {:.1} Y: {:.1} Z: {:.1} | {} | [F] Toggle Flight",
+        fps.fps, fps.frame_time_ms, px, py, pz, mode_str
     ));
 }
