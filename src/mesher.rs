@@ -2,14 +2,14 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 
-use crate::block::BlockFace;
+use crate::block::{BlockFace, BlockType};
 use crate::chunk::{Chunk, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
 
 pub fn build_chunk_mesh(
     chunk: &Chunk,
     chunk_x: i32,
     chunk_z: i32,
-    is_solid_at: impl Fn(i32, i32, i32) -> bool,
+    get_block_at: impl Fn(i32, i32, i32) -> BlockType,
 ) -> Option<Mesh> {
     let mut positions: Vec<[f32; 3]> = Vec::new();
     let mut normals: Vec<[f32; 3]> = Vec::new();
@@ -23,7 +23,7 @@ pub fn build_chunk_mesh(
         for lz in 0..CHUNK_DEPTH {
             for lx in 0..CHUNK_WIDTH {
                 let block = chunk.get(lx as i32, ly as i32, lz as i32);
-                if !block.is_solid() {
+                if block == BlockType::Air {
                     continue;
                 }
 
@@ -35,8 +35,26 @@ pub fn build_chunk_mesh(
                 let fy = ly as f32;
                 let fz = lz as f32;
 
+                // Helper per decidere se la faccia va renderizzata
+                let should_render_face = |neighbor: BlockType| -> bool {
+                    if block.is_solid() {
+                        // Un blocco solido mostra la faccia se confina con Aria o Acqua
+                        !neighbor.is_solid()
+                    } else if block.is_water() {
+                        // L'acqua mostra la faccia solo se confina con l'Aria
+                        neighbor == BlockType::Air
+                    } else {
+                        false
+                    }
+                };
+
                 // Top (+Y)
-                if !is_solid_at(wx, wy + 1, wz) {
+                let top_neighbor = if wy + 1 < CHUNK_HEIGHT as i32 {
+                    get_block_at(wx, wy + 1, wz)
+                } else {
+                    BlockType::Air
+                };
+                if should_render_face(top_neighbor) {
                     add_quad(
                         &mut positions,
                         &mut normals,
@@ -54,25 +72,29 @@ pub fn build_chunk_mesh(
                 }
 
                 // Bottom (-Y)
-                if wy > 0 && !is_solid_at(wx, wy - 1, wz) {
-                    add_quad(
-                        &mut positions,
-                        &mut normals,
-                        &mut colors,
-                        &mut indices,
-                        [
-                            [fx, fy, fz],
-                            [fx + 1.0, fy, fz],
-                            [fx + 1.0, fy, fz + 1.0],
-                            [fx, fy, fz + 1.0],
-                        ],
-                        [0.0, -1.0, 0.0],
-                        block.color(BlockFace::Bottom),
-                    );
+                if wy > 0 {
+                    let bottom_neighbor = get_block_at(wx, wy - 1, wz);
+                    if should_render_face(bottom_neighbor) {
+                        add_quad(
+                            &mut positions,
+                            &mut normals,
+                            &mut colors,
+                            &mut indices,
+                            [
+                                [fx, fy, fz],
+                                [fx + 1.0, fy, fz],
+                                [fx + 1.0, fy, fz + 1.0],
+                                [fx, fy, fz + 1.0],
+                            ],
+                            [0.0, -1.0, 0.0],
+                            block.color(BlockFace::Bottom),
+                        );
+                    }
                 }
 
                 // North (+Z)
-                if !is_solid_at(wx, wy, wz + 1) {
+                let north_neighbor = get_block_at(wx, wy, wz + 1);
+                if should_render_face(north_neighbor) {
                     add_quad(
                         &mut positions,
                         &mut normals,
@@ -81,7 +103,7 @@ pub fn build_chunk_mesh(
                         [
                             [fx, fy, fz + 1.0],
                             [fx + 1.0, fy, fz + 1.0],
-                            [fx + 1.0, fy + 1.0, fz + 1.0],
+                            [fx + 1.0, fy, fz + 1.0],
                             [fx, fy + 1.0, fz + 1.0],
                         ],
                         [0.0, 0.0, 1.0],
@@ -90,7 +112,8 @@ pub fn build_chunk_mesh(
                 }
 
                 // South (-Z)
-                if !is_solid_at(wx, wy, wz - 1) {
+                let south_neighbor = get_block_at(wx, wy, wz - 1);
+                if should_render_face(south_neighbor) {
                     add_quad(
                         &mut positions,
                         &mut normals,
@@ -108,7 +131,8 @@ pub fn build_chunk_mesh(
                 }
 
                 // East (+X)
-                if !is_solid_at(wx + 1, wy, wz) {
+                let east_neighbor = get_block_at(wx + 1, wy, wz);
+                if should_render_face(east_neighbor) {
                     add_quad(
                         &mut positions,
                         &mut normals,
@@ -126,7 +150,8 @@ pub fn build_chunk_mesh(
                 }
 
                 // West (-X)
-                if !is_solid_at(wx - 1, wy, wz) {
+                let west_neighbor = get_block_at(wx - 1, wy, wz);
+                if should_render_face(west_neighbor) {
                     add_quad(
                         &mut positions,
                         &mut normals,

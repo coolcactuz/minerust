@@ -3,9 +3,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
-use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH};
-use crate::mesher::build_chunk_mesh;
-use crate::world::WorldGrid;
+use crate::world::{update_chunk_mesh, WorldGrid};
 
 #[derive(Resource)]
 pub struct PlayerHand {
@@ -116,6 +114,12 @@ pub fn player_hand_input_system(
         hand.selected_block = BlockType::Planks;
     } else if keys.just_pressed(KeyCode::Digit6) {
         hand.selected_block = BlockType::Stone;
+    } else if keys.just_pressed(KeyCode::Digit7) {
+        hand.selected_block = BlockType::Sand;
+    } else if keys.just_pressed(KeyCode::Digit8) {
+        hand.selected_block = BlockType::Water;
+    } else if keys.just_pressed(KeyCode::Digit9) {
+        hand.selected_block = BlockType::Snow;
     }
 }
 
@@ -154,10 +158,12 @@ pub fn block_interaction_system(
 
         let mut dirty_coords = Vec::new();
 
-        // Tasto sinistro: Spacca blocco
+        // Tasto sinistro: Spacca blocco (eccetto Bedrock indistruttibile)
         if mouse_buttons.just_pressed(MouseButton::Left) {
-            let affected = world.set_block(hit.hit_block, BlockType::Air);
-            dirty_coords.extend(affected);
+            if hit.hit_block.y > 0 && world.get_block(hit.hit_block) != BlockType::Bedrock {
+                let affected = world.set_block(hit.hit_block, BlockType::Air);
+                dirty_coords.extend(affected);
+            }
         }
         // Tasto destro: Piazza blocco
         else if mouse_buttons.just_pressed(MouseButton::Right) {
@@ -171,55 +177,8 @@ pub fn block_interaction_system(
             dirty_coords.dedup();
 
             for coord in dirty_coords {
-                remesh_chunk(&coord, &mut commands, &mut world, &mut meshes, &mut materials);
+                update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials);
             }
         }
-    }
-}
-
-pub fn remesh_chunk(
-    coord: &IVec2,
-    commands: &mut Commands,
-    world: &mut WorldGrid,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-) {
-    let Some(chunk) = world.chunks.get(coord) else {
-        return;
-    };
-
-    let new_mesh = build_chunk_mesh(chunk, coord.x, coord.y, |wx, wy, wz| {
-        world.is_solid_at(IVec3::new(wx, wy, wz))
-    });
-
-    let world_pos = Vec3::new(
-        (coord.x * CHUNK_WIDTH as i32) as f32,
-        0.0,
-        (coord.y * CHUNK_DEPTH as i32) as f32,
-    );
-
-    if let Some(entity) = world.chunk_entities.get(coord) {
-        if let Some(mesh) = new_mesh {
-            commands.entity(*entity).insert(Mesh3d(meshes.add(mesh)));
-        } else {
-            commands.entity(*entity).despawn();
-            world.chunk_entities.remove(coord);
-        }
-    } else if let Some(mesh) = new_mesh {
-        let material = materials.add(StandardMaterial {
-            perceptual_roughness: 0.9,
-            reflectance: 0.1,
-            ..default()
-        });
-
-        let entity = commands
-            .spawn((
-                Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(material),
-                Transform::from_translation(world_pos),
-            ))
-            .id();
-
-        world.chunk_entities.insert(*coord, entity);
     }
 }

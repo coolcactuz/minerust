@@ -1,7 +1,7 @@
 use crate::block::BlockType;
 
 pub const CHUNK_WIDTH: usize = 16;
-pub const CHUNK_HEIGHT: usize = 32;
+pub const CHUNK_HEIGHT: usize = 64;
 pub const CHUNK_DEPTH: usize = 16;
 pub const CHUNK_BLOCKS: usize = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
 

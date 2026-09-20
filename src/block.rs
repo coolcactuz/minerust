@@ -10,6 +10,10 @@ pub enum BlockType {
     Leaves = 5,
     Cobblestone = 6,
     Planks = 7,
+    Sand = 8,
+    Water = 9,
+    Snow = 10,
+    Bedrock = 11,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -25,12 +29,18 @@ pub enum BlockFace {
 impl BlockType {
     #[inline]
     pub fn is_solid(&self) -> bool {
-        !matches!(self, BlockType::Air)
+        !matches!(self, BlockType::Air | BlockType::Water)
     }
 
     #[inline]
+    pub fn is_water(&self) -> bool {
+        matches!(self, BlockType::Water)
+    }
+
+    #[inline]
+    #[allow(dead_code)]
     pub fn is_transparent(&self) -> bool {
-        matches!(self, BlockType::Air | BlockType::Leaves)
+        matches!(self, BlockType::Air | BlockType::Water | BlockType::Leaves)
     }
 
     pub fn color(&self, face: BlockFace) -> [f32; 4] {
@@ -50,6 +60,13 @@ impl BlockType {
             BlockType::Leaves => ([0.18, 0.58, 0.18], face_shade(face)),
             BlockType::Cobblestone => ([0.42, 0.42, 0.44], face_shade(face)),
             BlockType::Planks => ([0.72, 0.55, 0.35], face_shade(face)),
+            BlockType::Sand => ([0.86, 0.82, 0.58], face_shade(face)),
+            BlockType::Water => ([0.18, 0.48, 0.88], face_shade(face)),
+            BlockType::Snow => match face {
+                BlockFace::Top => ([0.95, 0.96, 0.98], 1.0),
+                _ => ([0.88, 0.90, 0.92], face_shade(face)),
+            },
+            BlockType::Bedrock => ([0.15, 0.15, 0.16], face_shade(face)),
         };
 
         [
