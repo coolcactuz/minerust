@@ -96,6 +96,7 @@ pub fn block_interaction_system(
     menu: Option<Res<MenuState>>,
     dev_settings: Option<Res<crate::menu::DevSettings>>,
     mut world: ResMut<WorldGrid>,
+    mut fluid_sim: ResMut<crate::fluid::FluidSimulation>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut gizmos: Gizmos,
@@ -138,6 +139,7 @@ pub fn block_interaction_system(
             if hit.hit_block.y > 0 && world.get_block(hit.hit_block) != BlockType::Bedrock {
                 let affected = world.set_block(hit.hit_block, BlockType::Air);
                 dirty_coords.extend(affected);
+                fluid_sim.schedule_neighbors(hit.hit_block);
             }
         }
         // Right click: Place block (if not colliding with the player's body)
@@ -168,6 +170,7 @@ pub fn block_interaction_system(
             if can_place {
                 let affected = world.set_block(hit.place_pos, block_to_place);
                 dirty_coords.extend(affected);
+                fluid_sim.schedule_neighbors(hit.place_pos);
             }
         }
 

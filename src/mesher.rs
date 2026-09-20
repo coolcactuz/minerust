@@ -7,17 +7,13 @@ use crate::chunk::{Chunk, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
 use crate::texture::{block_texture, get_tile_uvs};
 
 #[inline(always)]
-fn should_render_face(block: BlockType, neighbor: BlockType, face: BlockFace) -> bool {
+fn should_render_face(block: BlockType, neighbor: BlockType, _face: BlockFace) -> bool {
     if block == neighbor {
         return false;
     }
 
     if block.is_water() {
-        if face == BlockFace::Top {
-            neighbor == BlockType::Air || neighbor == BlockType::Glass
-        } else {
-            false
-        }
+        neighbor == BlockType::Air || neighbor == BlockType::Glass
     } else if block.is_solid() {
         neighbor.is_transparent()
     } else {
@@ -152,12 +148,13 @@ fn build_chunk_mesh_standard(
                 }
 
                 // North / Front (+Z)
+                // North / Front (+Z)
                 let north_neighbor = if lz + 1 < CHUNK_DEPTH {
                     chunk.get_fast(lx, ly, lz + 1)
                 } else if let Some(n) = north {
                     n.get_fast(lx, ly, 0)
                 } else {
-                    BlockType::Air
+                    if block.is_water() { BlockType::Water } else { BlockType::Air }
                 };
                 if should_render_face(block, north_neighbor, BlockFace::North) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::North));
@@ -185,7 +182,7 @@ fn build_chunk_mesh_standard(
                 } else if let Some(s) = south {
                     s.get_fast(lx, ly, CHUNK_DEPTH - 1)
                 } else {
-                    BlockType::Air
+                    if block.is_water() { BlockType::Water } else { BlockType::Air }
                 };
                 if should_render_face(block, south_neighbor, BlockFace::South) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::South));
@@ -213,7 +210,7 @@ fn build_chunk_mesh_standard(
                 } else if let Some(e) = east {
                     e.get_fast(0, ly, lz)
                 } else {
-                    BlockType::Air
+                    if block.is_water() { BlockType::Water } else { BlockType::Air }
                 };
                 if should_render_face(block, east_neighbor, BlockFace::East) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::East));
@@ -241,7 +238,7 @@ fn build_chunk_mesh_standard(
                 } else if let Some(w) = west {
                     w.get_fast(CHUNK_WIDTH - 1, ly, lz)
                 } else {
-                    BlockType::Air
+                    if block.is_water() { BlockType::Water } else { BlockType::Air }
                 };
                 if should_render_face(block, west_neighbor, BlockFace::West) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::West));
@@ -494,7 +491,7 @@ fn build_chunk_mesh_greedy(
                     } else if let Some(n) = north {
                         n.get_fast(lx, ly, 0)
                     } else {
-                        BlockType::Air
+                        if block.is_water() { BlockType::Water } else { BlockType::Air }
                     };
                     if should_render_face(block, north_neighbor, BlockFace::North) {
                         side_mask[ly * CHUNK_WIDTH + lx] = Some(block);
@@ -576,7 +573,7 @@ fn build_chunk_mesh_greedy(
                     } else if let Some(s) = south {
                         s.get_fast(lx, ly, CHUNK_DEPTH - 1)
                     } else {
-                        BlockType::Air
+                        if block.is_water() { BlockType::Water } else { BlockType::Air }
                     };
                     if should_render_face(block, south_neighbor, BlockFace::South) {
                         side_mask[ly * CHUNK_WIDTH + lx] = Some(block);
@@ -658,7 +655,7 @@ fn build_chunk_mesh_greedy(
                     } else if let Some(e) = east {
                         e.get_fast(0, ly, lz)
                     } else {
-                        BlockType::Air
+                        if block.is_water() { BlockType::Water } else { BlockType::Air }
                     };
                     if should_render_face(block, east_neighbor, BlockFace::East) {
                         side_mask[ly * CHUNK_DEPTH + lz] = Some(block);
@@ -740,7 +737,7 @@ fn build_chunk_mesh_greedy(
                     } else if let Some(w) = west {
                         w.get_fast(CHUNK_WIDTH - 1, ly, lz)
                     } else {
-                        BlockType::Air
+                        if block.is_water() { BlockType::Water } else { BlockType::Air }
                     };
                     if should_render_face(block, west_neighbor, BlockFace::West) {
                         side_mask[ly * CHUNK_DEPTH + lz] = Some(block);
@@ -882,22 +879,43 @@ mod tests {
     }
 
     #[test]
-    fn test_water_renders_only_on_surface() {
+    fn test_water_ocean_renders_only_on_surface() {
         let mut chunk = Chunk::new();
-        // Fill a 4x4 ocean column from y = 10 to y = 20 with Water
-        for lx in 0..4 {
-            for lz in 0..4 {
+        // Ocean seabed: fill y = 0..=9 with Bedrock
+        for lx in 0..CHUNK_WIDTH {
+            for lz in 0..CHUNK_DEPTH {
+                for ly in 0..=9 {
+                    chunk.set(lx as i32, ly as i32, lz as i32, BlockType::Bedrock);
+                }
+            }
+        }
+        // Ocean water: fill y = 10..=20 with Water
+        for lx in 0..CHUNK_WIDTH {
+            for lz in 0..CHUNK_DEPTH {
                 for ly in 10..=20 {
-                    chunk.set(lx, ly, lz, BlockType::Water);
+                    chunk.set(lx as i32, ly as i32, lz as i32, BlockType::Water);
                 }
             }
         }
 
-        // Greedy meshing of this 4x4 water column
+        // Greedy meshing of this ocean chunk
         let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
-        // Only the surface (y = 20) should render: 1 top quad (4 verts) + 1 underside quad (4 verts) = 8 vertices total!
-        // No side faces or bottom faces for the 10 layers of water below!
-        assert_eq!(mesh.count_vertices(), 8);
+        // The ocean water only renders at the surface (y = 20): 1 top quad (4 verts) + 1 underside quad (4 verts) = 8 water verts!
+        // Bedrock renders 1 top quad (4 verts) against water, 1 bottom quad (4 verts) at y=0, and 4 greedy side quads (16 verts) on chunk edges.
+        // Total verts for entire 16x16 chunk with 20 layers: only 28 vertices (7 quads)!
+        assert_eq!(mesh.count_vertices(), 28);
+    }
+
+    #[test]
+    fn test_waterfall_renders_sides_in_air() {
+        let mut chunk = Chunk::new();
+        // 1x1 vertical column of water (waterfall) at (5, y, 5) from y = 10 to y = 12 surrounded by Air
+        for ly in 10..=12 {
+            chunk.set(5, ly, 5, BlockType::Water);
+        }
+        let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+        // The waterfall column is surrounded by Air, so it renders Top + ceiling + bottom + 4 sides!
+        assert!(mesh.count_vertices() > 8);
     }
 
     #[test]
@@ -935,9 +953,8 @@ mod tests {
 
         let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
         // Sand must render its top face at y = 10 against the water at y = 11!
-        // Water at y = 11 also renders surface top and ceiling faces.
-        // Total faces: Sand (6 faces = 24 verts) + Water (2 faces = 8 verts) = 32 verts.
-        assert_eq!(mesh.count_vertices(), 32);
+        // All 6 faces of the Sand block are rendered (no holes into the void).
+        assert_eq!(mesh.count_vertices(), 40);
     }
 }
 

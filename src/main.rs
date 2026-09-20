@@ -1,6 +1,7 @@
 mod block;
 mod camera;
 mod chunk;
+mod fluid;
 mod interaction;
 mod inventory;
 mod menu;
@@ -15,6 +16,7 @@ use bevy::window::WindowResolution;
 
 use camera::{camera_look_system, cursor_grab_system, FpsCamera};
 use chunk::Chunk;
+use fluid::{fluid_simulation_system, FluidSimulation};
 use interaction::block_interaction_system;
 use inventory::{
     inventory_input_system, inventory_interaction_system, setup_inventory_ui,
@@ -63,6 +65,7 @@ fn main() {
         .init_resource::<FpsLimiter>()
         .init_resource::<ChunkGeneratorPool>()
         .init_resource::<ChunkMesherPool>()
+        .init_resource::<FluidSimulation>()
         .add_systems(
             Startup,
             (setup, setup_inventory_ui, setup_physics_ui, setup_menu_ui),
@@ -91,6 +94,7 @@ fn main() {
                 inventory_interaction_system,
                 update_inventory_ui_system,
                 block_interaction_system,
+                fluid_simulation_system,
                 world_streaming_system,
             ),
         )
