@@ -50,9 +50,9 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // 1. Pre-genera una griglia iniziale 3x3 di chunk attorno allo spawn (0, 0)
-    for cx in -1..=1 {
-        for cz in -1..=1 {
+    // 1. Pre-genera una griglia iniziale 5x5 di chunk attorno allo spawn (0, 0)
+    for cx in -2..=2 {
+        for cz in -2..=2 {
             let coord = IVec2::new(cx, cz);
             let chunk = generate_chunk(cx, cz);
             world.chunks.insert(coord, chunk);

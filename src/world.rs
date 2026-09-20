@@ -9,8 +9,8 @@ use crate::mesher::build_chunk_mesh;
 use crate::noise::{fbm_2d, fbm_3d, perlin_2d, ridged_fbm_2d};
 
 pub const SEA_LEVEL: i32 = 24;
-pub const VIEW_DISTANCE: i32 = 4;
-pub const MAX_CHUNKS_PER_FRAME: usize = 2;
+pub const VIEW_DISTANCE: i32 = 8;
+pub const MAX_CHUNKS_PER_FRAME: usize = 4;
 
 #[derive(Resource)]
 pub struct WorldGrid {
