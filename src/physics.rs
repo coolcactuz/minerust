@@ -408,7 +408,7 @@ pub fn update_physics_hud_system(
                 (0, 0, 0, 0, 0)
             };
 
-            let (cull, shadow, max_y, fog, budget, async_m, greedy) = if let Some(ref dev) = dev_settings {
+            let (cull, shadow, max_y, fog, budget, async_m, greedy, lod) = if let Some(ref dev) = dev_settings {
                 (
                     if dev.backface_culling { "ON" } else { "OFF" },
                     if dev.shadows_enabled { "ON" } else { "OFF" },
@@ -417,9 +417,14 @@ pub fn update_physics_hud_system(
                     if dev.mesh_budget { "ON" } else { "OFF" },
                     if dev.async_meshing { "ON" } else { "OFF" },
                     if dev.greedy_meshing { "ON" } else { "OFF" },
+                    if dev.distance_lod {
+                        format!("ON ({}ch)", dev.lod_threshold)
+                    } else {
+                        "OFF".to_string()
+                    },
                 )
             } else {
-                ("ON", "ON", "ON", "ON", "ON", "ON", "ON")
+                ("ON", "ON", "ON", "ON", "ON", "ON", "ON", "ON (4ch)".to_string())
             };
 
             let verts_str = if total_verts >= 1_000_000 {
@@ -434,10 +439,10 @@ pub fn update_physics_hud_system(
                 "⚡ MINERUST BENCHMARK [F3: Toggle]\n\
                  FPS: {:.0} ({:.1} ms) | Verts: {}\n\
                  Chunks: {} | Meshes: {} | GenQ: {} | MeshQ: {}\n\
-                 [Cull: {}] [Shadows: {}] [max_y: {}] [Fog: {}] [Budget: {}] [Async: {}] [Greedy: {}]",
+                 [Cull: {}] [Shadows: {}] [max_y: {}] [Fog: {}] [Budget: {}] [Async: {}] [Greedy: {}] [LOD: {}]",
                 fps.fps, fps.frame_time_ms, verts_str,
                 chunks_loaded, meshes_active, gen_q, mesh_q,
-                cull, shadow, max_y, fog, budget, async_m, greedy
+                cull, shadow, max_y, fog, budget, async_m, greedy, lod
             ));
         }
     }

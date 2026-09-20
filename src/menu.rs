@@ -48,6 +48,8 @@ pub struct DevSettings {
     pub mesh_budget: bool,
     pub async_meshing: bool,
     pub greedy_meshing: bool,
+    pub distance_lod: bool,
+    pub lod_threshold: i32,
     pub show_debug_hud: bool,
 }
 
@@ -61,6 +63,8 @@ impl Default for DevSettings {
             mesh_budget: true,
             async_meshing: true,
             greedy_meshing: true,
+            distance_lod: true,
+            lod_threshold: 4,
             show_debug_hud: true,
         }
     }
@@ -111,6 +115,8 @@ pub enum MenuButtonAction {
     ToggleMeshBudget,
     ToggleAsyncMeshing,
     ToggleGreedyMeshing,
+    ToggleDistanceLod,
+    CycleLodThreshold,
     ToggleDebugHud,
 }
 
@@ -158,6 +164,12 @@ pub struct AsyncMeshingBtnText;
 
 #[derive(Component)]
 pub struct GreedyMeshingBtnText;
+
+#[derive(Component)]
+pub struct DistanceLodBtnText;
+
+#[derive(Component)]
+pub struct LodThresholdBtnText;
 
 #[derive(Component)]
 pub struct DebugHudBtnText;
@@ -392,6 +404,8 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     spawn_settings_button(btn_col, "Mesh Budget: ON (6/frame)", MenuButtonAction::ToggleMeshBudget, MeshBudgetBtnText);
                     spawn_settings_button(btn_col, "Async Meshing: ON (0ms main thread)", MenuButtonAction::ToggleAsyncMeshing, AsyncMeshingBtnText);
                     spawn_settings_button(btn_col, "Greedy Meshing: ON (-75% verts)", MenuButtonAction::ToggleGreedyMeshing, GreedyMeshingBtnText);
+                    spawn_settings_button(btn_col, "Distance LOD: ON (Dynamic detail)", MenuButtonAction::ToggleDistanceLod, DistanceLodBtnText);
+                    spawn_settings_button(btn_col, "LOD Distance: 4 Chunks (64m)", MenuButtonAction::CycleLodThreshold, LodThresholdBtnText);
                     spawn_settings_button(btn_col, "Dev HUD (F3): ON", MenuButtonAction::ToggleDebugHud, DebugHudBtnText);
                     spawn_menu_button(btn_col, "◀ Back / Done", MenuButtonAction::BackFromDevSettings, true);
                 });
@@ -685,6 +699,23 @@ pub fn menu_button_click_system(
                         dev.greedy_meshing = !dev.greedy_meshing;
                     }
                 }
+                MenuButtonAction::ToggleDistanceLod => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.distance_lod = !dev.distance_lod;
+                    }
+                }
+                MenuButtonAction::CycleLodThreshold => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.lod_threshold = match dev.lod_threshold {
+                            2 => 3,
+                            3 => 4,
+                            4 => 6,
+                            6 => 8,
+                            8 => 2,
+                            _ => 4,
+                        };
+                    }
+                }
                 MenuButtonAction::ToggleDebugHud => {
                     if let Some(ref mut dev) = dev_settings {
                         dev.show_debug_hud = !dev.show_debug_hud;
@@ -735,14 +766,16 @@ pub fn update_settings_button_text_system(
 
 pub fn update_dev_button_text_system(
     dev_settings: Option<Res<DevSettings>>,
-    mut cull_text_query: Query<&mut Text, (With<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
-    mut shadow_text_query: Query<&mut Text, (With<ShadowsBtnText>, Without<BackfaceCullingBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
-    mut max_y_text_query: Query<&mut Text, (With<MaxYSkipBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
-    mut fog_text_query: Query<&mut Text, (With<DistanceFogBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
-    mut budget_text_query: Query<&mut Text, (With<MeshBudgetBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
-    mut async_text_query: Query<&mut Text, (With<AsyncMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
-    mut greedy_text_query: Query<&mut Text, (With<GreedyMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<DebugHudBtnText>)>,
-    mut hud_text_query: Query<&mut Text, (With<DebugHudBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>)>,
+    mut cull_text_query: Query<&mut Text, (With<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut shadow_text_query: Query<&mut Text, (With<ShadowsBtnText>, Without<BackfaceCullingBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut max_y_text_query: Query<&mut Text, (With<MaxYSkipBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut fog_text_query: Query<&mut Text, (With<DistanceFogBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut budget_text_query: Query<&mut Text, (With<MeshBudgetBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut async_text_query: Query<&mut Text, (With<AsyncMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut greedy_text_query: Query<&mut Text, (With<GreedyMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut lod_text_query: Query<&mut Text, (With<DistanceLodBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut thresh_text_query: Query<&mut Text, (With<LodThresholdBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<DebugHudBtnText>)>,
+    mut hud_text_query: Query<&mut Text, (With<DebugHudBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>)>,
 ) {
     let Some(dev) = dev_settings else { return; };
     if dev.is_changed() {
@@ -788,6 +821,19 @@ pub fn update_dev_button_text_system(
                 if dev.greedy_meshing { "ON (-75% verts)" } else { "OFF (1x1 block quads)" }
             ));
         }
+        if let Ok(mut text) = lod_text_query.single_mut() {
+            *text = Text::new(format!(
+                "Distance LOD: {}",
+                if dev.distance_lod { "ON (Dynamic detail)" } else { "OFF (Uniform meshing)" }
+            ));
+        }
+        if let Ok(mut text) = thresh_text_query.single_mut() {
+            *text = Text::new(format!(
+                "LOD Distance: {} Chunks ({}m)",
+                dev.lod_threshold,
+                dev.lod_threshold * 16
+            ));
+        }
         if let Ok(mut text) = hud_text_query.single_mut() {
             *text = Text::new(format!(
                 "Dev HUD (F3): {}",
@@ -804,17 +850,22 @@ pub fn update_dev_settings_system(
     mut dir_lights: Query<&mut DirectionalLight>,
     mut fog_query: Query<&mut bevy::pbr::DistanceFog>,
     mut last_greedy: Local<Option<bool>>,
+    mut last_lod: Local<Option<(bool, i32)>>,
 ) {
     let Some(dev) = dev_settings else { return; };
     if dev.is_changed() {
-        // 1. If greedy meshing changed, re-queue all loaded chunks for re-meshing
-        if last_greedy.map_or(false, |last| last != dev.greedy_meshing) {
+        // 1. If greedy meshing or LOD settings changed, re-queue all loaded chunks for re-meshing
+        let lod_config = (dev.distance_lod, dev.lod_threshold);
+        if last_greedy.map_or(false, |last| last != dev.greedy_meshing)
+            || last_lod.map_or(false, |last| last != lod_config)
+        {
             let coords: Vec<_> = world.chunks.keys().copied().collect();
             for coord in coords {
                 world.queue_mesh(coord);
             }
         }
         *last_greedy = Some(dev.greedy_meshing);
+        *last_lod = Some(lod_config);
 
         // 2. Update Backface Culling in real-time across ALL chunks
         if let Some(ref mat_handle) = world.block_material {

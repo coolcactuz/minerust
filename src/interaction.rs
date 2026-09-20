@@ -176,10 +176,23 @@ pub fn block_interaction_system(
             dirty_coords.sort_unstable_by_key(|c| (c.x, c.y));
             dirty_coords.dedup();
 
+            let (player_chunk, _, _) = WorldGrid::world_to_chunk_coord(
+                cam_transform.translation.x as i32,
+                cam_transform.translation.z as i32,
+            );
             let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
-            let greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
+            let distance_lod = dev_settings.as_ref().map_or(true, |d| d.distance_lod);
+            let lod_threshold = dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
+            let global_greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
 
             for coord in dirty_coords {
+                let diff = coord - player_chunk;
+                let dist = diff.x.abs().max(diff.y.abs());
+                let greedy = if distance_lod {
+                    dist > lod_threshold
+                } else {
+                    global_greedy
+                };
                 update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials, max_y_skip, greedy);
             }
         }

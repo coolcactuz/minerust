@@ -73,6 +73,7 @@ pub struct WorldGrid {
     pub block_material: Option<Handle<StandardMaterial>>,
     pub total_vertices: usize,
     pub chunk_vertices: HashMap<IVec2, usize>,
+    pub chunk_lod: HashMap<IVec2, u8>,
 }
 
 impl Default for WorldGrid {
@@ -95,6 +96,7 @@ impl Default for WorldGrid {
             block_material: None,
             total_vertices: 0,
             chunk_vertices: HashMap::default(),
+            chunk_lod: HashMap::default(),
         }
     }
 }
@@ -117,8 +119,8 @@ impl Default for ChunkGeneratorPool {
 
 #[derive(Resource)]
 pub struct ChunkMesherPool {
-    pub tx: Sender<(IVec2, Option<Mesh>)>,
-    pub rx: Mutex<Receiver<(IVec2, Option<Mesh>)>>,
+    pub tx: Sender<(IVec2, Option<Mesh>, u8)>,
+    pub rx: Mutex<Receiver<(IVec2, Option<Mesh>, u8)>>,
 }
 
 impl Default for ChunkMesherPool {
@@ -150,6 +152,7 @@ impl WorldGrid {
             block_material: None,
             total_vertices: 0,
             chunk_vertices: HashMap::default(),
+            chunk_lod: HashMap::default(),
         }
     }
 
@@ -608,6 +611,7 @@ fn spawn_tree(chunk: &mut Chunk, lx: i32, h: i32, lz: i32, is_pine: bool) {
 pub fn apply_chunk_mesh(
     coord: IVec2,
     new_mesh: Option<Mesh>,
+    lod: u8,
     commands: &mut Commands,
     world: &mut WorldGrid,
     meshes: &mut Assets<Mesh>,
@@ -619,7 +623,8 @@ pub fn apply_chunk_mesh(
         (coord.y * CHUNK_DEPTH as i32) as f32,
     );
 
-    // Track vertex counts
+    // Track vertex counts and LOD
+    world.chunk_lod.insert(coord, lod);
     let new_vert_count = new_mesh.as_ref().map_or(0, |m| m.count_vertices());
     let old_vert_count = world.chunk_vertices.insert(coord, new_vert_count).unwrap_or(0);
     world.total_vertices = world.total_vertices.saturating_sub(old_vert_count) + new_vert_count;
@@ -672,8 +677,9 @@ pub fn update_chunk_mesh(
     let east = world.chunks.get(&(*coord + IVec2::new(1, 0)));
     let west = world.chunks.get(&(*coord + IVec2::new(-1, 0)));
 
+    let lod = if greedy { 1 } else { 0 };
     let new_mesh = build_chunk_mesh(chunk, north, south, east, west, max_y_skip, greedy);
-    apply_chunk_mesh(*coord, new_mesh, commands, world, meshes, materials);
+    apply_chunk_mesh(*coord, new_mesh, lod, commands, world, meshes, materials);
 }
 
 /// Continuous chunk streaming system based on player camera position with multithreaded generation
@@ -749,6 +755,7 @@ pub fn world_streaming_system(
         for coord in chunks_to_remove {
             world.queued_for_mesh.remove(&coord);
             world.in_progress_meshes.remove(&coord);
+            world.chunk_lod.remove(&coord);
             if let Some(old_v) = world.chunk_vertices.remove(&coord) {
                 world.total_vertices = world.total_vertices.saturating_sub(old_v);
             }
@@ -833,7 +840,7 @@ pub fn world_streaming_system(
 
     // 3. Receive finished asynchronous meshes from background threads
     if let Ok(rx) = mesher_pool.rx.lock() {
-        while let Ok((coord, mesh)) = rx.try_recv() {
+        while let Ok((coord, mesh, lod)) = rx.try_recv() {
             world.in_progress_meshes.remove(&coord);
 
             // If chunk was unloaded while meshing, ignore
@@ -844,12 +851,42 @@ pub fn world_streaming_system(
             apply_chunk_mesh(
                 coord,
                 mesh,
+                lod,
                 &mut commands,
                 &mut world,
                 &mut meshes,
                 &mut materials,
             );
         }
+    }
+
+    let distance_lod = dev_settings.as_ref().map_or(true, |d| d.distance_lod);
+    let lod_threshold = dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
+    let global_greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
+
+    // Dynamic LOD transitions: check if any active chunks need to change LOD as player moves
+    let mut chunks_needing_lod_update = Vec::new();
+    for (&coord, _) in &world.chunks {
+        let diff = coord - player_chunk;
+        let dist = diff.x.abs().max(diff.y.abs());
+        if dist <= max_dist {
+            let target_lod = if distance_lod {
+                if dist <= lod_threshold { 0 } else { 1 }
+            } else {
+                if global_greedy { 1 } else { 0 }
+            };
+
+            if world.chunk_lod.get(&coord) != Some(&target_lod)
+                && !world.queued_for_mesh.contains(&coord)
+                && !world.in_progress_meshes.contains(&coord)
+            {
+                chunks_needing_lod_update.push(coord);
+            }
+        }
+    }
+
+    for coord in chunks_needing_lod_update {
+        world.queue_mesh(coord);
     }
 
     // 4. Process mesh queue with frame budget, asynchronous dispatch, and distance priority
@@ -862,7 +899,6 @@ pub fn world_streaming_system(
         let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
         let budget_enabled = dev_settings.as_ref().map_or(true, |d| d.mesh_budget);
         let async_meshing = dev_settings.as_ref().map_or(true, |d| d.async_meshing);
-        let greedy_meshing = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
         let max_meshes_per_frame = if budget_enabled { MAX_MESHES_PER_FRAME } else { usize::MAX };
 
         let mut meshed = 0;
@@ -872,7 +908,15 @@ pub fn world_streaming_system(
 
             if world.chunks.contains_key(&coord) {
                 let diff = coord - player_chunk;
+                let dist = diff.x.abs().max(diff.y.abs());
                 if diff.x.abs() <= max_dist && diff.y.abs() <= max_dist {
+                    let target_lod = if distance_lod {
+                        if dist <= lod_threshold { 0 } else { 1 }
+                    } else {
+                        if global_greedy { 1 } else { 0 }
+                    };
+                    let use_greedy = target_lod == 1;
+
                     if async_meshing {
                         if world.in_progress_meshes.contains(&coord) {
                             continue;
@@ -895,9 +939,9 @@ pub fn world_streaming_system(
                                     east.as_ref(),
                                     west.as_ref(),
                                     max_y_skip,
-                                    greedy_meshing,
+                                    use_greedy,
                                 );
-                                let _ = tx.send((coord, mesh));
+                                let _ = tx.send((coord, mesh, target_lod));
                             })
                             .detach();
                     } else {
@@ -908,7 +952,7 @@ pub fn world_streaming_system(
                             &mut meshes,
                             &mut materials,
                             max_y_skip,
-                            greedy_meshing,
+                            use_greedy,
                         );
                     }
                     meshed += 1;
