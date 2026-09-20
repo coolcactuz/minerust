@@ -607,6 +607,31 @@ fn spawn_tree(chunk: &mut Chunk, lx: i32, h: i32, lz: i32, is_pine: bool) {
     }
 }
 
+/// Computes the squared 3D Euclidean distance in world units from a player camera position to a chunk's geometry (AABB)
+#[inline]
+pub fn chunk_distance_sq_to_player(
+    coord: IVec2,
+    player_pos: Vec3,
+    chunk: Option<&Chunk>,
+) -> f32 {
+    let min_x = (coord.x * CHUNK_WIDTH as i32) as f32;
+    let max_x = min_x + CHUNK_WIDTH as f32;
+    let min_z = (coord.y * CHUNK_DEPTH as i32) as f32;
+    let max_z = min_z + CHUNK_DEPTH as f32;
+
+    let max_y = chunk.map_or(SEA_LEVEL as f32, |c| (c.max_y as f32 + 1.0).max(1.0));
+
+    let closest_x = player_pos.x.clamp(min_x, max_x);
+    let closest_y = player_pos.y.clamp(0.0, max_y);
+    let closest_z = player_pos.z.clamp(min_z, max_z);
+
+    let dx = player_pos.x - closest_x;
+    let dy = player_pos.y - closest_y;
+    let dz = player_pos.z - closest_z;
+
+    dx * dx + dy * dy + dz * dz
+}
+
 /// Applies or despawns a chunk mesh on the GPU
 pub fn apply_chunk_mesh(
     coord: IVec2,
@@ -864,14 +889,19 @@ pub fn world_streaming_system(
     let lod_threshold = dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
     let global_greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
 
-    // Dynamic LOD transitions: check if any active chunks need to change LOD as player moves
+    let player_pos = cam_transform.translation;
+    let threshold_world = (lod_threshold as f32) * 16.0;
+    let threshold_sq = threshold_world * threshold_world;
+
+    // Dynamic 3D LOD transitions: check if any active chunks need to change LOD as player moves in 3D (including vertical flight)
     let mut chunks_needing_lod_update = Vec::new();
-    for (&coord, _) in &world.chunks {
+    for (&coord, chunk) in &world.chunks {
         let diff = coord - player_chunk;
-        let dist = diff.x.abs().max(diff.y.abs());
-        if dist <= max_dist {
+        let dist_2d = diff.x.abs().max(diff.y.abs());
+        if dist_2d <= max_dist {
+            let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
             let target_lod = if distance_lod {
-                if dist <= lod_threshold { 0 } else { 1 }
+                if dist_sq <= threshold_sq { 0 } else { 1 }
             } else {
                 if global_greedy { 1 } else { 0 }
             };
@@ -889,11 +919,14 @@ pub fn world_streaming_system(
         world.queue_mesh(coord);
     }
 
-    // 4. Process mesh queue with frame budget, asynchronous dispatch, and distance priority
+    // 4. Process mesh queue with frame budget, asynchronous dispatch, and 3D distance priority
     if !world.mesh_queue.is_empty() {
-        world.mesh_queue.sort_unstable_by_key(|c| {
-            let diff = *c - player_chunk;
-            -(diff.x * diff.x + diff.y * diff.y)
+        let world_ref = &mut *world;
+        let chunks = &world_ref.chunks;
+        world_ref.mesh_queue.sort_unstable_by_key(|c| {
+            let chunk_opt = chunks.get(c);
+            let d_sq = chunk_distance_sq_to_player(*c, player_pos, chunk_opt);
+            -(d_sq as i64)
         });
 
         let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
@@ -906,12 +939,13 @@ pub fn world_streaming_system(
             let coord = world.mesh_queue.pop().unwrap();
             world.queued_for_mesh.remove(&coord);
 
-            if world.chunks.contains_key(&coord) {
+            if let Some(chunk) = world.chunks.get(&coord) {
                 let diff = coord - player_chunk;
-                let dist = diff.x.abs().max(diff.y.abs());
-                if diff.x.abs() <= max_dist && diff.y.abs() <= max_dist {
+                let dist_2d = diff.x.abs().max(diff.y.abs());
+                if dist_2d <= max_dist {
+                    let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
                     let target_lod = if distance_lod {
-                        if dist <= lod_threshold { 0 } else { 1 }
+                        if dist_sq <= threshold_sq { 0 } else { 1 }
                     } else {
                         if global_greedy { 1 } else { 0 }
                     };
@@ -961,3 +995,32 @@ pub fn world_streaming_system(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_chunk_3d_distance_and_vertical_flight() {
+        let coord = IVec2::new(0, 0); // bounds: [0..16, 0..16]
+        let mut chunk = Chunk::new();
+        chunk.max_y = 70; // terrain reaches up to y=70
+
+        // 1. Standing directly on the terrain
+        let player_ground = Vec3::new(8.0, 71.0, 8.0);
+        let d_sq_ground = chunk_distance_sq_to_player(coord, player_ground, Some(&chunk));
+        assert_eq!(d_sq_ground, 0.0);
+
+        // 2. Flying high vertically in creative mode (e.g. y = 200)
+        let player_high = Vec3::new(8.0, 200.0, 8.0);
+        let d_sq_high = chunk_distance_sq_to_player(coord, player_high, Some(&chunk));
+        let expected_dy = 200.0 - 71.0; // 129.0
+        assert_eq!(d_sq_high, expected_dy * expected_dy);
+
+        // Threshold of 4 chunks = 64 meters (threshold_sq = 4096)
+        let threshold_sq = (4.0 * 16.0_f32).powi(2); // 4096.0
+        assert!(d_sq_ground <= threshold_sq, "Ground chunk should be detailed (LOD 0)");
+        assert!(d_sq_high > threshold_sq, "Chunk viewed from high altitude should compress to Greedy Mesh (LOD 1)");
+    }
+}
+

@@ -5,7 +5,7 @@ use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
 use crate::menu::MenuState;
-use crate::world::{update_chunk_mesh, WorldGrid};
+use crate::world::{chunk_distance_sq_to_player, update_chunk_mesh, WorldGrid};
 
 pub struct RaycastHit {
     pub hit_block: IVec3,
@@ -176,20 +176,19 @@ pub fn block_interaction_system(
             dirty_coords.sort_unstable_by_key(|c| (c.x, c.y));
             dirty_coords.dedup();
 
-            let (player_chunk, _, _) = WorldGrid::world_to_chunk_coord(
-                cam_transform.translation.x as i32,
-                cam_transform.translation.z as i32,
-            );
+            let player_pos = cam_transform.translation;
             let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
             let distance_lod = dev_settings.as_ref().map_or(true, |d| d.distance_lod);
             let lod_threshold = dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
+            let threshold_world = (lod_threshold as f32) * 16.0;
+            let threshold_sq = threshold_world * threshold_world;
             let global_greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
 
             for coord in dirty_coords {
-                let diff = coord - player_chunk;
-                let dist = diff.x.abs().max(diff.y.abs());
+                let chunk_opt = world.chunks.get(&coord);
+                let dist_sq = chunk_distance_sq_to_player(coord, player_pos, chunk_opt);
                 let greedy = if distance_lod {
-                    dist > lod_threshold
+                    dist_sq > threshold_sq
                 } else {
                     global_greedy
                 };
