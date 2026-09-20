@@ -139,6 +139,7 @@ pub fn block_interaction_system(
             if hit.hit_block.y > 0 && world.get_block(hit.hit_block) != BlockType::Bedrock {
                 let affected = world.set_block(hit.hit_block, BlockType::Air);
                 dirty_coords.extend(affected);
+                fluid_sim.sources.remove(&hit.hit_block);
                 fluid_sim.schedule_neighbors(hit.hit_block);
             }
         }
@@ -170,6 +171,11 @@ pub fn block_interaction_system(
             if can_place {
                 let affected = world.set_block(hit.place_pos, block_to_place);
                 dirty_coords.extend(affected);
+                if block_to_place == BlockType::Water {
+                    fluid_sim.sources.insert(hit.place_pos);
+                } else {
+                    fluid_sim.sources.remove(&hit.place_pos);
+                }
                 fluid_sim.schedule_neighbors(hit.place_pos);
             }
         }

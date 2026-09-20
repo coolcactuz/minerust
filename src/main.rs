@@ -33,7 +33,7 @@ use physics::{
 };
 use world::{
     calculate_biome_and_height, generate_chunk, update_chunk_mesh, world_streaming_system,
-    ChunkGeneratorPool, ChunkMesherPool, WorldGrid, WorldSeed,
+    ChunkGeneratorPool, ChunkMesherPool, WorldGrid, WorldSeed, SEA_LEVEL,
 };
 
 fn main() {
@@ -158,7 +158,7 @@ fn setup(
 
     // 2. Calculate terrain height at spawn to position the player naturally
     let (spawn_biome, spawn_y, _) = calculate_biome_and_height(0.0, 0.0, &noise);
-    let player_y = (spawn_y as f32 + 4.0).max(130.0);
+    let player_y = (spawn_y as f32 + 4.0).max((SEA_LEVEL + 4) as f32);
 
     // 3. Spawn FPS camera with integrated AmbientLight, DistanceFog, and PlayerPhysics component
     commands.spawn((

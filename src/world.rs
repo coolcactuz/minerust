@@ -12,7 +12,7 @@ use crate::menu::GraphicsSettings;
 use crate::mesher::build_chunk_mesh;
 use crate::noise::NoiseGenerator;
 
-pub const SEA_LEVEL: i32 = 128;
+pub const SEA_LEVEL: i32 = 64;
 pub const VIEW_DISTANCE: i32 = 16;
 pub const MAX_CHUNK_DISPATCH_PER_FRAME: usize = 12;
 pub const MAX_MESHES_PER_FRAME: usize = 6;
@@ -256,8 +256,8 @@ pub fn calculate_biome_and_height(
     let hills = noise.fbm_2d(wx * 0.012, wz * 0.012, 3, 0.5, 2.0);
 
     let (biome, base_height) = if cont < -0.15 {
-        // Deep ocean basin (trenches down to Y=40..80)
-        let ocean_h = 45.0 + (cont + 0.15) * 60.0;
+        // Deep ocean basin (depth ~14..36 blocks below sea level 64)
+        let ocean_h = 42.0 + (cont + 0.15) * 30.0;
         if temp < -0.25 {
             (BiomeType::FrozenOcean, ocean_h)
         } else {
@@ -265,28 +265,28 @@ pub fn calculate_biome_and_height(
         }
     } else if cont < 0.02 {
         // Coast and beach
-        (BiomeType::Beach, (SEA_LEVEL as f64) + hills * 3.0)
+        (BiomeType::Beach, (SEA_LEVEL as f64) + hills * 2.0)
     } else {
         // Inland
         if cont > 0.10 && mountain > 0.35 {
-            // High mountain range (peaks reaching up to Y=260..310)
-            let m_h = (SEA_LEVEL as f64 + 18.0) + hills * 24.0 + mountain * 130.0;
+            // High mountain range (peaks reaching up to Y=105..122)
+            let m_h = (SEA_LEVEL as f64 + 14.0) + hills * 12.0 + mountain * 35.0;
             (BiomeType::Mountains, m_h)
         } else if temp > 0.26 && humid < -0.05 {
             // Hot desert
-            let d_h = (SEA_LEVEL as f64 + 5.0) + hills * 14.0;
+            let d_h = (SEA_LEVEL as f64 + 4.0) + hills * 8.0;
             (BiomeType::Desert, d_h)
         } else if temp < -0.22 {
             // Snowy tundra
-            let t_h = (SEA_LEVEL as f64 + 6.0) + hills * 16.0;
+            let t_h = (SEA_LEVEL as f64 + 6.0) + hills * 10.0;
             (BiomeType::SnowyTundra, t_h)
         } else if humid > 0.15 {
             // Forest
-            let f_h = (SEA_LEVEL as f64 + 6.0) + hills * 18.0;
+            let f_h = (SEA_LEVEL as f64 + 5.0) + hills * 10.0;
             (BiomeType::Forest, f_h)
         } else {
             // Plains
-            let p_h = (SEA_LEVEL as f64 + 4.0) + hills * 14.0;
+            let p_h = (SEA_LEVEL as f64 + 4.0) + hills * 8.0;
             (BiomeType::Plains, p_h)
         }
     };
@@ -297,13 +297,13 @@ pub fn calculate_biome_and_height(
 
     let final_height = if is_river {
         let river_factor = (river_noise / 0.038).clamp(0.0, 1.0);
-        let river_bed = (SEA_LEVEL as f64 - 5.0).min(base_height - 6.0);
+        let river_bed = (SEA_LEVEL as f64 - 4.0).min(base_height - 4.0);
         river_bed + (base_height - river_bed) * river_factor
     } else {
         base_height
     };
 
-    let clamped = (final_height.round() as i32).clamp(5, (CHUNK_HEIGHT - 12) as i32);
+    let clamped = (final_height.round() as i32).clamp(5, (CHUNK_HEIGHT - 6) as i32);
     (biome, clamped, is_river)
 }
 
@@ -393,14 +393,14 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     }
                     BiomeType::Mountains => {
                         if y == h {
-                            if h > 210 {
+                            if h > 105 {
                                 BlockType::Snow
-                            } else if h > 175 {
+                            } else if h > 88 {
                                 BlockType::Stone
                             } else {
                                 BlockType::Grass
                             }
-                        } else if y >= h - 2 && h <= 175 {
+                        } else if y >= h - 2 && h <= 88 {
                             BlockType::Dirt
                         } else {
                             BlockType::Stone
@@ -446,20 +446,20 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                 if chunk.get_fast(lx, yu, lz) == BlockType::Stone {
                     let hash = pseudo_hash_3d(wx, y, wz, seed);
 
-                    // Diamond: deep underground (levels 2-48)
-                    if y <= 48 && hash % 179 == 0 {
+                    // Diamond: deep underground (levels 2-16)
+                    if y <= 16 && hash % 179 == 0 {
                         chunk.set_fast(lx, yu, lz, BlockType::DiamondOre);
                     }
-                    // Gold: rare (levels 4-96)
-                    else if y <= 96 && hash % 109 == 0 {
+                    // Gold: rare (levels 4-32)
+                    else if y <= 32 && hash % 109 == 0 {
                         chunk.set_fast(lx, yu, lz, BlockType::GoldOre);
                     }
-                    // Iron: common (levels 6-200)
-                    else if y <= 200 && hash % 41 == 0 {
+                    // Iron: common (levels 6-64)
+                    else if y <= 64 && hash % 41 == 0 {
                         chunk.set_fast(lx, yu, lz, BlockType::IronOre);
                     }
-                    // Coal: abundant (levels 10-280)
-                    else if y <= 280 && hash % 25 == 0 {
+                    // Coal: abundant (levels 10-115)
+                    else if y <= 115 && hash % 25 == 0 {
                         chunk.set_fast(lx, yu, lz, BlockType::CoalOre);
                     }
                     // Underground gravel pockets
@@ -478,7 +478,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
             let wz = (world_base_z + lz as i32) as f64;
             let h = surface_heights[lx][lz];
 
-            let max_cave_y = (h - 4).min(260);
+            let max_cave_y = (h - 4).min(110);
             if max_cave_y <= 4 {
                 continue;
             }
@@ -497,7 +497,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                 let is_tunnel = (n1 * n1 + n2 * n2) < 0.013;
 
                 // Large underground cavern rooms (only evaluate noise if not already a tunnel)
-                let is_room = if !is_tunnel && y < 90 {
+                let is_room = if !is_tunnel && y < 45 {
                     let n_room = noise.fbm_3d(wx * 0.02, wy * 0.025, wz * 0.02, 2, 0.5, 2.0);
                     n_room < -0.42
                 } else {

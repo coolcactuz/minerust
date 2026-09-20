@@ -12,6 +12,7 @@ pub const MAX_FLUID_TICKS_PER_FRAME: usize = 48;
 pub struct FluidSimulation {
     pub queue: VecDeque<IVec3>,
     pub queued: HashSet<IVec3>,
+    pub sources: HashSet<IVec3>,
     pub timer: Timer,
 }
 
@@ -20,8 +21,9 @@ impl Default for FluidSimulation {
         Self {
             queue: VecDeque::with_capacity(256),
             queued: HashSet::with_capacity(256),
-            // Run fluid ticks every 0.05 seconds (20 ticks per second, matching classic voxel fluid ticks)
-            timer: Timer::from_seconds(0.05, TimerMode::Repeating),
+            sources: HashSet::with_capacity(256),
+            // Run fluid ticks every 1.0 second (1 mesh/block advance per second)
+            timer: Timer::from_seconds(1.0, TimerMode::Repeating),
         }
     }
 }
@@ -54,12 +56,14 @@ pub fn process_fluid_step(
     fluid_sim: &mut FluidSimulation,
 ) -> Vec<IVec2> {
     let mut dirty_coords = Vec::new();
-    let mut processed = 0;
+    let batch_size = fluid_sim.queue.len().min(MAX_FLUID_TICKS_PER_FRAME);
 
-    while processed < MAX_FLUID_TICKS_PER_FRAME && !fluid_sim.queue.is_empty() {
-        let pos = fluid_sim.queue.pop_front().unwrap();
+    for _ in 0..batch_size {
+        let pos = match fluid_sim.queue.pop_front() {
+            Some(p) => p,
+            None => break,
+        };
         fluid_sim.queued.remove(&pos);
-        processed += 1;
 
         let current_block = world.get_block(pos);
 
@@ -134,7 +138,7 @@ pub fn process_fluid_step(
             }
 
             // B. Above sea level, check if supply was cut off (e.g. player plugged the source with a block)
-            if pos.y > SEA_LEVEL as i32 {
+            if pos.y > SEA_LEVEL as i32 && !fluid_sim.sources.contains(&pos) {
                 let above_pos = pos + IVec3::Y;
                 let has_water_above = world.get_block(above_pos) == BlockType::Water;
 
@@ -149,6 +153,7 @@ pub fn process_fluid_step(
 
                 // If disconnected from any water above or horizontally, waterfall dries up
                 if !has_water_above && !has_horizontal_water {
+                    fluid_sim.sources.remove(&pos);
                     let affected = world.set_block(pos, BlockType::Air);
                     dirty_coords.extend(affected);
 
@@ -263,24 +268,25 @@ mod tests {
         let chunk_coord = IVec2::new(0, 0);
         let mut chunk = Chunk::new();
 
-        // Place stone floor at y = 75, air from y = 76 to 85
-        chunk.set(5, 75, 5, BlockType::Stone);
+        // Place stone floor at y = 70, air from y = 71 to 75
+        chunk.set(5, 70, 5, BlockType::Stone);
         world.chunks.insert(chunk_coord, chunk);
 
         let mut fluid_sim = FluidSimulation::default();
 
-        // Water source placed at cliff top (5, 80, 5)
-        let source_pos = IVec3::new(5, 80, 5);
+        // Water source placed at cliff top (5, 75, 5)
+        let source_pos = IVec3::new(5, 75, 5);
         world.set_block(source_pos, BlockType::Water);
+        fluid_sim.sources.insert(source_pos);
         fluid_sim.schedule(source_pos);
 
-        // Process fluid ticks to let the waterfall cascade down
+        // Process fluid ticks to let the waterfall cascade down (1 block per tick)
         for _ in 0..10 {
             process_fluid_step(&mut world, &mut fluid_sim);
         }
 
-        // Entire vertical column from 80 down to 76 must now be filled with cascading water!
-        for y in 76..=80 {
+        // Entire vertical column from 75 down to 71 must now be filled with cascading water!
+        for y in 71..=75 {
             assert_eq!(
                 world.get_block(IVec3::new(5, y, 5)),
                 BlockType::Water,
@@ -288,8 +294,8 @@ mod tests {
                 y
             );
         }
-        // Floor at 75 remains solid Stone
-        assert_eq!(world.get_block(IVec3::new(5, 75, 5)), BlockType::Stone);
+        // Floor at 70 remains solid Stone
+        assert_eq!(world.get_block(IVec3::new(5, 70, 5)), BlockType::Stone);
     }
 
     #[test]
@@ -298,17 +304,19 @@ mod tests {
         let chunk_coord = IVec2::new(0, 0);
         let mut chunk = Chunk::new();
 
-        // Create an active waterfall column above sea level (y = 140..=142 > SEA_LEVEL = 128)
-        for y in 140..=142 {
+        // Create an active waterfall column above sea level (y = 70..=72 > SEA_LEVEL = 64)
+        for y in 70..=72 {
             chunk.set(5, y, 5, BlockType::Water);
         }
         world.chunks.insert(chunk_coord, chunk);
 
         let mut fluid_sim = FluidSimulation::default();
+        fluid_sim.sources.insert(IVec3::new(5, 72, 5));
 
-        // Player plugs the waterfall source at (5, 142, 5) with a Stone block
-        let source_pos = IVec3::new(5, 142, 5);
+        // Player plugs the waterfall source at (5, 72, 5) with a Stone block
+        let source_pos = IVec3::new(5, 72, 5);
         world.set_block(source_pos, BlockType::Stone);
+        fluid_sim.sources.remove(&source_pos);
         fluid_sim.schedule_neighbors(source_pos);
 
         // Process fluid ticks: without a water supply above sea level, the waterfall must dry up
@@ -317,7 +325,45 @@ mod tests {
         }
 
         // Waterfall stream below the plug dried up back to Air!
-        assert_eq!(world.get_block(IVec3::new(5, 141, 5)), BlockType::Air);
-        assert_eq!(world.get_block(IVec3::new(5, 140, 5)), BlockType::Air);
+        assert_eq!(world.get_block(IVec3::new(5, 71, 5)), BlockType::Air);
+        assert_eq!(world.get_block(IVec3::new(5, 70, 5)), BlockType::Air);
+    }
+
+    #[test]
+    fn test_water_advances_strictly_one_block_per_tick() {
+        let mut world = WorldGrid::new(WorldSeed(12345));
+        let chunk_coord = IVec2::new(0, 0);
+        let mut chunk = Chunk::new();
+        chunk.set(5, 70, 5, BlockType::Stone);
+        world.chunks.insert(chunk_coord, chunk);
+
+        let mut fluid_sim = FluidSimulation::default();
+        let source_pos = IVec3::new(5, 75, 5);
+        world.set_block(source_pos, BlockType::Water);
+        fluid_sim.sources.insert(source_pos);
+        fluid_sim.schedule(source_pos);
+
+        // Tick 1: source schedules below_pos (74)
+        process_fluid_step(&mut world, &mut fluid_sim);
+        assert_eq!(world.get_block(IVec3::new(5, 74, 5)), BlockType::Air);
+
+        // Tick 2: 74 becomes Water, schedules 73 (73 remains Air in this tick)
+        process_fluid_step(&mut world, &mut fluid_sim);
+        assert_eq!(world.get_block(IVec3::new(5, 74, 5)), BlockType::Water);
+        assert_eq!(world.get_block(IVec3::new(5, 73, 5)), BlockType::Air);
+
+        // Tick 3: 73 becomes Water, schedules 72 (72 remains Air in this tick)
+        process_fluid_step(&mut world, &mut fluid_sim);
+        assert_eq!(world.get_block(IVec3::new(5, 73, 5)), BlockType::Water);
+        assert_eq!(world.get_block(IVec3::new(5, 72, 5)), BlockType::Air);
+
+        // Tick 4: 72 becomes Water, schedules 71 (71 remains Air in this tick)
+        process_fluid_step(&mut world, &mut fluid_sim);
+        assert_eq!(world.get_block(IVec3::new(5, 72, 5)), BlockType::Water);
+        assert_eq!(world.get_block(IVec3::new(5, 71, 5)), BlockType::Air);
+
+        // Tick 5: 71 becomes Water
+        process_fluid_step(&mut world, &mut fluid_sim);
+        assert_eq!(world.get_block(IVec3::new(5, 71, 5)), BlockType::Water);
     }
 }
