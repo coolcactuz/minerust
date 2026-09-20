@@ -89,10 +89,10 @@ pub fn get_tile_uvs(texture_id: TextureId) -> [[f32; 2]; 4] {
     let v_max = (row + 1.0) / 8.0;
 
     [
-        [u_max, v_min],
-        [u_min, v_min],
-        [u_min, v_max],
-        [u_max, v_max],
+        [u_min, v_min], // 0: Top-left
+        [u_min, v_max], // 1: Bottom-left
+        [u_max, v_max], // 2: Bottom-right
+        [u_max, v_min], // 3: Top-right
     ]
 }
 
