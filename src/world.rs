@@ -13,7 +13,7 @@ use crate::mesher::build_chunk_mesh;
 use crate::noise::NoiseGenerator;
 
 pub const SEA_LEVEL: i32 = 24;
-pub const VIEW_DISTANCE: i32 = 8;
+pub const VIEW_DISTANCE: i32 = 16;
 pub const MAX_CHUNK_DISPATCH_PER_FRAME: usize = 16;
 
 /// Represents the world seed (numeric or derived from string/text)

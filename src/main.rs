@@ -116,9 +116,9 @@ fn setup(
     let seed = world.seed.0;
     let noise = world.noise.clone();
 
-    // 1. Pre-generate initial 5x5 chunk grid around spawn (0, 0) in parallel across all CPU cores
-    let initial_coords: Vec<IVec2> = (-2..=2)
-        .flat_map(|cx| (-2..=2).map(move |cz| IVec2::new(cx, cz)))
+    // 1. Pre-generate initial 9x9 chunk grid around spawn (0, 0) in parallel across all CPU cores
+    let initial_coords: Vec<IVec2> = (-4..=4)
+        .flat_map(|cx| (-4..=4).map(move |cz| IVec2::new(cx, cz)))
         .collect();
 
     let mut generated_chunks: Vec<(IVec2, Chunk)> = Vec::with_capacity(initial_coords.len());
