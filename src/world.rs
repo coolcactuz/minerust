@@ -692,6 +692,7 @@ pub fn update_chunk_mesh(
     materials: &mut Assets<StandardMaterial>,
     max_y_skip: bool,
     greedy: bool,
+    cull_submerged: bool,
 ) {
     let Some(chunk) = world.chunks.get(coord) else {
         return;
@@ -703,7 +704,7 @@ pub fn update_chunk_mesh(
     let west = world.chunks.get(&(*coord + IVec2::new(-1, 0)));
 
     let lod = if greedy { 1 } else { 0 };
-    let new_mesh = build_chunk_mesh(chunk, north, south, east, west, max_y_skip, greedy);
+    let new_mesh = build_chunk_mesh(chunk, north, south, east, west, max_y_skip, greedy, cull_submerged);
     apply_chunk_mesh(*coord, new_mesh, lod, commands, world, meshes, materials);
 }
 
@@ -932,6 +933,7 @@ pub fn world_streaming_system(
         let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
         let budget_enabled = dev_settings.as_ref().map_or(true, |d| d.mesh_budget);
         let async_meshing = dev_settings.as_ref().map_or(true, |d| d.async_meshing);
+        let cull_submerged = dev_settings.as_ref().map_or(true, |d| d.cull_submerged);
         let max_meshes_per_frame = if budget_enabled { MAX_MESHES_PER_FRAME } else { usize::MAX };
 
         let mut meshed = 0;
@@ -974,6 +976,7 @@ pub fn world_streaming_system(
                                     west.as_ref(),
                                     max_y_skip,
                                     use_greedy,
+                                    cull_submerged,
                                 );
                                 let _ = tx.send((coord, mesh, target_lod));
                             })
@@ -987,6 +990,7 @@ pub fn world_streaming_system(
                             &mut materials,
                             max_y_skip,
                             use_greedy,
+                            cull_submerged,
                         );
                     }
                     meshed += 1;

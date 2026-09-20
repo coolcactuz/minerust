@@ -183,6 +183,7 @@ pub fn block_interaction_system(
             let threshold_world = (lod_threshold as f32) * 16.0;
             let threshold_sq = threshold_world * threshold_world;
             let global_greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
+            let cull_submerged = dev_settings.as_ref().map_or(true, |d| d.cull_submerged);
 
             for coord in dirty_coords {
                 let chunk_opt = world.chunks.get(&coord);
@@ -192,7 +193,7 @@ pub fn block_interaction_system(
                 } else {
                     global_greedy
                 };
-                update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials, max_y_skip, greedy);
+                update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials, max_y_skip, greedy, cull_submerged);
             }
         }
     }

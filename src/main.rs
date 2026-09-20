@@ -149,7 +149,7 @@ fn setup(
     }
 
     for coord in &initial_coords {
-        update_chunk_mesh(coord, &mut commands, &mut world, &mut meshes, &mut materials, true, true);
+        update_chunk_mesh(coord, &mut commands, &mut world, &mut meshes, &mut materials, true, true, true);
     }
 
     // 2. Calculate terrain height at spawn to position the player naturally

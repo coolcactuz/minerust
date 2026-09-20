@@ -47,12 +47,8 @@ impl BlockType {
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub fn is_transparent(&self) -> bool {
-        matches!(
-            self,
-            BlockType::Air | BlockType::Water | BlockType::Leaves | BlockType::Glass | BlockType::Ice
-        )
+        matches!(self, BlockType::Air | BlockType::Glass)
     }
 
     pub fn from_u8(val: u8) -> Self {
