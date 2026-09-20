@@ -132,10 +132,35 @@ pub fn block_interaction_system(
                 dirty_coords.extend(affected);
             }
         }
-        // Tasto destro: Piazza blocco
+        // Tasto destro: Piazza blocco (se non collide con il corpo del giocatore)
         else if mouse_buttons.just_pressed(MouseButton::Right) {
-            let affected = world.set_block(hit.place_pos, inventory.selected_block());
-            dirty_coords.extend(affected);
+            let block_to_place = inventory.selected_block();
+            let mut can_place = true;
+
+            if block_to_place.is_solid() {
+                let feet = cam_transform.translation - Vec3::new(0.0, 1.62, 0.0);
+                let p_min = feet + Vec3::new(-0.3, 0.0, -0.3);
+                let p_max = feet + Vec3::new(0.3, 1.8, 0.3);
+
+                let b_min = hit.place_pos.as_vec3();
+                let b_max = b_min + Vec3::ONE;
+
+                let overlaps = p_min.x < b_max.x
+                    && p_max.x > b_min.x
+                    && p_min.y < b_max.y
+                    && p_max.y > b_min.y
+                    && p_min.z < b_max.z
+                    && p_max.z > b_min.z;
+
+                if overlaps {
+                    can_place = false;
+                }
+            }
+
+            if can_place {
+                let affected = world.set_block(hit.place_pos, block_to_place);
+                dirty_coords.extend(affected);
+            }
         }
 
         // Se sono stati modificati blocchi, rigenera le mesh dei chunk coinvolti

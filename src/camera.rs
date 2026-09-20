@@ -8,7 +8,6 @@ use crate::inventory::Inventory;
 pub struct FpsCamera {
     pub yaw: f32,
     pub pitch: f32,
-    pub speed: f32,
     pub sensitivity: f32,
 }
 
@@ -17,7 +16,6 @@ impl Default for FpsCamera {
         Self {
             yaw: -std::f32::consts::FRAC_PI_2,
             pitch: -0.3,
-            speed: 12.0,
             sensitivity: 0.0025,
         }
     }
@@ -61,63 +59,6 @@ pub fn camera_look_system(
     }
 }
 
-pub fn camera_move_system(
-    time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
-    inventory: Option<Res<Inventory>>,
-    mut query: Query<(&FpsCamera, &mut Transform)>,
-) {
-    if let Some(inv) = inventory {
-        if inv.is_open {
-            return;
-        }
-    }
-
-    let dt = time.delta_secs();
-
-    for (fps, mut transform) in &mut query {
-        let mut forward = Quat::from_rotation_y(fps.yaw) * -Vec3::Z;
-        forward.y = 0.0;
-        forward = forward.normalize_or_zero();
-
-        let mut right = Quat::from_rotation_y(fps.yaw) * Vec3::X;
-        right.y = 0.0;
-        right = right.normalize_or_zero();
-
-        let mut move_dir = Vec3::ZERO;
-
-        if keys.pressed(KeyCode::KeyW) {
-            move_dir += forward;
-        }
-        if keys.pressed(KeyCode::KeyS) {
-            move_dir -= forward;
-        }
-        if keys.pressed(KeyCode::KeyA) {
-            move_dir -= right;
-        }
-        if keys.pressed(KeyCode::KeyD) {
-            move_dir += right;
-        }
-        if keys.pressed(KeyCode::Space) {
-            move_dir += Vec3::Y;
-        }
-        if keys.pressed(KeyCode::ShiftLeft) {
-            move_dir -= Vec3::Y;
-        }
-
-        if move_dir.length_squared() > 0.0 {
-            move_dir = move_dir.normalize();
-        }
-
-        let speed_multiplier = if keys.pressed(KeyCode::ControlLeft) {
-            2.5
-        } else {
-            1.0
-        };
-
-        transform.translation += move_dir * fps.speed * speed_multiplier * dt;
-    }
-}
 
 pub fn cursor_grab_system(
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
