@@ -149,7 +149,7 @@ fn setup(
 
     // 2. Calculate terrain height at spawn to position the player naturally
     let (spawn_biome, spawn_y, _) = calculate_biome_and_height(0.0, 0.0, &noise);
-    let player_y = (spawn_y as f32 + 4.0).max(28.0);
+    let player_y = (spawn_y as f32 + 4.0).max(130.0);
 
     // 3. Spawn FPS camera with integrated AmbientLight, extended far clip plane (2500m), and PlayerPhysics component
     commands.spawn((
@@ -175,7 +175,7 @@ fn setup(
             shadow_maps_enabled: true,
             ..default()
         },
-        Transform::from_xyz(60.0, 100.0, 50.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(200.0, 450.0, 150.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     println!("\n=======================================================");

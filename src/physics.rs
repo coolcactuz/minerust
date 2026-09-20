@@ -324,7 +324,7 @@ pub fn player_physics_system(
     // Void fall protection (Safe surface respawn)
     if feet.y < -20.0 {
         let (_, spawn_y, _) = calculate_biome_and_height(feet.x as f64, feet.z as f64, &world.noise);
-        feet.y = (spawn_y as f32 + 4.0).max(28.0);
+        feet.y = (spawn_y as f32 + 4.0).max(130.0);
         physics.velocity = Vec3::ZERO;
         physics.is_grounded = false;
     }
