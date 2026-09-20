@@ -1,6 +1,9 @@
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Mutex;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
+use bevy::tasks::AsyncComputeTaskPool;
 
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
@@ -11,7 +14,7 @@ use crate::noise::NoiseGenerator;
 
 pub const SEA_LEVEL: i32 = 24;
 pub const VIEW_DISTANCE: i32 = 8;
-pub const MAX_CHUNKS_PER_FRAME: usize = 4;
+pub const MAX_CHUNK_DISPATCH_PER_FRAME: usize = 16;
 
 /// Represents the world seed (numeric or derived from string/text)
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -57,6 +60,7 @@ pub struct WorldGrid {
     pub chunks: HashMap<IVec2, Chunk>,
     pub chunk_entities: HashMap<IVec2, Entity>,
     pub modified_chunks: HashSet<IVec2>,
+    pub in_progress_chunks: HashSet<IVec2>,
     pub last_player_chunk: IVec2,
     pub generation_queue: Vec<IVec2>,
     pub save_dir: PathBuf,
@@ -73,12 +77,29 @@ impl Default for WorldGrid {
             chunks: HashMap::default(),
             chunk_entities: HashMap::default(),
             modified_chunks: HashSet::default(),
+            in_progress_chunks: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
             generation_queue: Vec::new(),
             save_dir: PathBuf::from("saves/world/chunks"),
             seed,
             noise,
             block_material: None,
+        }
+    }
+}
+
+#[derive(Resource)]
+pub struct ChunkGeneratorPool {
+    pub tx: Sender<(IVec2, Chunk, bool)>,
+    pub rx: Mutex<Receiver<(IVec2, Chunk, bool)>>,
+}
+
+impl Default for ChunkGeneratorPool {
+    fn default() -> Self {
+        let (tx, rx) = channel();
+        Self {
+            tx,
+            rx: Mutex::new(rx),
         }
     }
 }
@@ -90,6 +111,7 @@ impl WorldGrid {
             chunks: HashMap::default(),
             chunk_entities: HashMap::default(),
             modified_chunks: HashSet::default(),
+            in_progress_chunks: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
             generation_queue: Vec::new(),
             save_dir: PathBuf::from(format!("saves/world_{}/chunks", seed.0)),
@@ -163,14 +185,19 @@ impl WorldGrid {
         Ok(())
     }
 
-    pub fn load_chunk_from_disk(&self, coord: &IVec2) -> Option<Chunk> {
-        let path = self.save_dir.join(format!("chunk_{}_{}.bin", coord.x, coord.y));
+    pub fn load_chunk_from_disk_path(save_dir: &std::path::Path, coord: &IVec2) -> Option<Chunk> {
+        let path = save_dir.join(format!("chunk_{}_{}.bin", coord.x, coord.y));
         if path.exists() {
             if let Ok(bytes) = std::fs::read(path) {
                 return Chunk::from_bytes(&bytes);
             }
         }
         None
+    }
+
+    #[allow(dead_code)]
+    pub fn load_chunk_from_disk(&self, coord: &IVec2) -> Option<Chunk> {
+        Self::load_chunk_from_disk_path(&self.save_dir, coord)
     }
 }
 
@@ -592,7 +619,7 @@ pub fn update_chunk_mesh(
     }
 }
 
-/// Continuous chunk streaming system based on player camera position
+/// Continuous chunk streaming system based on player camera position with multithreaded generation
 pub fn world_streaming_system(
     mut commands: Commands,
     camera_query: Query<&Transform, With<FpsCamera>>,
@@ -600,6 +627,7 @@ pub fn world_streaming_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     settings: Option<Res<GraphicsSettings>>,
+    pool: Res<ChunkGeneratorPool>,
 ) {
     let Ok(cam_transform) = camera_query.single() else {
         return;
@@ -619,16 +647,20 @@ pub fn world_streaming_system(
         for dx in -view_dist..=view_dist {
             for dz in -view_dist..=view_dist {
                 let coord = player_chunk + IVec2::new(dx, dz);
-                // Chunk needs to be loaded if it has no active GPU mesh
-                if !world.chunk_entities.contains_key(&coord) {
+                // Chunk needs to be loaded if it has no active GPU mesh and is not already loaded or in progress
+                if !world.chunk_entities.contains_key(&coord)
+                    && !world.chunks.contains_key(&coord)
+                    && !world.in_progress_chunks.contains(&coord)
+                {
                     needed_chunks.push(coord);
                 }
             }
         }
 
+        // Sort descending so pop() takes the closest chunks first
         needed_chunks.sort_by_key(|c| {
             let diff = *c - player_chunk;
-            diff.x * diff.x + diff.y * diff.y
+            -(diff.x * diff.x + diff.y * diff.y)
         });
 
         world.generation_queue = needed_chunks;
@@ -659,44 +691,71 @@ pub fn world_streaming_system(
         }
     }
 
-    let mut generated_this_frame = 0;
-    let mut chunks_to_mesh: Vec<IVec2> = Vec::with_capacity(MAX_CHUNKS_PER_FRAME * 5);
-
-    while generated_this_frame < MAX_CHUNKS_PER_FRAME && !world.generation_queue.is_empty() {
-        let coord = world.generation_queue.remove(0);
-        if world.chunk_entities.contains_key(&coord) {
+    // 1. Dispatch background chunk generation tasks across all CPU cores
+    let mut dispatched = 0;
+    while dispatched < MAX_CHUNK_DISPATCH_PER_FRAME && !world.generation_queue.is_empty() {
+        let coord = world.generation_queue.pop().unwrap();
+        if world.chunks.contains_key(&coord) || world.in_progress_chunks.contains(&coord) {
             continue;
         }
 
-        let seed = world.seed.0;
+        world.in_progress_chunks.insert(coord);
+
+        let tx = pool.tx.clone();
         let noise = world.noise.clone();
+        let seed = world.seed.0;
+        let save_dir = world.save_dir.clone();
 
-        // If chunk is not in RAM, try loading from disk; if not on disk, generate it
-        if !world.chunks.contains_key(&coord) {
-            if let Some(loaded_chunk) = world.load_chunk_from_disk(&coord) {
-                world.chunks.insert(coord, loaded_chunk);
-                world.modified_chunks.insert(coord);
-            } else {
+        AsyncComputeTaskPool::get()
+            .spawn(async move {
+                // Check disk cache first
+                if let Some(loaded_chunk) = WorldGrid::load_chunk_from_disk_path(&save_dir, &coord) {
+                    let _ = tx.send((coord, loaded_chunk, true));
+                    return;
+                }
+
+                // Procedural generation in parallel on thread pool
                 let chunk = generate_chunk(coord.x, coord.y, &noise, seed);
-                world.chunks.insert(coord, chunk);
-            }
-        }
+                let _ = tx.send((coord, chunk, false));
+            })
+            .detach();
 
-        chunks_to_mesh.push(coord);
-        for neighbor_coord in [
-            coord + IVec2::new(-1, 0),
-            coord + IVec2::new(1, 0),
-            coord + IVec2::new(0, -1),
-            coord + IVec2::new(0, 1),
-        ] {
-            if world.chunks.contains_key(&neighbor_coord) {
-                chunks_to_mesh.push(neighbor_coord);
-            }
-        }
-
-        generated_this_frame += 1;
+        dispatched += 1;
     }
 
+    // 2. Receive finished chunks from background threads and queue for meshing
+    let max_dist = view_dist + 2;
+    let mut chunks_to_mesh: Vec<IVec2> = Vec::new();
+
+    if let Ok(rx) = pool.rx.lock() {
+        while let Ok((coord, chunk, from_disk)) = rx.try_recv() {
+            world.in_progress_chunks.remove(&coord);
+
+            let diff = coord - player_chunk;
+            if diff.x.abs() > max_dist || diff.y.abs() > max_dist {
+                continue;
+            }
+
+            if from_disk {
+                world.modified_chunks.insert(coord);
+            }
+            world.chunks.insert(coord, chunk);
+            chunks_to_mesh.push(coord);
+
+            for neighbor_coord in [
+                coord + IVec2::new(-1, 0),
+                coord + IVec2::new(1, 0),
+                coord + IVec2::new(0, -1),
+                coord + IVec2::new(0, 1),
+            ] {
+                if world.chunks.contains_key(&neighbor_coord) {
+                    chunks_to_mesh.push(neighbor_coord);
+                }
+            }
+        }
+    }
+
+    // 3. Update meshes for all affected chunks (once per frame per unique chunk)
     if !chunks_to_mesh.is_empty() {
         chunks_to_mesh.sort_unstable_by_key(|c| (c.x, c.y));
         chunks_to_mesh.dedup();

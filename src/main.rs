@@ -14,6 +14,7 @@ use bevy::prelude::*;
 use bevy::window::WindowResolution;
 
 use camera::{camera_look_system, cursor_grab_system, FpsCamera};
+use chunk::Chunk;
 use interaction::block_interaction_system;
 use inventory::{
     inventory_input_system, inventory_interaction_system, setup_inventory_ui,
@@ -29,7 +30,7 @@ use physics::{
 };
 use world::{
     calculate_biome_and_height, generate_chunk, update_chunk_mesh, world_streaming_system,
-    WorldGrid, WorldSeed,
+    ChunkGeneratorPool, WorldGrid, WorldSeed,
 };
 
 fn main() {
@@ -58,6 +59,7 @@ fn main() {
         .init_resource::<MenuState>()
         .init_resource::<GraphicsSettings>()
         .init_resource::<FpsLimiter>()
+        .init_resource::<ChunkGeneratorPool>()
         .add_systems(
             Startup,
             (setup, setup_inventory_ui, setup_physics_ui, setup_menu_ui),
@@ -114,14 +116,35 @@ fn setup(
     let seed = world.seed.0;
     let noise = world.noise.clone();
 
-    // 1. Pre-generate initial 5x5 chunk grid around spawn (0, 0)
-    for cx in -2..=2 {
-        for cz in -2..=2 {
-            let coord = IVec2::new(cx, cz);
-            let chunk = generate_chunk(cx, cz, &noise, seed);
-            world.chunks.insert(coord, chunk);
-            update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials);
+    // 1. Pre-generate initial 5x5 chunk grid around spawn (0, 0) in parallel across all CPU cores
+    let initial_coords: Vec<IVec2> = (-2..=2)
+        .flat_map(|cx| (-2..=2).map(move |cz| IVec2::new(cx, cz)))
+        .collect();
+
+    let mut generated_chunks: Vec<(IVec2, Chunk)> = Vec::with_capacity(initial_coords.len());
+
+    std::thread::scope(|s| {
+        let mut handles = Vec::with_capacity(initial_coords.len());
+        for coord in &initial_coords {
+            let noise_ref = &noise;
+            handles.push(s.spawn(move || {
+                let chunk = generate_chunk(coord.x, coord.y, noise_ref, seed);
+                (*coord, chunk)
+            }));
         }
+        for handle in handles {
+            if let Ok(res) = handle.join() {
+                generated_chunks.push(res);
+            }
+        }
+    });
+
+    for (coord, chunk) in generated_chunks {
+        world.chunks.insert(coord, chunk);
+    }
+
+    for coord in &initial_coords {
+        update_chunk_mesh(coord, &mut commands, &mut world, &mut meshes, &mut materials);
     }
 
     // 2. Calculate terrain height at spawn to position the player naturally
