@@ -317,6 +317,7 @@ pub fn update_chunk_mesh(
         }
     } else if let Some(mesh) = new_mesh {
         let material = materials.add(StandardMaterial {
+            cull_mode: None,
             perceptual_roughness: 0.85,
             reflectance: 0.15,
             ..default()
