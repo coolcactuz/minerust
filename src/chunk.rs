@@ -57,4 +57,23 @@ impl Chunk {
             self.blocks[idx] = block;
         }
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(CHUNK_BLOCKS);
+        for b in self.blocks.iter() {
+            bytes.push(b.to_u8());
+        }
+        bytes
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != CHUNK_BLOCKS {
+            return None;
+        }
+        let mut chunk = Self::new();
+        for (i, b) in bytes.iter().enumerate() {
+            chunk.blocks[i] = BlockType::from_u8(*b);
+        }
+        Some(chunk)
+    }
 }

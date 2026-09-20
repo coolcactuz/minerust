@@ -43,6 +43,28 @@ impl BlockType {
         matches!(self, BlockType::Air | BlockType::Water | BlockType::Leaves)
     }
 
+    pub fn from_u8(val: u8) -> Self {
+        match val {
+            1 => BlockType::Grass,
+            2 => BlockType::Dirt,
+            3 => BlockType::Stone,
+            4 => BlockType::Wood,
+            5 => BlockType::Leaves,
+            6 => BlockType::Cobblestone,
+            7 => BlockType::Planks,
+            8 => BlockType::Sand,
+            9 => BlockType::Water,
+            10 => BlockType::Snow,
+            11 => BlockType::Bedrock,
+            _ => BlockType::Air,
+        }
+    }
+
+    #[inline]
+    pub fn to_u8(self) -> u8 {
+        self as u8
+    }
+
     pub fn color(&self, face: BlockFace) -> [f32; 4] {
         let (base_rgb, shade) = match self {
             BlockType::Air => ([0.0, 0.0, 0.0], 1.0),

@@ -1,4 +1,5 @@
-use bevy::platform::collections::HashMap;
+use std::path::PathBuf;
+use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 
 use crate::block::BlockType;
@@ -15,8 +16,10 @@ pub const MAX_CHUNKS_PER_FRAME: usize = 2;
 pub struct WorldGrid {
     pub chunks: HashMap<IVec2, Chunk>,
     pub chunk_entities: HashMap<IVec2, Entity>,
+    pub modified_chunks: HashSet<IVec2>,
     pub last_player_chunk: IVec2,
     pub generation_queue: Vec<IVec2>,
+    pub save_dir: PathBuf,
 }
 
 impl Default for WorldGrid {
@@ -24,8 +27,10 @@ impl Default for WorldGrid {
         Self {
             chunks: HashMap::default(),
             chunk_entities: HashMap::default(),
+            modified_chunks: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
             generation_queue: Vec::new(),
+            save_dir: PathBuf::from("saves/world/chunks"),
         }
     }
 }
@@ -67,6 +72,7 @@ impl WorldGrid {
         if let Some(chunk) = self.chunks.get_mut(&c_coord) {
             chunk.set(lx as i32, pos.y, lz as i32, block);
             dirty_chunks.push(c_coord);
+            self.modified_chunks.insert(c_coord);
 
             if lx == 0 {
                 dirty_chunks.push(c_coord + IVec2::new(-1, 0));
@@ -82,6 +88,26 @@ impl WorldGrid {
         }
 
         dirty_chunks
+    }
+
+    pub fn save_chunk_to_disk(&self, coord: &IVec2) -> std::io::Result<()> {
+        let Some(chunk) = self.chunks.get(coord) else {
+            return Ok(());
+        };
+        std::fs::create_dir_all(&self.save_dir)?;
+        let path = self.save_dir.join(format!("chunk_{}_{}.bin", coord.x, coord.y));
+        std::fs::write(path, chunk.to_bytes())?;
+        Ok(())
+    }
+
+    pub fn load_chunk_from_disk(&self, coord: &IVec2) -> Option<Chunk> {
+        let path = self.save_dir.join(format!("chunk_{}_{}.bin", coord.x, coord.y));
+        if path.exists() {
+            if let Ok(bytes) = std::fs::read(path) {
+                return Chunk::from_bytes(&bytes);
+            }
+        }
+        None
     }
 }
 
@@ -359,7 +385,8 @@ pub fn world_streaming_system(
         for dx in -VIEW_DISTANCE..=VIEW_DISTANCE {
             for dz in -VIEW_DISTANCE..=VIEW_DISTANCE {
                 let coord = player_chunk + IVec2::new(dx, dz);
-                if !world.chunks.contains_key(&coord) {
+                // Il chunk ha bisogno di essere caricato o rimesso se non ha una mesh attiva
+                if !world.chunk_entities.contains_key(&coord) {
                     needed_chunks.push(coord);
                 }
             }
@@ -385,10 +412,18 @@ pub fn world_streaming_system(
         }
 
         for coord in chunks_to_remove {
+            // Despawn della mesh 3D dalla GPU
             if let Some(entity) = world.chunk_entities.remove(&coord) {
                 commands.entity(entity).despawn();
             }
-            world.chunks.remove(&coord);
+
+            // Se il chunk è stato modificato, salvalo su disco e conservalo in memoria
+            if world.modified_chunks.contains(&coord) {
+                let _ = world.save_chunk_to_disk(&coord);
+            } else {
+                // I chunk non modificati possono essere rimossi dalla RAM per risparmiare memoria
+                world.chunks.remove(&coord);
+            }
         }
     }
 
@@ -397,14 +432,22 @@ pub fn world_streaming_system(
 
     while generated_this_frame < MAX_CHUNKS_PER_FRAME && !world.generation_queue.is_empty() {
         let coord = world.generation_queue.remove(0);
-        if world.chunks.contains_key(&coord) {
+        if world.chunk_entities.contains_key(&coord) {
             continue;
         }
 
-        let chunk = generate_chunk(coord.x, coord.y);
-        world.chunks.insert(coord, chunk);
+        // Se il chunk non è in RAM, prova a caricarlo da disco; se non esiste sul disco, generalo
+        if !world.chunks.contains_key(&coord) {
+            if let Some(loaded_chunk) = world.load_chunk_from_disk(&coord) {
+                world.chunks.insert(coord, loaded_chunk);
+                world.modified_chunks.insert(coord);
+            } else {
+                let chunk = generate_chunk(coord.x, coord.y);
+                world.chunks.insert(coord, chunk);
+            }
+        }
 
-        // Effettua subito il meshing per il nuovo chunk
+        // Effettua subito il meshing per il chunk
         update_chunk_mesh(
             &coord,
             &mut commands,
