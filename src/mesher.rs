@@ -8,34 +8,28 @@ use crate::texture::{block_texture, get_tile_uvs};
 
 pub fn build_chunk_mesh(
     chunk: &Chunk,
-    chunk_x: i32,
-    chunk_z: i32,
-    get_block_at: impl Fn(i32, i32, i32) -> BlockType,
+    north: Option<&Chunk>,
+    south: Option<&Chunk>,
+    east: Option<&Chunk>,
+    west: Option<&Chunk>,
 ) -> Option<Mesh> {
-    let mut positions: Vec<[f32; 3]> = Vec::new();
-    let mut normals: Vec<[f32; 3]> = Vec::new();
-    let mut uvs: Vec<[f32; 2]> = Vec::new();
-    let mut colors: Vec<[f32; 4]> = Vec::new();
-    let mut indices: Vec<u32> = Vec::new();
-
-    let world_offset_x = chunk_x * CHUNK_WIDTH as i32;
-    let world_offset_z = chunk_z * CHUNK_DEPTH as i32;
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(2048);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(2048);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(2048);
+    let mut colors: Vec<[f32; 4]> = Vec::with_capacity(2048);
+    let mut indices: Vec<u32> = Vec::with_capacity(3072);
 
     for ly in 0..CHUNK_HEIGHT {
+        let fy = ly as f32;
         for lz in 0..CHUNK_DEPTH {
+            let fz = lz as f32;
             for lx in 0..CHUNK_WIDTH {
-                let block = chunk.get(lx as i32, ly as i32, lz as i32);
+                let block = chunk.get_fast(lx, ly, lz);
                 if block == BlockType::Air {
                     continue;
                 }
 
-                let wx = world_offset_x + lx as i32;
-                let wy = ly as i32;
-                let wz = world_offset_z + lz as i32;
-
                 let fx = lx as f32;
-                let fy = ly as f32;
-                let fz = lz as f32;
 
                 let should_render_face = |neighbor: BlockType| -> bool {
                     if block.is_solid() {
@@ -48,8 +42,8 @@ pub fn build_chunk_mesh(
                 };
 
                 // Top (+Y)
-                let top_neighbor = if wy + 1 < CHUNK_HEIGHT as i32 {
-                    get_block_at(wx, wy + 1, wz)
+                let top_neighbor = if ly + 1 < CHUNK_HEIGHT {
+                    chunk.get_fast(lx, ly + 1, lz)
                 } else {
                     BlockType::Air
                 };
@@ -74,8 +68,8 @@ pub fn build_chunk_mesh(
                 }
 
                 // Bottom (-Y)
-                if wy > 0 {
-                    let bottom_neighbor = get_block_at(wx, wy - 1, wz);
+                if ly > 0 {
+                    let bottom_neighbor = chunk.get_fast(lx, ly - 1, lz);
                     if should_render_face(bottom_neighbor) {
                         let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::Bottom));
                         add_quad(
@@ -98,7 +92,13 @@ pub fn build_chunk_mesh(
                 }
 
                 // North / Front (+Z)
-                let north_neighbor = get_block_at(wx, wy, wz + 1);
+                let north_neighbor = if lz + 1 < CHUNK_DEPTH {
+                    chunk.get_fast(lx, ly, lz + 1)
+                } else if let Some(n) = north {
+                    n.get_fast(lx, ly, 0)
+                } else {
+                    BlockType::Air
+                };
                 if should_render_face(north_neighbor) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::North));
                     add_quad(
@@ -120,7 +120,13 @@ pub fn build_chunk_mesh(
                 }
 
                 // South / Back (-Z)
-                let south_neighbor = get_block_at(wx, wy, wz - 1);
+                let south_neighbor = if lz > 0 {
+                    chunk.get_fast(lx, ly, lz - 1)
+                } else if let Some(s) = south {
+                    s.get_fast(lx, ly, CHUNK_DEPTH - 1)
+                } else {
+                    BlockType::Air
+                };
                 if should_render_face(south_neighbor) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::South));
                     add_quad(
@@ -142,7 +148,13 @@ pub fn build_chunk_mesh(
                 }
 
                 // East / Right (+X)
-                let east_neighbor = get_block_at(wx + 1, wy, wz);
+                let east_neighbor = if lx + 1 < CHUNK_WIDTH {
+                    chunk.get_fast(lx + 1, ly, lz)
+                } else if let Some(e) = east {
+                    e.get_fast(0, ly, lz)
+                } else {
+                    BlockType::Air
+                };
                 if should_render_face(east_neighbor) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::East));
                     add_quad(
@@ -164,7 +176,13 @@ pub fn build_chunk_mesh(
                 }
 
                 // West / Left (-X)
-                let west_neighbor = get_block_at(wx - 1, wy, wz);
+                let west_neighbor = if lx > 0 {
+                    chunk.get_fast(lx - 1, ly, lz)
+                } else if let Some(w) = west {
+                    w.get_fast(CHUNK_WIDTH - 1, ly, lz)
+                } else {
+                    BlockType::Air
+                };
                 if should_render_face(west_neighbor) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::West));
                     add_quad(
@@ -202,6 +220,7 @@ pub fn build_chunk_mesh(
     Some(mesh)
 }
 
+#[inline(always)]
 fn add_quad(
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,

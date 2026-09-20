@@ -277,9 +277,9 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
             let biome = biomes[lx][lz];
 
             // Indestructible bedrock at world base
-            chunk.set(lx as i32, 0, lz as i32, BlockType::Bedrock);
+            chunk.set_fast(lx, 0, lz, BlockType::Bedrock);
             if pseudo_hash_3d(wx, 1, wz, seed) % 2 == 0 {
-                chunk.set(lx as i32, 1, lz as i32, BlockType::Bedrock);
+                chunk.set_fast(lx, 1, lz, BlockType::Bedrock);
             }
 
             for y in 1..=h {
@@ -348,7 +348,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     }
                 };
 
-                chunk.set(lx as i32, y, lz as i32, block);
+                chunk.set_fast(lx, y as usize, lz, block);
             }
 
             // Liquid filling up to SEA_LEVEL for oceans, lakes, and rivers
@@ -359,7 +359,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     } else {
                         BlockType::Water
                     };
-                    chunk.set(lx as i32, y, lz as i32, liquid);
+                    chunk.set_fast(lx, y as usize, lz, liquid);
                 }
             }
         }
@@ -373,28 +373,29 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
             let h = surface_heights[lx][lz];
 
             for y in 2..(h - 4) {
-                if chunk.get(lx as i32, y, lz as i32) == BlockType::Stone {
+                let yu = y as usize;
+                if chunk.get_fast(lx, yu, lz) == BlockType::Stone {
                     let hash = pseudo_hash_3d(wx, y, wz, seed);
 
                     // Diamond: extremely rare and deep (levels 2-15)
                     if y <= 15 && hash % 199 == 0 {
-                        chunk.set(lx as i32, y, lz as i32, BlockType::DiamondOre);
+                        chunk.set_fast(lx, yu, lz, BlockType::DiamondOre);
                     }
                     // Gold: rare (levels 3-28)
                     else if y <= 28 && hash % 113 == 0 {
-                        chunk.set(lx as i32, y, lz as i32, BlockType::GoldOre);
+                        chunk.set_fast(lx, yu, lz, BlockType::GoldOre);
                     }
                     // Iron: common (levels 4-46)
                     else if y <= 46 && hash % 43 == 0 {
-                        chunk.set(lx as i32, y, lz as i32, BlockType::IronOre);
+                        chunk.set_fast(lx, yu, lz, BlockType::IronOre);
                     }
                     // Coal: abundant (levels 6-58)
                     else if y <= 58 && hash % 27 == 0 {
-                        chunk.set(lx as i32, y, lz as i32, BlockType::CoalOre);
+                        chunk.set_fast(lx, yu, lz, BlockType::CoalOre);
                     }
                     // Underground gravel pockets
                     else if hash % 79 == 0 {
-                        chunk.set(lx as i32, y, lz as i32, BlockType::Gravel);
+                        chunk.set_fast(lx, yu, lz, BlockType::Gravel);
                     }
                 }
             }
@@ -426,8 +427,8 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                 let n2 = noise.fbm_3d(wx * 0.04 + 31.4, wy * 0.06, wz * 0.04 + 73.1, 2, 0.5, 2.0);
                 let is_tunnel = (n1 * n1 + n2 * n2) < 0.013;
 
-                // Large underground cavern rooms
-                let is_room = if y < 30 {
+                // Large underground cavern rooms (only evaluate noise if not already a tunnel)
+                let is_room = if !is_tunnel && y < 30 {
                     let n_room = noise.fbm_3d(wx * 0.025, wy * 0.04, wz * 0.025, 2, 0.5, 2.0);
                     n_room < -0.44
                 } else {
@@ -435,7 +436,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                 };
 
                 if is_tunnel || is_room {
-                    chunk.set(lx as i32, y, lz as i32, BlockType::Air);
+                    chunk.set_fast(lx, y as usize, lz, BlockType::Air);
                 }
             }
         }
@@ -545,13 +546,16 @@ pub fn update_chunk_mesh(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
 ) {
-    let Some(chunk) = world.chunks.get(coord).cloned() else {
+    let Some(chunk) = world.chunks.get(coord) else {
         return;
     };
 
-    let new_mesh = build_chunk_mesh(&chunk, coord.x, coord.y, |wx, wy, wz| {
-        world.get_block(IVec3::new(wx, wy, wz))
-    });
+    let north = world.chunks.get(&(*coord + IVec2::new(0, 1)));
+    let south = world.chunks.get(&(*coord + IVec2::new(0, -1)));
+    let east = world.chunks.get(&(*coord + IVec2::new(1, 0)));
+    let west = world.chunks.get(&(*coord + IVec2::new(-1, 0)));
+
+    let new_mesh = build_chunk_mesh(chunk, north, south, east, west);
 
     let world_pos = Vec3::new(
         (coord.x * CHUNK_WIDTH as i32) as f32,
@@ -656,6 +660,7 @@ pub fn world_streaming_system(
     }
 
     let mut generated_this_frame = 0;
+    let mut chunks_to_mesh: Vec<IVec2> = Vec::with_capacity(MAX_CHUNKS_PER_FRAME * 5);
 
     while generated_this_frame < MAX_CHUNKS_PER_FRAME && !world.generation_queue.is_empty() {
         let coord = world.generation_queue.remove(0);
@@ -677,15 +682,7 @@ pub fn world_streaming_system(
             }
         }
 
-        // Immediately update mesh for the chunk
-        update_chunk_mesh(
-            &coord,
-            &mut commands,
-            &mut world,
-            &mut meshes,
-            &mut materials,
-        );
-
+        chunks_to_mesh.push(coord);
         for neighbor_coord in [
             coord + IVec2::new(-1, 0),
             coord + IVec2::new(1, 0),
@@ -693,16 +690,25 @@ pub fn world_streaming_system(
             coord + IVec2::new(0, 1),
         ] {
             if world.chunks.contains_key(&neighbor_coord) {
-                update_chunk_mesh(
-                    &neighbor_coord,
-                    &mut commands,
-                    &mut world,
-                    &mut meshes,
-                    &mut materials,
-                );
+                chunks_to_mesh.push(neighbor_coord);
             }
         }
 
         generated_this_frame += 1;
+    }
+
+    if !chunks_to_mesh.is_empty() {
+        chunks_to_mesh.sort_unstable_by_key(|c| (c.x, c.y));
+        chunks_to_mesh.dedup();
+
+        for coord in chunks_to_mesh {
+            update_chunk_mesh(
+                &coord,
+                &mut commands,
+                &mut world,
+                &mut meshes,
+                &mut materials,
+            );
+        }
     }
 }

@@ -47,11 +47,13 @@ impl NoiseGenerator {
 
     /// Standard 2D Perlin noise in [-1.0, 1.0]
     pub fn perlin_2d(&self, x: f64, y: f64) -> f64 {
-        let xi = (x.floor() as i64 & 255) as usize;
-        let yi = (y.floor() as i64 & 255) as usize;
+        let x_floor = x.floor();
+        let y_floor = y.floor();
+        let xi = (x_floor as i64 & 255) as usize;
+        let yi = (y_floor as i64 & 255) as usize;
 
-        let xf = x - x.floor();
-        let yf = y - y.floor();
+        let xf = x - x_floor;
+        let yf = y - y_floor;
 
         let u = fade(xf);
         let v = fade(yf);
@@ -69,13 +71,16 @@ impl NoiseGenerator {
 
     /// Standard 3D Perlin noise in [-1.0, 1.0]
     pub fn perlin_3d(&self, x: f64, y: f64, z: f64) -> f64 {
-        let xi = (x.floor() as i64 & 255) as usize;
-        let yi = (y.floor() as i64 & 255) as usize;
-        let zi = (z.floor() as i64 & 255) as usize;
+        let x_floor = x.floor();
+        let y_floor = y.floor();
+        let z_floor = z.floor();
+        let xi = (x_floor as i64 & 255) as usize;
+        let yi = (y_floor as i64 & 255) as usize;
+        let zi = (z_floor as i64 & 255) as usize;
 
-        let xf = x - x.floor();
-        let yf = y - y.floor();
-        let zf = z - z.floor();
+        let xf = x - x_floor;
+        let yf = y - y_floor;
+        let zf = z - z_floor;
 
         let u = fade(xf);
         let v = fade(yf);

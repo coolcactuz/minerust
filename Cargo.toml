@@ -12,3 +12,10 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+# Profilo release per massimizzare il framerate e le performance in-game
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"

@@ -50,12 +50,23 @@ impl Chunk {
         }
     }
 
+    #[inline(always)]
+    pub fn get_fast(&self, x: usize, y: usize, z: usize) -> BlockType {
+        self.blocks[Self::index(x, y, z)]
+    }
+
     #[inline]
     pub fn set(&mut self, x: i32, y: i32, z: i32, block: BlockType) {
         if Self::in_bounds(x, y, z) {
             let idx = Self::index(x as usize, y as usize, z as usize);
             self.blocks[idx] = block;
         }
+    }
+
+    #[inline(always)]
+    pub fn set_fast(&mut self, x: usize, y: usize, z: usize, block: BlockType) {
+        let idx = Self::index(x, y, z);
+        self.blocks[idx] = block;
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
