@@ -22,8 +22,9 @@ use inventory::{
 };
 use menu::{
     fps_limiter_system, menu_button_click_system, menu_button_hover_system, menu_input_system,
-    setup_menu_ui, update_menu_visibility_system, update_settings_button_text_system,
-    FpsLimiter, GraphicsSettings, MenuState,
+    setup_menu_ui, update_dev_button_text_system, update_dev_settings_system,
+    update_menu_visibility_system, update_settings_button_text_system, DevSettings, FpsLimiter,
+    GraphicsSettings, MenuState,
 };
 use physics::{
     player_physics_system, setup_physics_ui, update_physics_hud_system, PlayerPhysics,
@@ -58,6 +59,7 @@ fn main() {
         .init_resource::<Inventory>()
         .init_resource::<MenuState>()
         .init_resource::<GraphicsSettings>()
+        .init_resource::<DevSettings>()
         .init_resource::<FpsLimiter>()
         .init_resource::<ChunkGeneratorPool>()
         .add_systems(
@@ -72,6 +74,8 @@ fn main() {
                 menu_button_hover_system,
                 menu_button_click_system,
                 update_settings_button_text_system,
+                update_dev_button_text_system,
+                update_dev_settings_system,
                 fps_limiter_system,
             ),
         )
@@ -107,7 +111,7 @@ fn setup(
         base_color_texture: Some(atlas_handle),
         perceptual_roughness: 0.85,
         reflectance: 0.15,
-        cull_mode: None,
+        cull_mode: Some(bevy::render::render_resource::Face::Back),
         alpha_mode: AlphaMode::Mask(0.5),
         ..default()
     });
@@ -144,7 +148,7 @@ fn setup(
     }
 
     for coord in &initial_coords {
-        update_chunk_mesh(coord, &mut commands, &mut world, &mut meshes, &mut materials);
+        update_chunk_mesh(coord, &mut commands, &mut world, &mut meshes, &mut materials, true);
     }
 
     // 2. Calculate terrain height at spawn to position the player naturally

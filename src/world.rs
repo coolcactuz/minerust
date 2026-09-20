@@ -586,6 +586,7 @@ pub fn update_chunk_mesh(
     world: &mut WorldGrid,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    max_y_skip: bool,
 ) {
     let Some(chunk) = world.chunks.get(coord) else {
         return;
@@ -596,7 +597,7 @@ pub fn update_chunk_mesh(
     let east = world.chunks.get(&(*coord + IVec2::new(1, 0)));
     let west = world.chunks.get(&(*coord + IVec2::new(-1, 0)));
 
-    let new_mesh = build_chunk_mesh(chunk, north, south, east, west);
+    let new_mesh = build_chunk_mesh(chunk, north, south, east, west, max_y_skip);
 
     let world_pos = Vec3::new(
         (coord.x * CHUNK_WIDTH as i32) as f32,
@@ -641,6 +642,7 @@ pub fn world_streaming_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     settings: Option<Res<GraphicsSettings>>,
+    dev_settings: Option<Res<crate::menu::DevSettings>>,
     pool: Res<ChunkGeneratorPool>,
 ) {
     let Ok((cam_transform, mut projection, mut fog)) = camera_query.single_mut() else {
@@ -789,8 +791,12 @@ pub fn world_streaming_system(
             -(diff.x * diff.x + diff.y * diff.y)
         });
 
+        let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
+        let budget_enabled = dev_settings.as_ref().map_or(true, |d| d.mesh_budget);
+        let max_meshes_per_frame = if budget_enabled { MAX_MESHES_PER_FRAME } else { usize::MAX };
+
         let mut meshed = 0;
-        while meshed < MAX_MESHES_PER_FRAME && !world.mesh_queue.is_empty() {
+        while meshed < max_meshes_per_frame && !world.mesh_queue.is_empty() {
             let coord = world.mesh_queue.pop().unwrap();
             world.queued_for_mesh.remove(&coord);
 
@@ -803,6 +809,7 @@ pub fn world_streaming_system(
                         &mut world,
                         &mut meshes,
                         &mut materials,
+                        max_y_skip,
                     );
                     meshed += 1;
                 }

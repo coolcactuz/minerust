@@ -340,6 +340,9 @@ pub struct FpsTracker {
     frames: u32,
 }
 
+#[derive(Component)]
+pub struct PhysicsDebugRoot;
+
 pub fn setup_physics_ui(mut commands: Commands) {
     commands
         .spawn((
@@ -347,21 +350,22 @@ pub fn setup_physics_ui(mut commands: Commands) {
                 position_type: PositionType::Absolute,
                 top: Val::Px(12.0),
                 left: Val::Px(12.0),
-                padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
                 border: UiRect::all(Val::Px(1.5)),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.75)),
-            BorderColor::all(Color::srgba(0.3, 0.3, 0.4, 0.8)),
+            BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.82)),
+            BorderColor::all(Color::srgba(0.3, 0.5, 0.7, 0.8)),
+            PhysicsDebugRoot,
         ))
         .with_children(|parent| {
             parent.spawn((
-                Text::new("FPS: --"),
+                Text::new("⚡ MINERUST BENCHMARK [F3]\nFPS: --\nLoading stats..."),
                 TextFont {
-                    font_size: FontSize::Px(14.0),
+                    font_size: FontSize::Px(13.0),
                     ..default()
                 },
-                TextColor(Color::srgb(0.2, 1.0, 0.4)),
+                TextColor(Color::srgb(0.3, 1.0, 0.5)),
                 PhysicsDebugText,
             ));
         });
@@ -370,8 +374,23 @@ pub fn setup_physics_ui(mut commands: Commands) {
 pub fn update_physics_hud_system(
     time: Res<Time>,
     mut fps: Local<FpsTracker>,
+    world: Option<Res<WorldGrid>>,
+    dev_settings: Option<Res<crate::menu::DevSettings>>,
     mut text_query: Query<&mut Text, With<PhysicsDebugText>>,
+    mut root_query: Query<&mut Visibility, With<PhysicsDebugRoot>>,
 ) {
+    let show_hud = dev_settings.as_ref().map_or(true, |d| d.show_debug_hud);
+    if let Ok(mut vis) = root_query.single_mut() {
+        let target = if show_hud { Visibility::Inherited } else { Visibility::Hidden };
+        if *vis != target {
+            *vis = target;
+        }
+    }
+
+    if !show_hud {
+        return;
+    }
+
     let dt = time.delta_secs();
     fps.timer += dt;
     fps.frames += 1;
@@ -383,9 +402,32 @@ pub fn update_physics_hud_system(
         fps.frames = 0;
 
         if let Ok(mut text) = text_query.single_mut() {
+            let (chunks_loaded, meshes_active, gen_q, mesh_q) = if let Some(ref w) = world {
+                (w.chunks.len(), w.chunk_entities.len(), w.generation_queue.len(), w.mesh_queue.len())
+            } else {
+                (0, 0, 0, 0)
+            };
+
+            let (cull, shadow, max_y, fog, budget) = if let Some(ref dev) = dev_settings {
+                (
+                    if dev.backface_culling { "ON" } else { "OFF" },
+                    if dev.shadows_enabled { "ON" } else { "OFF" },
+                    if dev.max_y_skip { "ON" } else { "OFF" },
+                    if dev.distance_fog { "ON" } else { "OFF" },
+                    if dev.mesh_budget { "ON" } else { "OFF" },
+                )
+            } else {
+                ("ON", "ON", "ON", "ON", "ON")
+            };
+
             *text = Text::new(format!(
-                "FPS: {:.0} ({:.1} ms)",
-                fps.fps, fps.frame_time_ms
+                "⚡ MINERUST BENCHMARK [F3: Toggle]\n\
+                 FPS: {:.0} ({:.1} ms)\n\
+                 Chunks: {} | Meshes: {} | GenQ: {} | MeshQ: {}\n\
+                 [Culling: {}] [Shadows: {}] [max_y: {}] [Fog: {}] [Budget: {}]",
+                fps.fps, fps.frame_time_ms,
+                chunks_loaded, meshes_active, gen_q, mesh_q,
+                cull, shadow, max_y, fog, budget
             ));
         }
     }

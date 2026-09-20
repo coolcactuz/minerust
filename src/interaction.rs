@@ -94,6 +94,7 @@ pub fn block_interaction_system(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     inventory: Res<Inventory>,
     menu: Option<Res<MenuState>>,
+    dev_settings: Option<Res<crate::menu::DevSettings>>,
     mut world: ResMut<WorldGrid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -175,8 +176,10 @@ pub fn block_interaction_system(
             dirty_coords.sort_unstable_by_key(|c| (c.x, c.y));
             dirty_coords.dedup();
 
+            let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
+
             for coord in dirty_coords {
-                update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials);
+                update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials, max_y_skip);
             }
         }
     }

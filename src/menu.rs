@@ -12,6 +12,7 @@ use crate::inventory::Inventory;
 pub enum MenuScreen {
     Main,
     Settings,
+    DevSettings,
     Pause,
     None, // In-game gameplay
 }
@@ -35,6 +36,29 @@ impl MenuState {
     #[inline]
     pub fn is_open(&self) -> bool {
         self.screen != MenuScreen::None
+    }
+}
+
+#[derive(Resource, Clone, Debug)]
+pub struct DevSettings {
+    pub backface_culling: bool,
+    pub shadows_enabled: bool,
+    pub max_y_skip: bool,
+    pub distance_fog: bool,
+    pub mesh_budget: bool,
+    pub show_debug_hud: bool,
+}
+
+impl Default for DevSettings {
+    fn default() -> Self {
+        Self {
+            backface_culling: true,
+            shadows_enabled: true,
+            max_y_skip: true,
+            distance_fog: true,
+            mesh_budget: true,
+            show_debug_hud: true,
+        }
     }
 }
 
@@ -67,13 +91,21 @@ pub enum MenuButtonAction {
     Play,
     ResumeGame,
     OpenSettings,
+    OpenDevSettings,
     BackFromSettings,
+    BackFromDevSettings,
     BackToMain,
     QuitGame,
     ToggleVsync,
     ToggleFullscreen,
     CycleFpsCap,
     CycleViewDistance,
+    ToggleBackfaceCulling,
+    ToggleShadows,
+    ToggleMaxYSkip,
+    ToggleDistanceFog,
+    ToggleMeshBudget,
+    ToggleDebugHud,
 }
 
 #[derive(Component)]
@@ -86,6 +118,9 @@ pub struct PauseMenuRoot;
 pub struct SettingsMenuRoot;
 
 #[derive(Component)]
+pub struct DevSettingsMenuRoot;
+
+#[derive(Component)]
 pub struct VsyncBtnText;
 
 #[derive(Component)]
@@ -96,6 +131,24 @@ pub struct FpsCapBtnText;
 
 #[derive(Component)]
 pub struct ViewDistanceBtnText;
+
+#[derive(Component)]
+pub struct BackfaceCullingBtnText;
+
+#[derive(Component)]
+pub struct ShadowsBtnText;
+
+#[derive(Component)]
+pub struct MaxYSkipBtnText;
+
+#[derive(Component)]
+pub struct DistanceFogBtnText;
+
+#[derive(Component)]
+pub struct MeshBudgetBtnText;
+
+#[derive(Component)]
+pub struct DebugHudBtnText;
 
 pub fn setup_menu_ui(mut commands: Commands) {
     // 1. MAIN MENU SCREEN
@@ -159,6 +212,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                 .with_children(|btn_col| {
                     spawn_menu_button(btn_col, "▶ Play Game", MenuButtonAction::Play, true);
                     spawn_menu_button(btn_col, "⚙ Graphics Settings", MenuButtonAction::OpenSettings, false);
+                    spawn_menu_button(btn_col, "🛠 Dev & Benchmarks", MenuButtonAction::OpenDevSettings, false);
                     spawn_menu_button(btn_col, "✕ Quit Game", MenuButtonAction::QuitGame, false);
                 });
         });
@@ -205,6 +259,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                 .with_children(|btn_col| {
                     spawn_menu_button(btn_col, "▶ Resume Game", MenuButtonAction::ResumeGame, true);
                     spawn_menu_button(btn_col, "⚙ Graphics Settings", MenuButtonAction::OpenSettings, false);
+                    spawn_menu_button(btn_col, "🛠 Dev & Benchmarks", MenuButtonAction::OpenDevSettings, false);
                     spawn_menu_button(btn_col, "⌂ Return to Main Menu", MenuButtonAction::BackToMain, false);
                 });
         });
@@ -259,10 +314,72 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     spawn_settings_button(btn_col, "FPS Limit: Uncapped", MenuButtonAction::CycleFpsCap, FpsCapBtnText);
 
                     // Render Distance Button
-                    spawn_settings_button(btn_col, "Render Distance: 8 Chunks", MenuButtonAction::CycleViewDistance, ViewDistanceBtnText);
+                    spawn_settings_button(btn_col, "Render Distance: 16 Chunks", MenuButtonAction::CycleViewDistance, ViewDistanceBtnText);
 
                     // Back Button
                     spawn_menu_button(btn_col, "◀ Back / Done", MenuButtonAction::BackFromSettings, true);
+                });
+        });
+
+    // 4. DEV & BENCHMARK SETTINGS SCREEN
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(0.0),
+                top: Val::Percent(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.04, 0.04, 0.07, 0.92)),
+            Visibility::Hidden,
+            DevSettingsMenuRoot,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("🛠 DEV & BENCHMARK SETTINGS"),
+                TextFont {
+                    font_size: FontSize::Px(32.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.3, 0.9, 1.0)),
+                Node {
+                    margin: UiRect::bottom(Val::Px(4.0)),
+                    ..default()
+                },
+            ));
+            parent.spawn((
+                Text::new("Benchmark real-time performance impacts of each optimization technique"),
+                TextFont {
+                    font_size: FontSize::Px(14.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.7, 0.75, 0.85)),
+                Node {
+                    margin: UiRect::bottom(Val::Px(18.0)),
+                    ..default()
+                },
+            ));
+
+            parent
+                .spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    row_gap: Val::Px(10.0),
+                    ..default()
+                })
+                .with_children(|btn_col| {
+                    spawn_settings_button(btn_col, "Backface Culling: ON", MenuButtonAction::ToggleBackfaceCulling, BackfaceCullingBtnText);
+                    spawn_settings_button(btn_col, "Dynamic Shadows: ON", MenuButtonAction::ToggleShadows, ShadowsBtnText);
+                    spawn_settings_button(btn_col, "Mesher max_y Skip: ON", MenuButtonAction::ToggleMaxYSkip, MaxYSkipBtnText);
+                    spawn_settings_button(btn_col, "Distance Fog: ON", MenuButtonAction::ToggleDistanceFog, DistanceFogBtnText);
+                    spawn_settings_button(btn_col, "Mesh Budget: ON (6/frame)", MenuButtonAction::ToggleMeshBudget, MeshBudgetBtnText);
+                    spawn_settings_button(btn_col, "Dev HUD (F3): ON", MenuButtonAction::ToggleDebugHud, DebugHudBtnText);
+                    spawn_menu_button(btn_col, "◀ Back / Done", MenuButtonAction::BackFromDevSettings, true);
                 });
         });
 }
@@ -344,11 +461,18 @@ pub fn menu_input_system(
     keys: Res<ButtonInput<KeyCode>>,
     mut menu: ResMut<MenuState>,
     inventory: Option<Res<Inventory>>,
+    mut dev_settings: Option<ResMut<DevSettings>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     let Ok(mut cursor) = cursor_options.single_mut() else {
         return;
     };
+
+    if keys.just_pressed(KeyCode::F3) {
+        if let Some(ref mut dev) = dev_settings {
+            dev.show_debug_hud = !dev.show_debug_hud;
+        }
+    }
 
     // If inventory is open, let inventory handle ESC
     if let Some(inv) = inventory {
@@ -371,8 +495,8 @@ pub fn menu_input_system(
                 cursor.grab_mode = CursorGrabMode::Locked;
                 cursor.visible = false;
             }
-            MenuScreen::Settings => {
-                // In settings -> Return to previous screen (Main or Pause)
+            MenuScreen::Settings | MenuScreen::DevSettings => {
+                // Return to previous screen (Main or Pause)
                 menu.screen = menu.previous_screen;
             }
             MenuScreen::Main => {
@@ -384,9 +508,10 @@ pub fn menu_input_system(
 
 pub fn update_menu_visibility_system(
     menu: Res<MenuState>,
-    mut main_query: Query<&mut Visibility, (With<MainMenuRoot>, Without<PauseMenuRoot>, Without<SettingsMenuRoot>)>,
-    mut pause_query: Query<&mut Visibility, (With<PauseMenuRoot>, Without<MainMenuRoot>, Without<SettingsMenuRoot>)>,
-    mut settings_query: Query<&mut Visibility, (With<SettingsMenuRoot>, Without<MainMenuRoot>, Without<PauseMenuRoot>)>,
+    mut main_query: Query<&mut Visibility, (With<MainMenuRoot>, Without<PauseMenuRoot>, Without<SettingsMenuRoot>, Without<DevSettingsMenuRoot>)>,
+    mut pause_query: Query<&mut Visibility, (With<PauseMenuRoot>, Without<MainMenuRoot>, Without<SettingsMenuRoot>, Without<DevSettingsMenuRoot>)>,
+    mut settings_query: Query<&mut Visibility, (With<SettingsMenuRoot>, Without<MainMenuRoot>, Without<PauseMenuRoot>, Without<DevSettingsMenuRoot>)>,
+    mut dev_query: Query<&mut Visibility, (With<DevSettingsMenuRoot>, Without<MainMenuRoot>, Without<PauseMenuRoot>, Without<SettingsMenuRoot>)>,
 ) {
     if let Ok(mut vis) = main_query.single_mut() {
         let target = if menu.screen == MenuScreen::Main { Visibility::Inherited } else { Visibility::Hidden };
@@ -398,6 +523,10 @@ pub fn update_menu_visibility_system(
     }
     if let Ok(mut vis) = settings_query.single_mut() {
         let target = if menu.screen == MenuScreen::Settings { Visibility::Inherited } else { Visibility::Hidden };
+        if *vis != target { *vis = target; }
+    }
+    if let Ok(mut vis) = dev_query.single_mut() {
+        let target = if menu.screen == MenuScreen::DevSettings { Visibility::Inherited } else { Visibility::Hidden };
         if *vis != target { *vis = target; }
     }
 }
@@ -433,6 +562,7 @@ pub fn menu_button_click_system(
     >,
     mut menu: ResMut<MenuState>,
     mut settings: ResMut<GraphicsSettings>,
+    mut dev_settings: Option<ResMut<DevSettings>>,
     mut window_query: Query<&mut Window, With<PrimaryWindow>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut exit_writer: MessageWriter<AppExit>,
@@ -456,7 +586,11 @@ pub fn menu_button_click_system(
                     menu.previous_screen = menu.screen;
                     menu.screen = MenuScreen::Settings;
                 }
-                MenuButtonAction::BackFromSettings => {
+                MenuButtonAction::OpenDevSettings => {
+                    menu.previous_screen = menu.screen;
+                    menu.screen = MenuScreen::DevSettings;
+                }
+                MenuButtonAction::BackFromSettings | MenuButtonAction::BackFromDevSettings => {
                     menu.screen = menu.previous_screen;
                 }
                 MenuButtonAction::BackToMain => {
@@ -502,6 +636,36 @@ pub fn menu_button_click_system(
                         _ => 16,
                     };
                 }
+                MenuButtonAction::ToggleBackfaceCulling => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.backface_culling = !dev.backface_culling;
+                    }
+                }
+                MenuButtonAction::ToggleShadows => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.shadows_enabled = !dev.shadows_enabled;
+                    }
+                }
+                MenuButtonAction::ToggleMaxYSkip => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.max_y_skip = !dev.max_y_skip;
+                    }
+                }
+                MenuButtonAction::ToggleDistanceFog => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.distance_fog = !dev.distance_fog;
+                    }
+                }
+                MenuButtonAction::ToggleMeshBudget => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.mesh_budget = !dev.mesh_budget;
+                    }
+                }
+                MenuButtonAction::ToggleDebugHud => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.show_debug_hud = !dev.show_debug_hud;
+                    }
+                }
             }
         }
     }
@@ -541,6 +705,98 @@ pub fn update_settings_button_text_system(
                 "Render Distance: {} Chunks",
                 settings.view_distance
             ));
+        }
+    }
+}
+
+pub fn update_dev_button_text_system(
+    dev_settings: Option<Res<DevSettings>>,
+    mut cull_text_query: Query<&mut Text, (With<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<DebugHudBtnText>)>,
+    mut shadow_text_query: Query<&mut Text, (With<ShadowsBtnText>, Without<BackfaceCullingBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<DebugHudBtnText>)>,
+    mut max_y_text_query: Query<&mut Text, (With<MaxYSkipBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<DebugHudBtnText>)>,
+    mut fog_text_query: Query<&mut Text, (With<DistanceFogBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<MeshBudgetBtnText>, Without<DebugHudBtnText>)>,
+    mut budget_text_query: Query<&mut Text, (With<MeshBudgetBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<DebugHudBtnText>)>,
+    mut hud_text_query: Query<&mut Text, (With<DebugHudBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>)>,
+) {
+    let Some(dev) = dev_settings else { return; };
+    if dev.is_changed() {
+        if let Ok(mut text) = cull_text_query.single_mut() {
+            *text = Text::new(format!(
+                "Backface Culling: {}",
+                if dev.backface_culling { "ON (GPU -50%)" } else { "OFF (Draw front & back)" }
+            ));
+        }
+        if let Ok(mut text) = shadow_text_query.single_mut() {
+            *text = Text::new(format!(
+                "Dynamic Shadows: {}",
+                if dev.shadows_enabled { "ON (120m Cascades)" } else { "OFF (Zero shadow passes)" }
+            ));
+        }
+        if let Ok(mut text) = max_y_text_query.single_mut() {
+            *text = Text::new(format!(
+                "Mesher max_y Skip: {}",
+                if dev.max_y_skip { "ON (2x faster meshing)" } else { "OFF (Loop all 384 layers)" }
+            ));
+        }
+        if let Ok(mut text) = fog_text_query.single_mut() {
+            *text = Text::new(format!(
+                "Distance Fog: {}",
+                if dev.distance_fog { "ON (Blended horizon)" } else { "OFF (Harsh edge)" }
+            ));
+        }
+        if let Ok(mut text) = budget_text_query.single_mut() {
+            *text = Text::new(format!(
+                "Mesh Budget: {}",
+                if dev.mesh_budget { "ON (6/frame smooth)" } else { "OFF (Spike benchmark)" }
+            ));
+        }
+        if let Ok(mut text) = hud_text_query.single_mut() {
+            *text = Text::new(format!(
+                "Dev HUD (F3): {}",
+                if dev.show_debug_hud { "ON (Visible)" } else { "OFF (Hidden)" }
+            ));
+        }
+    }
+}
+
+pub fn update_dev_settings_system(
+    dev_settings: Option<Res<DevSettings>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    world: Res<crate::world::WorldGrid>,
+    mut dir_lights: Query<&mut DirectionalLight>,
+    mut fog_query: Query<&mut bevy::pbr::DistanceFog>,
+) {
+    let Some(dev) = dev_settings else { return; };
+    if dev.is_changed() {
+        // 1. Update Backface Culling in real-time across ALL chunks
+        if let Some(ref mat_handle) = world.block_material {
+            if let Some(mut mat) = materials.get_mut(mat_handle) {
+                mat.cull_mode = if dev.backface_culling {
+                    Some(bevy::render::render_resource::Face::Back)
+                } else {
+                    None
+                };
+            }
+        }
+
+        // 2. Update Directional Light Shadows in real-time
+        for mut light in &mut dir_lights {
+            light.shadow_maps_enabled = dev.shadows_enabled;
+        }
+
+        // 3. Update Distance Fog in real-time
+        for mut fog in &mut fog_query {
+            if dev.distance_fog {
+                fog.falloff = bevy::pbr::FogFalloff::Linear {
+                    start: 180.0,
+                    end: 255.0,
+                };
+            } else {
+                fog.falloff = bevy::pbr::FogFalloff::Linear {
+                    start: 99999.0,
+                    end: 100000.0,
+                };
+            }
         }
     }
 }
