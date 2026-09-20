@@ -177,9 +177,10 @@ pub fn block_interaction_system(
             dirty_coords.dedup();
 
             let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
+            let greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
 
             for coord in dirty_coords {
-                update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials, max_y_skip);
+                update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials, max_y_skip, greedy);
             }
         }
     }

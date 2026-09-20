@@ -46,6 +46,8 @@ pub struct DevSettings {
     pub max_y_skip: bool,
     pub distance_fog: bool,
     pub mesh_budget: bool,
+    pub async_meshing: bool,
+    pub greedy_meshing: bool,
     pub show_debug_hud: bool,
 }
 
@@ -57,6 +59,8 @@ impl Default for DevSettings {
             max_y_skip: true,
             distance_fog: true,
             mesh_budget: true,
+            async_meshing: true,
+            greedy_meshing: true,
             show_debug_hud: true,
         }
     }
@@ -105,6 +109,8 @@ pub enum MenuButtonAction {
     ToggleMaxYSkip,
     ToggleDistanceFog,
     ToggleMeshBudget,
+    ToggleAsyncMeshing,
+    ToggleGreedyMeshing,
     ToggleDebugHud,
 }
 
@@ -146,6 +152,12 @@ pub struct DistanceFogBtnText;
 
 #[derive(Component)]
 pub struct MeshBudgetBtnText;
+
+#[derive(Component)]
+pub struct AsyncMeshingBtnText;
+
+#[derive(Component)]
+pub struct GreedyMeshingBtnText;
 
 #[derive(Component)]
 pub struct DebugHudBtnText;
@@ -378,6 +390,8 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     spawn_settings_button(btn_col, "Mesher max_y Skip: ON", MenuButtonAction::ToggleMaxYSkip, MaxYSkipBtnText);
                     spawn_settings_button(btn_col, "Distance Fog: ON", MenuButtonAction::ToggleDistanceFog, DistanceFogBtnText);
                     spawn_settings_button(btn_col, "Mesh Budget: ON (6/frame)", MenuButtonAction::ToggleMeshBudget, MeshBudgetBtnText);
+                    spawn_settings_button(btn_col, "Async Meshing: ON (0ms main thread)", MenuButtonAction::ToggleAsyncMeshing, AsyncMeshingBtnText);
+                    spawn_settings_button(btn_col, "Greedy Meshing: ON (-75% verts)", MenuButtonAction::ToggleGreedyMeshing, GreedyMeshingBtnText);
                     spawn_settings_button(btn_col, "Dev HUD (F3): ON", MenuButtonAction::ToggleDebugHud, DebugHudBtnText);
                     spawn_menu_button(btn_col, "◀ Back / Done", MenuButtonAction::BackFromDevSettings, true);
                 });
@@ -661,6 +675,16 @@ pub fn menu_button_click_system(
                         dev.mesh_budget = !dev.mesh_budget;
                     }
                 }
+                MenuButtonAction::ToggleAsyncMeshing => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.async_meshing = !dev.async_meshing;
+                    }
+                }
+                MenuButtonAction::ToggleGreedyMeshing => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.greedy_meshing = !dev.greedy_meshing;
+                    }
+                }
                 MenuButtonAction::ToggleDebugHud => {
                     if let Some(ref mut dev) = dev_settings {
                         dev.show_debug_hud = !dev.show_debug_hud;
@@ -711,12 +735,14 @@ pub fn update_settings_button_text_system(
 
 pub fn update_dev_button_text_system(
     dev_settings: Option<Res<DevSettings>>,
-    mut cull_text_query: Query<&mut Text, (With<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<DebugHudBtnText>)>,
-    mut shadow_text_query: Query<&mut Text, (With<ShadowsBtnText>, Without<BackfaceCullingBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<DebugHudBtnText>)>,
-    mut max_y_text_query: Query<&mut Text, (With<MaxYSkipBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<DebugHudBtnText>)>,
-    mut fog_text_query: Query<&mut Text, (With<DistanceFogBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<MeshBudgetBtnText>, Without<DebugHudBtnText>)>,
-    mut budget_text_query: Query<&mut Text, (With<MeshBudgetBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<DebugHudBtnText>)>,
-    mut hud_text_query: Query<&mut Text, (With<DebugHudBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>)>,
+    mut cull_text_query: Query<&mut Text, (With<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
+    mut shadow_text_query: Query<&mut Text, (With<ShadowsBtnText>, Without<BackfaceCullingBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
+    mut max_y_text_query: Query<&mut Text, (With<MaxYSkipBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
+    mut fog_text_query: Query<&mut Text, (With<DistanceFogBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
+    mut budget_text_query: Query<&mut Text, (With<MeshBudgetBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
+    mut async_text_query: Query<&mut Text, (With<AsyncMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<GreedyMeshingBtnText>, Without<DebugHudBtnText>)>,
+    mut greedy_text_query: Query<&mut Text, (With<GreedyMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<DebugHudBtnText>)>,
+    mut hud_text_query: Query<&mut Text, (With<DebugHudBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>)>,
 ) {
     let Some(dev) = dev_settings else { return; };
     if dev.is_changed() {
@@ -750,6 +776,18 @@ pub fn update_dev_button_text_system(
                 if dev.mesh_budget { "ON (6/frame smooth)" } else { "OFF (Spike benchmark)" }
             ));
         }
+        if let Ok(mut text) = async_text_query.single_mut() {
+            *text = Text::new(format!(
+                "Async Meshing: {}",
+                if dev.async_meshing { "ON (0ms main thread)" } else { "OFF (Sync frame spikes)" }
+            ));
+        }
+        if let Ok(mut text) = greedy_text_query.single_mut() {
+            *text = Text::new(format!(
+                "Greedy Meshing: {}",
+                if dev.greedy_meshing { "ON (-75% verts)" } else { "OFF (1x1 block quads)" }
+            ));
+        }
         if let Ok(mut text) = hud_text_query.single_mut() {
             *text = Text::new(format!(
                 "Dev HUD (F3): {}",
@@ -762,13 +800,23 @@ pub fn update_dev_button_text_system(
 pub fn update_dev_settings_system(
     dev_settings: Option<Res<DevSettings>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    world: Res<crate::world::WorldGrid>,
+    mut world: ResMut<crate::world::WorldGrid>,
     mut dir_lights: Query<&mut DirectionalLight>,
     mut fog_query: Query<&mut bevy::pbr::DistanceFog>,
+    mut last_greedy: Local<Option<bool>>,
 ) {
     let Some(dev) = dev_settings else { return; };
     if dev.is_changed() {
-        // 1. Update Backface Culling in real-time across ALL chunks
+        // 1. If greedy meshing changed, re-queue all loaded chunks for re-meshing
+        if last_greedy.map_or(false, |last| last != dev.greedy_meshing) {
+            let coords: Vec<_> = world.chunks.keys().copied().collect();
+            for coord in coords {
+                world.queue_mesh(coord);
+            }
+        }
+        *last_greedy = Some(dev.greedy_meshing);
+
+        // 2. Update Backface Culling in real-time across ALL chunks
         if let Some(ref mat_handle) = world.block_material {
             if let Some(mut mat) = materials.get_mut(mat_handle) {
                 mat.cull_mode = if dev.backface_culling {
@@ -779,12 +827,12 @@ pub fn update_dev_settings_system(
             }
         }
 
-        // 2. Update Directional Light Shadows in real-time
+        // 3. Update Directional Light Shadows in real-time
         for mut light in &mut dir_lights {
             light.shadow_maps_enabled = dev.shadows_enabled;
         }
 
-        // 3. Update Distance Fog in real-time
+        // 4. Update Distance Fog in real-time
         for mut fog in &mut fog_query {
             if dev.distance_fog {
                 fog.falloff = bevy::pbr::FogFalloff::Linear {

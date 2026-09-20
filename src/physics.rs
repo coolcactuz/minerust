@@ -402,32 +402,42 @@ pub fn update_physics_hud_system(
         fps.frames = 0;
 
         if let Ok(mut text) = text_query.single_mut() {
-            let (chunks_loaded, meshes_active, gen_q, mesh_q) = if let Some(ref w) = world {
-                (w.chunks.len(), w.chunk_entities.len(), w.generation_queue.len(), w.mesh_queue.len())
+            let (chunks_loaded, meshes_active, gen_q, mesh_q, total_verts) = if let Some(ref w) = world {
+                (w.chunks.len(), w.chunk_entities.len(), w.generation_queue.len(), w.mesh_queue.len(), w.total_vertices)
             } else {
-                (0, 0, 0, 0)
+                (0, 0, 0, 0, 0)
             };
 
-            let (cull, shadow, max_y, fog, budget) = if let Some(ref dev) = dev_settings {
+            let (cull, shadow, max_y, fog, budget, async_m, greedy) = if let Some(ref dev) = dev_settings {
                 (
                     if dev.backface_culling { "ON" } else { "OFF" },
                     if dev.shadows_enabled { "ON" } else { "OFF" },
                     if dev.max_y_skip { "ON" } else { "OFF" },
                     if dev.distance_fog { "ON" } else { "OFF" },
                     if dev.mesh_budget { "ON" } else { "OFF" },
+                    if dev.async_meshing { "ON" } else { "OFF" },
+                    if dev.greedy_meshing { "ON" } else { "OFF" },
                 )
             } else {
-                ("ON", "ON", "ON", "ON", "ON")
+                ("ON", "ON", "ON", "ON", "ON", "ON", "ON")
+            };
+
+            let verts_str = if total_verts >= 1_000_000 {
+                format!("{:.2}M", total_verts as f32 / 1_000_000.0)
+            } else if total_verts >= 1_000 {
+                format!("{:.0}k", total_verts as f32 / 1_000.0)
+            } else {
+                format!("{}", total_verts)
             };
 
             *text = Text::new(format!(
                 "⚡ MINERUST BENCHMARK [F3: Toggle]\n\
-                 FPS: {:.0} ({:.1} ms)\n\
+                 FPS: {:.0} ({:.1} ms) | Verts: {}\n\
                  Chunks: {} | Meshes: {} | GenQ: {} | MeshQ: {}\n\
-                 [Culling: {}] [Shadows: {}] [max_y: {}] [Fog: {}] [Budget: {}]",
-                fps.fps, fps.frame_time_ms,
+                 [Cull: {}] [Shadows: {}] [max_y: {}] [Fog: {}] [Budget: {}] [Async: {}] [Greedy: {}]",
+                fps.fps, fps.frame_time_ms, verts_str,
                 chunks_loaded, meshes_active, gen_q, mesh_q,
-                cull, shadow, max_y, fog, budget
+                cull, shadow, max_y, fog, budget, async_m, greedy
             ));
         }
     }

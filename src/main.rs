@@ -31,7 +31,7 @@ use physics::{
 };
 use world::{
     calculate_biome_and_height, generate_chunk, update_chunk_mesh, world_streaming_system,
-    ChunkGeneratorPool, WorldGrid, WorldSeed,
+    ChunkGeneratorPool, ChunkMesherPool, WorldGrid, WorldSeed,
 };
 
 fn main() {
@@ -62,6 +62,7 @@ fn main() {
         .init_resource::<DevSettings>()
         .init_resource::<FpsLimiter>()
         .init_resource::<ChunkGeneratorPool>()
+        .init_resource::<ChunkMesherPool>()
         .add_systems(
             Startup,
             (setup, setup_inventory_ui, setup_physics_ui, setup_menu_ui),
@@ -148,7 +149,7 @@ fn setup(
     }
 
     for coord in &initial_coords {
-        update_chunk_mesh(coord, &mut commands, &mut world, &mut meshes, &mut materials, true);
+        update_chunk_mesh(coord, &mut commands, &mut world, &mut meshes, &mut materials, true, true);
     }
 
     // 2. Calculate terrain height at spawn to position the player naturally

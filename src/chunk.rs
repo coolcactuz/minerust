@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::block::BlockType;
 
 pub const CHUNK_WIDTH: usize = 16;
@@ -7,7 +9,7 @@ pub const CHUNK_BLOCKS: usize = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
 
 #[derive(Clone)]
 pub struct Chunk {
-    pub blocks: Box<[BlockType; CHUNK_BLOCKS]>,
+    pub blocks: Arc<[BlockType; CHUNK_BLOCKS]>,
     pub max_y: usize,
 }
 
@@ -19,11 +21,12 @@ impl Default for Chunk {
 
 impl Chunk {
     pub fn new() -> Self {
+        let boxed: Box<[BlockType; CHUNK_BLOCKS]> = vec![BlockType::Air; CHUNK_BLOCKS]
+            .into_boxed_slice()
+            .try_into()
+            .unwrap_or_else(|_| panic!("Failed to allocate chunk"));
         Self {
-            blocks: vec![BlockType::Air; CHUNK_BLOCKS]
-                .into_boxed_slice()
-                .try_into()
-                .unwrap_or_else(|_| panic!("Failed to allocate chunk")),
+            blocks: Arc::from(boxed),
             max_y: 0,
         }
     }
@@ -61,7 +64,7 @@ impl Chunk {
     pub fn set(&mut self, x: i32, y: i32, z: i32, block: BlockType) {
         if Self::in_bounds(x, y, z) {
             let idx = Self::index(x as usize, y as usize, z as usize);
-            self.blocks[idx] = block;
+            Arc::make_mut(&mut self.blocks)[idx] = block;
             if block != BlockType::Air && (y as usize) > self.max_y {
                 self.max_y = y as usize;
             }
@@ -71,7 +74,7 @@ impl Chunk {
     #[inline(always)]
     pub fn set_fast(&mut self, x: usize, y: usize, z: usize, block: BlockType) {
         let idx = Self::index(x, y, z);
-        self.blocks[idx] = block;
+        Arc::make_mut(&mut self.blocks)[idx] = block;
         if block != BlockType::Air && y > self.max_y {
             self.max_y = y;
         }
@@ -91,9 +94,10 @@ impl Chunk {
         }
         let mut chunk = Self::new();
         let mut max_y = 0;
+        let mut_blocks = Arc::make_mut(&mut chunk.blocks);
         for (i, b) in bytes.iter().enumerate() {
             let block = BlockType::from_u8(*b);
-            chunk.blocks[i] = block;
+            mut_blocks[i] = block;
             if block != BlockType::Air {
                 let y = i / (CHUNK_WIDTH * CHUNK_DEPTH);
                 if y > max_y {

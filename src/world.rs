@@ -62,6 +62,7 @@ pub struct WorldGrid {
     pub chunk_entities: HashMap<IVec2, Entity>,
     pub modified_chunks: HashSet<IVec2>,
     pub in_progress_chunks: HashSet<IVec2>,
+    pub in_progress_meshes: HashSet<IVec2>,
     pub last_player_chunk: IVec2,
     pub generation_queue: Vec<IVec2>,
     pub mesh_queue: Vec<IVec2>,
@@ -70,6 +71,8 @@ pub struct WorldGrid {
     pub seed: WorldSeed,
     pub noise: NoiseGenerator,
     pub block_material: Option<Handle<StandardMaterial>>,
+    pub total_vertices: usize,
+    pub chunk_vertices: HashMap<IVec2, usize>,
 }
 
 impl Default for WorldGrid {
@@ -81,6 +84,7 @@ impl Default for WorldGrid {
             chunk_entities: HashMap::default(),
             modified_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
+            in_progress_meshes: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
             generation_queue: Vec::new(),
             mesh_queue: Vec::new(),
@@ -89,6 +93,8 @@ impl Default for WorldGrid {
             seed,
             noise,
             block_material: None,
+            total_vertices: 0,
+            chunk_vertices: HashMap::default(),
         }
     }
 }
@@ -109,6 +115,22 @@ impl Default for ChunkGeneratorPool {
     }
 }
 
+#[derive(Resource)]
+pub struct ChunkMesherPool {
+    pub tx: Sender<(IVec2, Option<Mesh>)>,
+    pub rx: Mutex<Receiver<(IVec2, Option<Mesh>)>>,
+}
+
+impl Default for ChunkMesherPool {
+    fn default() -> Self {
+        let (tx, rx) = channel();
+        Self {
+            tx,
+            rx: Mutex::new(rx),
+        }
+    }
+}
+
 impl WorldGrid {
     pub fn new(seed: WorldSeed) -> Self {
         let noise = NoiseGenerator::new(seed.0);
@@ -117,6 +139,7 @@ impl WorldGrid {
             chunk_entities: HashMap::default(),
             modified_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
+            in_progress_meshes: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
             generation_queue: Vec::new(),
             mesh_queue: Vec::new(),
@@ -125,6 +148,8 @@ impl WorldGrid {
             seed,
             noise,
             block_material: None,
+            total_vertices: 0,
+            chunk_vertices: HashMap::default(),
         }
     }
 
@@ -579,31 +604,25 @@ fn spawn_tree(chunk: &mut Chunk, lx: i32, h: i32, lz: i32, is_pine: bool) {
     }
 }
 
-/// Updates or creates the mesh for the specified chunk
-pub fn update_chunk_mesh(
-    coord: &IVec2,
+/// Applies or despawns a chunk mesh on the GPU
+pub fn apply_chunk_mesh(
+    coord: IVec2,
+    new_mesh: Option<Mesh>,
     commands: &mut Commands,
     world: &mut WorldGrid,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    max_y_skip: bool,
 ) {
-    let Some(chunk) = world.chunks.get(coord) else {
-        return;
-    };
-
-    let north = world.chunks.get(&(*coord + IVec2::new(0, 1)));
-    let south = world.chunks.get(&(*coord + IVec2::new(0, -1)));
-    let east = world.chunks.get(&(*coord + IVec2::new(1, 0)));
-    let west = world.chunks.get(&(*coord + IVec2::new(-1, 0)));
-
-    let new_mesh = build_chunk_mesh(chunk, north, south, east, west, max_y_skip);
-
     let world_pos = Vec3::new(
         (coord.x * CHUNK_WIDTH as i32) as f32,
         0.0,
         (coord.y * CHUNK_DEPTH as i32) as f32,
     );
+
+    // Track vertex counts
+    let new_vert_count = new_mesh.as_ref().map_or(0, |m| m.count_vertices());
+    let old_vert_count = world.chunk_vertices.insert(coord, new_vert_count).unwrap_or(0);
+    world.total_vertices = world.total_vertices.saturating_sub(old_vert_count) + new_vert_count;
 
     let material = world.block_material.clone().unwrap_or_else(|| {
         materials.add(StandardMaterial {
@@ -614,12 +633,12 @@ pub fn update_chunk_mesh(
         })
     });
 
-    if let Some(&entity) = world.chunk_entities.get(coord) {
+    if let Some(&entity) = world.chunk_entities.get(&coord) {
         if let Some(mesh) = new_mesh {
             commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
         } else {
             commands.entity(entity).despawn();
-            world.chunk_entities.remove(coord);
+            world.chunk_entities.remove(&coord);
         }
     } else if let Some(mesh) = new_mesh {
         let entity = commands
@@ -630,8 +649,31 @@ pub fn update_chunk_mesh(
             ))
             .id();
 
-        world.chunk_entities.insert(*coord, entity);
+        world.chunk_entities.insert(coord, entity);
     }
+}
+
+/// Updates or creates the mesh for the specified chunk synchronously
+pub fn update_chunk_mesh(
+    coord: &IVec2,
+    commands: &mut Commands,
+    world: &mut WorldGrid,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    max_y_skip: bool,
+    greedy: bool,
+) {
+    let Some(chunk) = world.chunks.get(coord) else {
+        return;
+    };
+
+    let north = world.chunks.get(&(*coord + IVec2::new(0, 1)));
+    let south = world.chunks.get(&(*coord + IVec2::new(0, -1)));
+    let east = world.chunks.get(&(*coord + IVec2::new(1, 0)));
+    let west = world.chunks.get(&(*coord + IVec2::new(-1, 0)));
+
+    let new_mesh = build_chunk_mesh(chunk, north, south, east, west, max_y_skip, greedy);
+    apply_chunk_mesh(*coord, new_mesh, commands, world, meshes, materials);
 }
 
 /// Continuous chunk streaming system based on player camera position with multithreaded generation
@@ -644,6 +686,7 @@ pub fn world_streaming_system(
     settings: Option<Res<GraphicsSettings>>,
     dev_settings: Option<Res<crate::menu::DevSettings>>,
     pool: Res<ChunkGeneratorPool>,
+    mesher_pool: Res<ChunkMesherPool>,
 ) {
     let Ok((cam_transform, mut projection, mut fog)) = camera_query.single_mut() else {
         return;
@@ -705,6 +748,10 @@ pub fn world_streaming_system(
 
         for coord in chunks_to_remove {
             world.queued_for_mesh.remove(&coord);
+            world.in_progress_meshes.remove(&coord);
+            if let Some(old_v) = world.chunk_vertices.remove(&coord) {
+                world.total_vertices = world.total_vertices.saturating_sub(old_v);
+            }
             // Despawn 3D mesh entity from GPU
             if let Some(entity) = world.chunk_entities.remove(&coord) {
                 commands.entity(entity).despawn();
@@ -784,7 +831,28 @@ pub fn world_streaming_system(
         }
     }
 
-    // 3. Process mesh queue with frame budget and player distance priority
+    // 3. Receive finished asynchronous meshes from background threads
+    if let Ok(rx) = mesher_pool.rx.lock() {
+        while let Ok((coord, mesh)) = rx.try_recv() {
+            world.in_progress_meshes.remove(&coord);
+
+            // If chunk was unloaded while meshing, ignore
+            if !world.chunks.contains_key(&coord) {
+                continue;
+            }
+
+            apply_chunk_mesh(
+                coord,
+                mesh,
+                &mut commands,
+                &mut world,
+                &mut meshes,
+                &mut materials,
+            );
+        }
+    }
+
+    // 4. Process mesh queue with frame budget, asynchronous dispatch, and distance priority
     if !world.mesh_queue.is_empty() {
         world.mesh_queue.sort_unstable_by_key(|c| {
             let diff = *c - player_chunk;
@@ -793,6 +861,8 @@ pub fn world_streaming_system(
 
         let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
         let budget_enabled = dev_settings.as_ref().map_or(true, |d| d.mesh_budget);
+        let async_meshing = dev_settings.as_ref().map_or(true, |d| d.async_meshing);
+        let greedy_meshing = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
         let max_meshes_per_frame = if budget_enabled { MAX_MESHES_PER_FRAME } else { usize::MAX };
 
         let mut meshed = 0;
@@ -803,14 +873,44 @@ pub fn world_streaming_system(
             if world.chunks.contains_key(&coord) {
                 let diff = coord - player_chunk;
                 if diff.x.abs() <= max_dist && diff.y.abs() <= max_dist {
-                    update_chunk_mesh(
-                        &coord,
-                        &mut commands,
-                        &mut world,
-                        &mut meshes,
-                        &mut materials,
-                        max_y_skip,
-                    );
+                    if async_meshing {
+                        if world.in_progress_meshes.contains(&coord) {
+                            continue;
+                        }
+                        world.in_progress_meshes.insert(coord);
+
+                        let chunk = world.chunks.get(&coord).cloned().unwrap();
+                        let north = world.chunks.get(&(coord + IVec2::new(0, 1))).cloned();
+                        let south = world.chunks.get(&(coord + IVec2::new(0, -1))).cloned();
+                        let east = world.chunks.get(&(coord + IVec2::new(1, 0))).cloned();
+                        let west = world.chunks.get(&(coord + IVec2::new(-1, 0))).cloned();
+
+                        let tx = mesher_pool.tx.clone();
+                        AsyncComputeTaskPool::get()
+                            .spawn(async move {
+                                let mesh = build_chunk_mesh(
+                                    &chunk,
+                                    north.as_ref(),
+                                    south.as_ref(),
+                                    east.as_ref(),
+                                    west.as_ref(),
+                                    max_y_skip,
+                                    greedy_meshing,
+                                );
+                                let _ = tx.send((coord, mesh));
+                            })
+                            .detach();
+                    } else {
+                        update_chunk_mesh(
+                            &coord,
+                            &mut commands,
+                            &mut world,
+                            &mut meshes,
+                            &mut materials,
+                            max_y_skip,
+                            greedy_meshing,
+                        );
+                    }
                     meshed += 1;
                 }
             }
