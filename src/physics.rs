@@ -340,7 +340,7 @@ pub fn setup_physics_ui(mut commands: Commands) {
                 position_type: PositionType::Absolute,
                 top: Val::Px(12.0),
                 left: Val::Px(12.0),
-                padding: UiRect::all(Val::Px(8.0)),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
                 border: UiRect::all(Val::Px(1.5)),
                 ..default()
             },
@@ -349,12 +349,12 @@ pub fn setup_physics_ui(mut commands: Commands) {
         ))
         .with_children(|parent| {
             parent.spawn((
-                Text::new("FPS: -- | X: 0.0 Y: 0.0 Z: 0.0 | Mode: Walking 🚶 [F: Fly]"),
+                Text::new("FPS: --"),
                 TextFont {
-                    font_size: FontSize::Px(12.0),
+                    font_size: FontSize::Px(14.0),
                     ..default()
                 },
-                TextColor(Color::srgb(0.9, 0.9, 0.95)),
+                TextColor(Color::srgb(0.2, 1.0, 0.4)),
                 PhysicsDebugText,
             ));
         });
@@ -363,7 +363,6 @@ pub fn setup_physics_ui(mut commands: Commands) {
 pub fn update_physics_hud_system(
     time: Res<Time>,
     mut fps: Local<FpsTracker>,
-    query: Query<(&Transform, &PlayerPhysics), With<FpsCamera>>,
     mut text_query: Query<&mut Text, With<PhysicsDebugText>>,
 ) {
     let dt = time.delta_secs();
@@ -375,31 +374,12 @@ pub fn update_physics_hud_system(
         fps.frame_time_ms = (fps.timer / fps.frames as f32) * 1000.0;
         fps.timer = 0.0;
         fps.frames = 0;
+
+        if let Ok(mut text) = text_query.single_mut() {
+            *text = Text::new(format!(
+                "FPS: {:.0} ({:.1} ms)",
+                fps.fps, fps.frame_time_ms
+            ));
+        }
     }
-
-    let Ok((transform, physics)) = query.single() else {
-        return;
-    };
-    let Ok(mut text) = text_query.single_mut() else {
-        return;
-    };
-
-    let px = transform.translation.x;
-    let py = transform.translation.y;
-    let pz = transform.translation.z;
-
-    let mode_str = if physics.is_flying {
-        "🕊️ Flight (Creative)"
-    } else if physics.in_water {
-        "🌊 Swimming"
-    } else if physics.is_grounded {
-        "🚶 Grounded"
-    } else {
-        "🪂 Airborne"
-    };
-
-    *text = Text::new(format!(
-        "FPS: {:.0} ({:.1} ms) | X: {:.1} Y: {:.1} Z: {:.1} | {} | [F] Toggle Flight",
-        fps.fps, fps.frame_time_ms, px, py, pz, mode_str
-    ));
 }

@@ -41,6 +41,7 @@ fn main() {
             primary_window: Some(Window {
                 title: format!("MineRust ⛏️🦀 - Seed: {}", seed.0),
                 resolution: WindowResolution::new(1280, 720),
+                present_mode: bevy::window::PresentMode::AutoNoVsync,
                 ..default()
             }),
             ..default()
