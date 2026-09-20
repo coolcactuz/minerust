@@ -50,7 +50,6 @@ pub struct DevSettings {
     pub greedy_meshing: bool,
     pub distance_lod: bool,
     pub lod_threshold: i32,
-    pub cull_submerged: bool,
     pub show_debug_hud: bool,
 }
 
@@ -66,7 +65,6 @@ impl Default for DevSettings {
             greedy_meshing: true,
             distance_lod: true,
             lod_threshold: 4,
-            cull_submerged: true,
             show_debug_hud: true,
         }
     }
@@ -119,7 +117,6 @@ pub enum MenuButtonAction {
     ToggleGreedyMeshing,
     ToggleDistanceLod,
     CycleLodThreshold,
-    ToggleCullSubmerged,
     ToggleDebugHud,
 }
 
@@ -173,9 +170,6 @@ pub struct DistanceLodBtnText;
 
 #[derive(Component)]
 pub struct LodThresholdBtnText;
-
-#[derive(Component)]
-pub struct CullSubmergedBtnText;
 
 #[derive(Component)]
 pub struct DebugHudBtnText;
@@ -412,7 +406,6 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     spawn_settings_button(btn_col, "Greedy Meshing: ON (-75% verts)", MenuButtonAction::ToggleGreedyMeshing, GreedyMeshingBtnText);
                     spawn_settings_button(btn_col, "Distance LOD: ON (Dynamic detail)", MenuButtonAction::ToggleDistanceLod, DistanceLodBtnText);
                     spawn_settings_button(btn_col, "LOD Distance: 4 Chunks (64m)", MenuButtonAction::CycleLodThreshold, LodThresholdBtnText);
-                    spawn_settings_button(btn_col, "Water Culls Seabed: ON", MenuButtonAction::ToggleCullSubmerged, CullSubmergedBtnText);
                     spawn_settings_button(btn_col, "Dev HUD (F3): ON", MenuButtonAction::ToggleDebugHud, DebugHudBtnText);
                     spawn_menu_button(btn_col, "◀ Back / Done", MenuButtonAction::BackFromDevSettings, true);
                 });
@@ -723,11 +716,6 @@ pub fn menu_button_click_system(
                         };
                     }
                 }
-                MenuButtonAction::ToggleCullSubmerged => {
-                    if let Some(ref mut dev) = dev_settings {
-                        dev.cull_submerged = !dev.cull_submerged;
-                    }
-                }
                 MenuButtonAction::ToggleDebugHud => {
                     if let Some(ref mut dev) = dev_settings {
                         dev.show_debug_hud = !dev.show_debug_hud;
@@ -778,17 +766,16 @@ pub fn update_settings_button_text_system(
 
 pub fn update_dev_button_text_system(
     dev_settings: Option<Res<DevSettings>>,
-    mut cull_text_query: Query<&mut Text, (With<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<CullSubmergedBtnText>, Without<DebugHudBtnText>)>,
-    mut shadow_text_query: Query<&mut Text, (With<ShadowsBtnText>, Without<BackfaceCullingBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<CullSubmergedBtnText>, Without<DebugHudBtnText>)>,
-    mut max_y_text_query: Query<&mut Text, (With<MaxYSkipBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<CullSubmergedBtnText>, Without<DebugHudBtnText>)>,
-    mut fog_text_query: Query<&mut Text, (With<DistanceFogBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<CullSubmergedBtnText>, Without<DebugHudBtnText>)>,
-    mut budget_text_query: Query<&mut Text, (With<MeshBudgetBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<CullSubmergedBtnText>, Without<DebugHudBtnText>)>,
-    mut async_text_query: Query<&mut Text, (With<AsyncMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<CullSubmergedBtnText>, Without<DebugHudBtnText>)>,
-    mut greedy_text_query: Query<&mut Text, (With<GreedyMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<CullSubmergedBtnText>, Without<DebugHudBtnText>)>,
-    mut lod_text_query: Query<&mut Text, (With<DistanceLodBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<LodThresholdBtnText>, Without<CullSubmergedBtnText>, Without<DebugHudBtnText>)>,
-    mut thresh_text_query: Query<&mut Text, (With<LodThresholdBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<CullSubmergedBtnText>, Without<DebugHudBtnText>)>,
-    mut cull_submerged_text_query: Query<&mut Text, (With<CullSubmergedBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
-    mut hud_text_query: Query<&mut Text, (With<DebugHudBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<CullSubmergedBtnText>)>,
+    mut cull_text_query: Query<&mut Text, (With<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut shadow_text_query: Query<&mut Text, (With<ShadowsBtnText>, Without<BackfaceCullingBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut max_y_text_query: Query<&mut Text, (With<MaxYSkipBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut fog_text_query: Query<&mut Text, (With<DistanceFogBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut budget_text_query: Query<&mut Text, (With<MeshBudgetBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut async_text_query: Query<&mut Text, (With<AsyncMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut greedy_text_query: Query<&mut Text, (With<GreedyMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut lod_text_query: Query<&mut Text, (With<DistanceLodBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
+    mut thresh_text_query: Query<&mut Text, (With<LodThresholdBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<DebugHudBtnText>)>,
+    mut hud_text_query: Query<&mut Text, (With<DebugHudBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>)>,
 ) {
     let Some(dev) = dev_settings else { return; };
     if dev.is_changed() {
@@ -847,12 +834,6 @@ pub fn update_dev_button_text_system(
                 dev.lod_threshold * 16
             ));
         }
-        if let Ok(mut text) = cull_submerged_text_query.single_mut() {
-            *text = Text::new(format!(
-                "Water Culls Seabed: {}",
-                if dev.cull_submerged { "ON (Hide underwater terrain)" } else { "OFF (Render full seabed)" }
-            ));
-        }
         if let Ok(mut text) = hud_text_query.single_mut() {
             *text = Text::new(format!(
                 "Dev HUD (F3): {}",
@@ -870,15 +851,13 @@ pub fn update_dev_settings_system(
     mut fog_query: Query<&mut bevy::pbr::DistanceFog>,
     mut last_greedy: Local<Option<bool>>,
     mut last_lod: Local<Option<(bool, i32)>>,
-    mut last_cull_submerged: Local<Option<bool>>,
 ) {
     let Some(dev) = dev_settings else { return; };
     if dev.is_changed() {
-        // 1. If greedy meshing, LOD settings, or water submerged culling changed, re-queue all loaded chunks for re-meshing
+        // 1. If greedy meshing or LOD settings changed, re-queue all loaded chunks for re-meshing
         let lod_config = (dev.distance_lod, dev.lod_threshold);
         if last_greedy.map_or(false, |last| last != dev.greedy_meshing)
             || last_lod.map_or(false, |last| last != lod_config)
-            || last_cull_submerged.map_or(false, |last| last != dev.cull_submerged)
         {
             let coords: Vec<_> = world.chunks.keys().copied().collect();
             for coord in coords {
@@ -887,7 +866,6 @@ pub fn update_dev_settings_system(
         }
         *last_greedy = Some(dev.greedy_meshing);
         *last_lod = Some(lod_config);
-        *last_cull_submerged = Some(dev.cull_submerged);
 
         // 2. Update Backface Culling in real-time across ALL chunks
         if let Some(ref mat_handle) = world.block_material {

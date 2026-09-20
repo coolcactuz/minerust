@@ -7,22 +7,29 @@ use crate::chunk::{Chunk, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
 use crate::texture::{block_texture, get_tile_uvs};
 
 #[inline(always)]
-fn should_render_face(block: BlockType, neighbor: BlockType, cull_submerged: bool) -> bool {
+fn should_render_face(block: BlockType, neighbor: BlockType, face: BlockFace) -> bool {
     if block == neighbor {
         return false;
     }
 
     if block.is_water() {
-        neighbor == BlockType::Air || neighbor == BlockType::Glass
-    } else if block.is_solid() {
-        if neighbor == BlockType::Water {
-            !cull_submerged
+        if face == BlockFace::Top {
+            neighbor == BlockType::Air || neighbor == BlockType::Glass
         } else {
-            neighbor.is_transparent()
+            false
         }
+    } else if block.is_solid() {
+        neighbor.is_transparent()
     } else {
         false
     }
+}
+
+#[inline(always)]
+fn can_merge_blocks(b1: BlockType, b2: BlockType) -> bool {
+    b1 == b2
+        || (matches!(b1, BlockType::Sand | BlockType::Gravel)
+            && matches!(b2, BlockType::Sand | BlockType::Gravel))
 }
 
 pub fn build_chunk_mesh(
@@ -33,7 +40,6 @@ pub fn build_chunk_mesh(
     west: Option<&Chunk>,
     max_y_skip: bool,
     greedy: bool,
-    cull_submerged: bool,
 ) -> Option<Mesh> {
     let max_y = if max_y_skip {
         chunk.max_y.min(CHUNK_HEIGHT - 1)
@@ -42,9 +48,9 @@ pub fn build_chunk_mesh(
     };
 
     if greedy {
-        build_chunk_mesh_greedy(chunk, north, south, east, west, max_y, cull_submerged)
+        build_chunk_mesh_greedy(chunk, north, south, east, west, max_y)
     } else {
-        build_chunk_mesh_standard(chunk, north, south, east, west, max_y, cull_submerged)
+        build_chunk_mesh_standard(chunk, north, south, east, west, max_y)
     }
 }
 
@@ -56,7 +62,6 @@ fn build_chunk_mesh_standard(
     east: Option<&Chunk>,
     west: Option<&Chunk>,
     max_y: usize,
-    cull_submerged: bool,
 ) -> Option<Mesh> {
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(2048);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(2048);
@@ -82,7 +87,7 @@ fn build_chunk_mesh_standard(
                 } else {
                     BlockType::Air
                 };
-                if should_render_face(block, top_neighbor, cull_submerged) {
+                if should_render_face(block, top_neighbor, BlockFace::Top) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::Top));
                     add_quad(
                         &mut positions,
@@ -100,12 +105,32 @@ fn build_chunk_mesh_standard(
                         tile_uvs,
                         1.0,
                     );
+
+                    // For surface water, also render downward-facing ceiling quad for underwater viewing
+                    if block.is_water() {
+                        add_quad(
+                            &mut positions,
+                            &mut normals,
+                            &mut uvs,
+                            &mut colors,
+                            &mut indices,
+                            [
+                                [fx, fy + 1.0, fz],
+                                [fx + 1.0, fy + 1.0, fz],
+                                [fx + 1.0, fy + 1.0, fz + 1.0],
+                                [fx, fy + 1.0, fz + 1.0],
+                            ],
+                            [0.0, -1.0, 0.0],
+                            tile_uvs,
+                            0.7,
+                        );
+                    }
                 }
 
                 // Bottom (-Y)
                 if ly > 0 {
                     let bottom_neighbor = chunk.get_fast(lx, ly - 1, lz);
-                    if should_render_face(block, bottom_neighbor, cull_submerged) {
+                    if should_render_face(block, bottom_neighbor, BlockFace::Bottom) {
                         let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::Bottom));
                         add_quad(
                             &mut positions,
@@ -134,7 +159,7 @@ fn build_chunk_mesh_standard(
                 } else {
                     BlockType::Air
                 };
-                if should_render_face(block, north_neighbor, cull_submerged) {
+                if should_render_face(block, north_neighbor, BlockFace::North) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::North));
                     add_quad(
                         &mut positions,
@@ -162,7 +187,7 @@ fn build_chunk_mesh_standard(
                 } else {
                     BlockType::Air
                 };
-                if should_render_face(block, south_neighbor, cull_submerged) {
+                if should_render_face(block, south_neighbor, BlockFace::South) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::South));
                     add_quad(
                         &mut positions,
@@ -190,7 +215,7 @@ fn build_chunk_mesh_standard(
                 } else {
                     BlockType::Air
                 };
-                if should_render_face(block, east_neighbor, cull_submerged) {
+                if should_render_face(block, east_neighbor, BlockFace::East) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::East));
                     add_quad(
                         &mut positions,
@@ -218,7 +243,7 @@ fn build_chunk_mesh_standard(
                 } else {
                     BlockType::Air
                 };
-                if should_render_face(block, west_neighbor, cull_submerged) {
+                if should_render_face(block, west_neighbor, BlockFace::West) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::West));
                     add_quad(
                         &mut positions,
@@ -263,7 +288,6 @@ fn build_chunk_mesh_greedy(
     east: Option<&Chunk>,
     west: Option<&Chunk>,
     max_y: usize,
-    cull_submerged: bool,
 ) -> Option<Mesh> {
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(1024);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(1024);
@@ -285,7 +309,7 @@ fn build_chunk_mesh_greedy(
                     } else {
                         BlockType::Air
                     };
-                    if should_render_face(block, top_neighbor, cull_submerged) {
+                    if should_render_face(block, top_neighbor, BlockFace::Top) {
                         top_mask[lz * CHUNK_WIDTH + lx] = Some(block);
                         any_face = true;
                         continue;
@@ -305,14 +329,19 @@ fn build_chunk_mesh_greedy(
                 if let Some(block) = top_mask[lz * CHUNK_WIDTH + lx] {
                     // Find width along X
                     let mut w = 1;
-                    while lx + w < CHUNK_WIDTH && top_mask[lz * CHUNK_WIDTH + (lx + w)] == Some(block) {
+                    while lx + w < CHUNK_WIDTH
+                        && top_mask[lz * CHUNK_WIDTH + (lx + w)]
+                            .map_or(false, |b| can_merge_blocks(block, b))
+                    {
                         w += 1;
                     }
                     // Find depth along Z
                     let mut h = 1;
                     'outer_top: while lz + h < CHUNK_DEPTH {
                         for k in 0..w {
-                            if top_mask[(lz + h) * CHUNK_WIDTH + (lx + k)] != Some(block) {
+                            if !top_mask[(lz + h) * CHUNK_WIDTH + (lx + k)]
+                                .map_or(false, |b| can_merge_blocks(block, b))
+                            {
                                 break 'outer_top;
                             }
                         }
@@ -346,6 +375,26 @@ fn build_chunk_mesh_greedy(
                         tile_uvs,
                         1.0,
                     );
+
+                    // For surface water, also render downward-facing ceiling quad for underwater viewing
+                    if block.is_water() {
+                        add_quad(
+                            &mut positions,
+                            &mut normals,
+                            &mut uvs,
+                            &mut colors,
+                            &mut indices,
+                            [
+                                [fx, fy + 1.0, fz],
+                                [fx + fw, fy + 1.0, fz],
+                                [fx + fw, fy + 1.0, fz + fh],
+                                [fx, fy + 1.0, fz + fh],
+                            ],
+                            [0.0, -1.0, 0.0],
+                            tile_uvs,
+                            0.7,
+                        );
+                    }
                 }
             }
         }
@@ -361,7 +410,7 @@ fn build_chunk_mesh_greedy(
                 let block = chunk.get_fast(lx, ly, lz);
                 if block != BlockType::Air {
                     let bottom_neighbor = chunk.get_fast(lx, ly - 1, lz);
-                    if should_render_face(block, bottom_neighbor, cull_submerged) {
+                    if should_render_face(block, bottom_neighbor, BlockFace::Bottom) {
                         bot_mask[lz * CHUNK_WIDTH + lx] = Some(block);
                         any_face = true;
                         continue;
@@ -379,13 +428,18 @@ fn build_chunk_mesh_greedy(
             for lx in 0..CHUNK_WIDTH {
                 if let Some(block) = bot_mask[lz * CHUNK_WIDTH + lx] {
                     let mut w = 1;
-                    while lx + w < CHUNK_WIDTH && bot_mask[lz * CHUNK_WIDTH + (lx + w)] == Some(block) {
+                    while lx + w < CHUNK_WIDTH
+                        && bot_mask[lz * CHUNK_WIDTH + (lx + w)]
+                            .map_or(false, |b| can_merge_blocks(block, b))
+                    {
                         w += 1;
                     }
                     let mut h = 1;
                     'outer_bot: while lz + h < CHUNK_DEPTH {
                         for k in 0..w {
-                            if bot_mask[(lz + h) * CHUNK_WIDTH + (lx + k)] != Some(block) {
+                            if !bot_mask[(lz + h) * CHUNK_WIDTH + (lx + k)]
+                                .map_or(false, |b| can_merge_blocks(block, b))
+                            {
                                 break 'outer_bot;
                             }
                         }
@@ -442,7 +496,7 @@ fn build_chunk_mesh_greedy(
                     } else {
                         BlockType::Air
                     };
-                    if should_render_face(block, north_neighbor, cull_submerged) {
+                    if should_render_face(block, north_neighbor, BlockFace::North) {
                         side_mask[ly * CHUNK_WIDTH + lx] = Some(block);
                         any_face = true;
                         continue;
@@ -460,13 +514,18 @@ fn build_chunk_mesh_greedy(
             for lx in 0..CHUNK_WIDTH {
                 if let Some(block) = side_mask[ly * CHUNK_WIDTH + lx] {
                     let mut w = 1;
-                    while lx + w < CHUNK_WIDTH && side_mask[ly * CHUNK_WIDTH + (lx + w)] == Some(block) {
+                    while lx + w < CHUNK_WIDTH
+                        && side_mask[ly * CHUNK_WIDTH + (lx + w)]
+                            .map_or(false, |b| can_merge_blocks(block, b))
+                    {
                         w += 1;
                     }
                     let mut h = 1;
                     'outer_north: while ly + h <= max_y {
                         for k in 0..w {
-                            if side_mask[(ly + h) * CHUNK_WIDTH + (lx + k)] != Some(block) {
+                            if !side_mask[(ly + h) * CHUNK_WIDTH + (lx + k)]
+                                .map_or(false, |b| can_merge_blocks(block, b))
+                            {
                                 break 'outer_north;
                             }
                         }
@@ -519,7 +578,7 @@ fn build_chunk_mesh_greedy(
                     } else {
                         BlockType::Air
                     };
-                    if should_render_face(block, south_neighbor, cull_submerged) {
+                    if should_render_face(block, south_neighbor, BlockFace::South) {
                         side_mask[ly * CHUNK_WIDTH + lx] = Some(block);
                         any_face = true;
                         continue;
@@ -537,13 +596,18 @@ fn build_chunk_mesh_greedy(
             for lx in 0..CHUNK_WIDTH {
                 if let Some(block) = side_mask[ly * CHUNK_WIDTH + lx] {
                     let mut w = 1;
-                    while lx + w < CHUNK_WIDTH && side_mask[ly * CHUNK_WIDTH + (lx + w)] == Some(block) {
+                    while lx + w < CHUNK_WIDTH
+                        && side_mask[ly * CHUNK_WIDTH + (lx + w)]
+                            .map_or(false, |b| can_merge_blocks(block, b))
+                    {
                         w += 1;
                     }
                     let mut h = 1;
                     'outer_south: while ly + h <= max_y {
                         for k in 0..w {
-                            if side_mask[(ly + h) * CHUNK_WIDTH + (lx + k)] != Some(block) {
+                            if !side_mask[(ly + h) * CHUNK_WIDTH + (lx + k)]
+                                .map_or(false, |b| can_merge_blocks(block, b))
+                            {
                                 break 'outer_south;
                             }
                         }
@@ -596,7 +660,7 @@ fn build_chunk_mesh_greedy(
                     } else {
                         BlockType::Air
                     };
-                    if should_render_face(block, east_neighbor, cull_submerged) {
+                    if should_render_face(block, east_neighbor, BlockFace::East) {
                         side_mask[ly * CHUNK_DEPTH + lz] = Some(block);
                         any_face = true;
                         continue;
@@ -614,13 +678,18 @@ fn build_chunk_mesh_greedy(
             for lz in 0..CHUNK_DEPTH {
                 if let Some(block) = side_mask[ly * CHUNK_DEPTH + lz] {
                     let mut w = 1;
-                    while lz + w < CHUNK_DEPTH && side_mask[ly * CHUNK_DEPTH + (lz + w)] == Some(block) {
+                    while lz + w < CHUNK_DEPTH
+                        && side_mask[ly * CHUNK_DEPTH + (lz + w)]
+                            .map_or(false, |b| can_merge_blocks(block, b))
+                    {
                         w += 1;
                     }
                     let mut h = 1;
                     'outer_east: while ly + h <= max_y {
                         for k in 0..w {
-                            if side_mask[(ly + h) * CHUNK_DEPTH + (lz + k)] != Some(block) {
+                            if !side_mask[(ly + h) * CHUNK_DEPTH + (lz + k)]
+                                .map_or(false, |b| can_merge_blocks(block, b))
+                            {
                                 break 'outer_east;
                             }
                         }
@@ -673,7 +742,7 @@ fn build_chunk_mesh_greedy(
                     } else {
                         BlockType::Air
                     };
-                    if should_render_face(block, west_neighbor, cull_submerged) {
+                    if should_render_face(block, west_neighbor, BlockFace::West) {
                         side_mask[ly * CHUNK_DEPTH + lz] = Some(block);
                         any_face = true;
                         continue;
@@ -691,13 +760,18 @@ fn build_chunk_mesh_greedy(
             for lz in 0..CHUNK_DEPTH {
                 if let Some(block) = side_mask[ly * CHUNK_DEPTH + lz] {
                     let mut w = 1;
-                    while lz + w < CHUNK_DEPTH && side_mask[ly * CHUNK_DEPTH + (lz + w)] == Some(block) {
+                    while lz + w < CHUNK_DEPTH
+                        && side_mask[ly * CHUNK_DEPTH + (lz + w)]
+                            .map_or(false, |b| can_merge_blocks(block, b))
+                    {
                         w += 1;
                     }
                     let mut h = 1;
                     'outer_west: while ly + h <= max_y {
                         for k in 0..w {
-                            if side_mask[(ly + h) * CHUNK_DEPTH + (lz + k)] != Some(block) {
+                            if !side_mask[(ly + h) * CHUNK_DEPTH + (lz + k)]
+                                .map_or(false, |b| can_merge_blocks(block, b))
+                            {
                                 break 'outer_west;
                             }
                         }
@@ -796,8 +870,8 @@ mod tests {
             }
         }
 
-        let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false, true).unwrap();
-        let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true, true).unwrap();
+        let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+        let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
 
         let std_verts = mesh_standard.count_vertices();
         let greedy_verts = mesh_greedy.count_vertices();
@@ -808,25 +882,62 @@ mod tests {
     }
 
     #[test]
-    fn test_cull_submerged_terrain_reduces_water_vertices() {
+    fn test_water_renders_only_on_surface() {
         let mut chunk = Chunk::new();
-        // Fill a 4x4 seabed of Sand at y = 10 and Water at y = 11
+        // Fill a 4x4 ocean column from y = 10 to y = 20 with Water
         for lx in 0..4 {
             for lz in 0..4 {
-                chunk.set(lx, 10, lz, BlockType::Sand);
+                for ly in 10..=20 {
+                    chunk.set(lx, ly, lz, BlockType::Water);
+                }
+            }
+        }
+
+        // Greedy meshing of this 4x4 water column
+        let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+        // Only the surface (y = 20) should render: 1 top quad (4 verts) + 1 underside quad (4 verts) = 8 vertices total!
+        // No side faces or bottom faces for the 10 layers of water below!
+        assert_eq!(mesh.count_vertices(), 8);
+    }
+
+    #[test]
+    fn test_seabed_sand_gravel_greedy_merging() {
+        let mut chunk = Chunk::new();
+        // Create an alternating checkerboard of Sand and Gravel on the seabed at y = 10, covered with Water at y = 11
+        for lx in 0..4 {
+            for lz in 0..4 {
+                let block = if (lx + lz) % 2 == 0 {
+                    BlockType::Sand
+                } else {
+                    BlockType::Gravel
+                };
+                chunk.set(lx, 10, lz, block);
                 chunk.set(lx, 11, lz, BlockType::Water);
             }
         }
 
-        // Without culling submerged terrain: Sand top face and Water top face are both meshed
-        let mesh_unculled = build_chunk_mesh(&chunk, None, None, None, None, true, true, false).unwrap();
-        // With culling submerged terrain: Sand top face is culled by water
-        let mesh_culled = build_chunk_mesh(&chunk, None, None, None, None, true, true, true).unwrap();
+        let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+        let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
 
-        let unculled_verts = mesh_unculled.count_vertices();
-        let culled_verts = mesh_culled.count_vertices();
+        let std_verts = mesh_standard.count_vertices();
+        let greedy_verts = mesh_greedy.count_vertices();
 
-        assert!(culled_verts < unculled_verts, "Culled mesh should have fewer vertices than unculled mesh");
+        // In greedy meshing, the alternating sand and gravel seabed merges into a single 4x4 quad!
+        assert!(greedy_verts < std_verts);
+    }
+
+    #[test]
+    fn test_submerged_terrain_renders_against_water_no_holes() {
+        let mut chunk = Chunk::new();
+        // Sand block at y = 10, Water above it at y = 11
+        chunk.set(0, 10, 0, BlockType::Sand);
+        chunk.set(0, 11, 0, BlockType::Water);
+
+        let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+        // Sand must render its top face at y = 10 against the water at y = 11!
+        // Water at y = 11 also renders surface top and ceiling faces.
+        // Total faces: Sand (6 faces = 24 verts) + Water (2 faces = 8 verts) = 32 verts.
+        assert_eq!(mesh.count_vertices(), 32);
     }
 }
 
