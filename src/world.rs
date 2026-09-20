@@ -14,7 +14,8 @@ use crate::noise::NoiseGenerator;
 
 pub const SEA_LEVEL: i32 = 128;
 pub const VIEW_DISTANCE: i32 = 16;
-pub const MAX_CHUNK_DISPATCH_PER_FRAME: usize = 32;
+pub const MAX_CHUNK_DISPATCH_PER_FRAME: usize = 12;
+pub const MAX_MESHES_PER_FRAME: usize = 6;
 
 /// Represents the world seed (numeric or derived from string/text)
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -63,6 +64,8 @@ pub struct WorldGrid {
     pub in_progress_chunks: HashSet<IVec2>,
     pub last_player_chunk: IVec2,
     pub generation_queue: Vec<IVec2>,
+    pub mesh_queue: Vec<IVec2>,
+    pub queued_for_mesh: HashSet<IVec2>,
     pub save_dir: PathBuf,
     pub seed: WorldSeed,
     pub noise: NoiseGenerator,
@@ -80,6 +83,8 @@ impl Default for WorldGrid {
             in_progress_chunks: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
             generation_queue: Vec::new(),
+            mesh_queue: Vec::new(),
+            queued_for_mesh: HashSet::default(),
             save_dir: PathBuf::from("saves/world/chunks"),
             seed,
             noise,
@@ -114,10 +119,19 @@ impl WorldGrid {
             in_progress_chunks: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
             generation_queue: Vec::new(),
+            mesh_queue: Vec::new(),
+            queued_for_mesh: HashSet::default(),
             save_dir: PathBuf::from(format!("saves/world_{}/chunks", seed.0)),
             seed,
             noise,
             block_material: None,
+        }
+    }
+
+    #[inline]
+    pub fn queue_mesh(&mut self, coord: IVec2) {
+        if self.queued_for_mesh.insert(coord) {
+            self.mesh_queue.push(coord);
         }
     }
 
@@ -592,7 +606,7 @@ pub fn update_chunk_mesh(
 
     let material = world.block_material.clone().unwrap_or_else(|| {
         materials.add(StandardMaterial {
-            cull_mode: None,
+            cull_mode: Some(bevy::render::render_resource::Face::Back),
             perceptual_roughness: 0.85,
             reflectance: 0.15,
             ..default()
@@ -622,14 +636,14 @@ pub fn update_chunk_mesh(
 /// Continuous chunk streaming system based on player camera position with multithreaded generation
 pub fn world_streaming_system(
     mut commands: Commands,
-    camera_query: Query<&Transform, With<FpsCamera>>,
+    mut camera_query: Query<(&Transform, &mut Projection, Option<&mut DistanceFog>), With<FpsCamera>>,
     mut world: ResMut<WorldGrid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     settings: Option<Res<GraphicsSettings>>,
     pool: Res<ChunkGeneratorPool>,
 ) {
-    let Ok(cam_transform) = camera_query.single() else {
+    let Ok((cam_transform, mut projection, mut fog)) = camera_query.single_mut() else {
         return;
     };
 
@@ -639,6 +653,18 @@ pub fn world_streaming_system(
 
     let view_dist = settings.as_ref().map_or(VIEW_DISTANCE, |s| s.view_distance);
     let settings_changed = settings.as_ref().map_or(false, |s| s.is_changed());
+
+    if settings_changed {
+        if let Projection::Perspective(ref mut persp) = *projection {
+            persp.far = ((view_dist + 4) * 16) as f32 * 1.5;
+        }
+        if let Some(ref mut fog) = fog {
+            fog.falloff = FogFalloff::Linear {
+                start: (view_dist * 16) as f32 * 0.70,
+                end: (view_dist * 16) as f32 * 0.95,
+            };
+        }
+    }
 
     if player_chunk != world.last_player_chunk || settings_changed {
         world.last_player_chunk = player_chunk;
@@ -665,7 +691,7 @@ pub fn world_streaming_system(
 
         world.generation_queue = needed_chunks;
 
-        let max_dist = view_dist + 2;
+        let max_dist = view_dist + 3;
         let mut chunks_to_remove = Vec::new();
 
         for coord in world.chunks.keys() {
@@ -676,6 +702,7 @@ pub fn world_streaming_system(
         }
 
         for coord in chunks_to_remove {
+            world.queued_for_mesh.remove(&coord);
             // Despawn 3D mesh entity from GPU
             if let Some(entity) = world.chunk_entities.remove(&coord) {
                 commands.entity(entity).despawn();
@@ -724,8 +751,7 @@ pub fn world_streaming_system(
     }
 
     // 2. Receive finished chunks from background threads and queue for meshing
-    let max_dist = view_dist + 2;
-    let mut chunks_to_mesh: Vec<IVec2> = Vec::new();
+    let max_dist = view_dist + 3;
 
     if let Ok(rx) = pool.rx.lock() {
         while let Ok((coord, chunk, from_disk)) = rx.try_recv() {
@@ -740,34 +766,47 @@ pub fn world_streaming_system(
                 world.modified_chunks.insert(coord);
             }
             world.chunks.insert(coord, chunk);
-            chunks_to_mesh.push(coord);
+            world.queue_mesh(coord);
 
+            // Only queue neighbor chunks if they already have an active GPU mesh that needs seam update
             for neighbor_coord in [
                 coord + IVec2::new(-1, 0),
                 coord + IVec2::new(1, 0),
                 coord + IVec2::new(0, -1),
                 coord + IVec2::new(0, 1),
             ] {
-                if world.chunks.contains_key(&neighbor_coord) {
-                    chunks_to_mesh.push(neighbor_coord);
+                if world.chunk_entities.contains_key(&neighbor_coord) {
+                    world.queue_mesh(neighbor_coord);
                 }
             }
         }
     }
 
-    // 3. Update meshes for all affected chunks (once per frame per unique chunk)
-    if !chunks_to_mesh.is_empty() {
-        chunks_to_mesh.sort_unstable_by_key(|c| (c.x, c.y));
-        chunks_to_mesh.dedup();
+    // 3. Process mesh queue with frame budget and player distance priority
+    if !world.mesh_queue.is_empty() {
+        world.mesh_queue.sort_unstable_by_key(|c| {
+            let diff = *c - player_chunk;
+            -(diff.x * diff.x + diff.y * diff.y)
+        });
 
-        for coord in chunks_to_mesh {
-            update_chunk_mesh(
-                &coord,
-                &mut commands,
-                &mut world,
-                &mut meshes,
-                &mut materials,
-            );
+        let mut meshed = 0;
+        while meshed < MAX_MESHES_PER_FRAME && !world.mesh_queue.is_empty() {
+            let coord = world.mesh_queue.pop().unwrap();
+            world.queued_for_mesh.remove(&coord);
+
+            if world.chunks.contains_key(&coord) {
+                let diff = coord - player_chunk;
+                if diff.x.abs() <= max_dist && diff.y.abs() <= max_dist {
+                    update_chunk_mesh(
+                        &coord,
+                        &mut commands,
+                        &mut world,
+                        &mut meshes,
+                        &mut materials,
+                    );
+                    meshed += 1;
+                }
+            }
         }
     }
 }

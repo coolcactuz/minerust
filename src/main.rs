@@ -151,7 +151,7 @@ fn setup(
     let (spawn_biome, spawn_y, _) = calculate_biome_and_height(0.0, 0.0, &noise);
     let player_y = (spawn_y as f32 + 4.0).max(130.0);
 
-    // 3. Spawn FPS camera with integrated AmbientLight, extended far clip plane (2500m), and PlayerPhysics component
+    // 3. Spawn FPS camera with integrated AmbientLight, DistanceFog, and PlayerPhysics component
     commands.spawn((
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
@@ -163,18 +163,33 @@ fn setup(
             brightness: 320.0,
             ..default()
         },
+        DistanceFog {
+            color: Color::srgb(0.70, 0.82, 0.95),
+            falloff: FogFalloff::Linear {
+                start: 180.0,
+                end: 255.0,
+            },
+            ..default()
+        },
         Transform::from_xyz(0.0, player_y, 0.0).looking_at(Vec3::new(20.0, player_y - 2.0, 20.0), Vec3::Y),
         FpsCamera::default(),
         PlayerPhysics::default(),
     ));
 
-    // 4. Sun light (Directional Light) with shadows
+    // 4. Sun light (Directional Light) with optimized shadow distance
     commands.spawn((
         DirectionalLight {
             illuminance: 14_000.0,
             shadow_maps_enabled: true,
             ..default()
         },
+        bevy::light::CascadeShadowConfigBuilder {
+            first_cascade_far_bound: 30.0,
+            maximum_distance: 120.0,
+            num_cascades: 2,
+            ..default()
+        }
+        .build(),
         Transform::from_xyz(200.0, 450.0, 150.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 

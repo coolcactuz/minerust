@@ -8,6 +8,7 @@ pub const CHUNK_BLOCKS: usize = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
 #[derive(Clone)]
 pub struct Chunk {
     pub blocks: Box<[BlockType; CHUNK_BLOCKS]>,
+    pub max_y: usize,
 }
 
 impl Default for Chunk {
@@ -23,6 +24,7 @@ impl Chunk {
                 .into_boxed_slice()
                 .try_into()
                 .unwrap_or_else(|_| panic!("Failed to allocate chunk")),
+            max_y: 0,
         }
     }
 
@@ -60,6 +62,9 @@ impl Chunk {
         if Self::in_bounds(x, y, z) {
             let idx = Self::index(x as usize, y as usize, z as usize);
             self.blocks[idx] = block;
+            if block != BlockType::Air && (y as usize) > self.max_y {
+                self.max_y = y as usize;
+            }
         }
     }
 
@@ -67,6 +72,9 @@ impl Chunk {
     pub fn set_fast(&mut self, x: usize, y: usize, z: usize, block: BlockType) {
         let idx = Self::index(x, y, z);
         self.blocks[idx] = block;
+        if block != BlockType::Air && y > self.max_y {
+            self.max_y = y;
+        }
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -82,9 +90,18 @@ impl Chunk {
             return None;
         }
         let mut chunk = Self::new();
+        let mut max_y = 0;
         for (i, b) in bytes.iter().enumerate() {
-            chunk.blocks[i] = BlockType::from_u8(*b);
+            let block = BlockType::from_u8(*b);
+            chunk.blocks[i] = block;
+            if block != BlockType::Air {
+                let y = i / (CHUNK_WIDTH * CHUNK_DEPTH);
+                if y > max_y {
+                    max_y = y;
+                }
+            }
         }
+        chunk.max_y = max_y;
         Some(chunk)
     }
 }

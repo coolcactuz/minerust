@@ -19,7 +19,8 @@ pub fn build_chunk_mesh(
     let mut colors: Vec<[f32; 4]> = Vec::with_capacity(2048);
     let mut indices: Vec<u32> = Vec::with_capacity(3072);
 
-    for ly in 0..CHUNK_HEIGHT {
+    let max_y = chunk.max_y.min(CHUNK_HEIGHT - 1);
+    for ly in 0..=max_y {
         let fy = ly as f32;
         for lz in 0..CHUNK_DEPTH {
             let fz = lz as f32;
