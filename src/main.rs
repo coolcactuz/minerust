@@ -151,9 +151,13 @@ fn setup(
     let (spawn_biome, spawn_y, _) = calculate_biome_and_height(0.0, 0.0, &noise);
     let player_y = (spawn_y as f32 + 4.0).max(28.0);
 
-    // 3. Spawn FPS camera with integrated AmbientLight and PlayerPhysics component
+    // 3. Spawn FPS camera with integrated AmbientLight, extended far clip plane (2500m), and PlayerPhysics component
     commands.spawn((
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            far: 2500.0,
+            ..default()
+        }),
         AmbientLight {
             color: Color::WHITE,
             brightness: 320.0,

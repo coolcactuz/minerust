@@ -43,7 +43,7 @@ pub struct GraphicsSettings {
     pub vsync: bool,
     pub fullscreen: bool,
     pub fps_cap: Option<u32>, // None = Uncapped, Some(60), Some(120), Some(144)
-    pub view_distance: i32,   // 8, 16, 24
+    pub view_distance: i32,   // 8, 16, 24, 32, 64
 }
 
 impl Default for GraphicsSettings {
@@ -52,7 +52,7 @@ impl Default for GraphicsSettings {
             vsync: true,
             fullscreen: false,
             fps_cap: None,
-            view_distance: 16,
+            view_distance: 64,
         }
     }
 }
@@ -496,8 +496,10 @@ pub fn menu_button_click_system(
                     settings.view_distance = match settings.view_distance {
                         8 => 16,
                         16 => 24,
-                        24 => 8,
-                        _ => 16,
+                        24 => 32,
+                        32 => 64,
+                        64 => 8,
+                        _ => 64,
                     };
                 }
             }
