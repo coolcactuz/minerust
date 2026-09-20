@@ -223,6 +223,7 @@ fn add_quad(
 
     uvs.extend_from_slice(&quad_uvs);
 
+    // Standard Bevy Cuboid CCW winding: 0, 1, 2, 2, 3, 0
     indices.extend_from_slice(&[
         start_idx,
         start_idx + 1,

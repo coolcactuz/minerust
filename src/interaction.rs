@@ -116,7 +116,7 @@ pub fn block_interaction_system(
     let ray_dir = cam_transform.forward();
 
     if let Some(hit) = voxel_raycast(ray_origin, *ray_dir, 8.0, &world) {
-        // Disegna un contorno wireframe attorno al blocco puntato
+        // Draw wireframe bounding box around targeted block
         let center = hit.hit_block.as_vec3() + Vec3::splat(0.5);
         gizmos.cube(
             Transform::from_translation(center).with_scale(Vec3::splat(1.005)),
@@ -125,14 +125,14 @@ pub fn block_interaction_system(
 
         let mut dirty_coords = Vec::new();
 
-        // Tasto sinistro: Spacca blocco (eccetto Bedrock indistruttibile)
+        // Left click: Break block (except indestructible Bedrock)
         if mouse_buttons.just_pressed(MouseButton::Left) {
             if hit.hit_block.y > 0 && world.get_block(hit.hit_block) != BlockType::Bedrock {
                 let affected = world.set_block(hit.hit_block, BlockType::Air);
                 dirty_coords.extend(affected);
             }
         }
-        // Tasto destro: Piazza blocco (se non collide con il corpo del giocatore)
+        // Right click: Place block (if not colliding with the player's body)
         else if mouse_buttons.just_pressed(MouseButton::Right) {
             let block_to_place = inventory.selected_block();
             let mut can_place = true;
@@ -163,7 +163,7 @@ pub fn block_interaction_system(
             }
         }
 
-        // Se sono stati modificati blocchi, rigenera le mesh dei chunk coinvolti
+        // If blocks were modified, regenerate meshes for all affected chunks
         if !dirty_coords.is_empty() {
             dirty_coords.sort_unstable_by_key(|c| (c.x, c.y));
             dirty_coords.dedup();

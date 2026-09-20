@@ -1,4 +1,4 @@
-// Modulo di rumore procedurale (Perlin, FBM, Ridged Multi-Fractal) deterministico basato su Seed
+// Deterministic procedural noise module (Perlin, FBM, Ridged Multi-Fractal) based on Seed
 
 #[derive(Clone, Debug)]
 pub struct NoiseGenerator {
@@ -21,7 +21,7 @@ impl NoiseGenerator {
             p[i] = i as u8;
         }
 
-        // SplitMix64 PRNG: algoritmo robusto e deterministico a 64 bit
+        // SplitMix64 PRNG: robust, deterministic 64-bit algorithm
         let mut s = seed.wrapping_add(0x9e3779b97f4a7c15);
         let mut next_u64 = || {
             s = s.wrapping_add(0x9e3779b97f4a7c15);
@@ -31,7 +31,7 @@ impl NoiseGenerator {
             z ^ (z >> 31)
         };
 
-        // Fisher-Yates shuffle per mescolare la tabella in base al seed
+        // Fisher-Yates shuffle to randomize permutation table using the seed
         for i in (1..256).rev() {
             let j = (next_u64() % (i as u64 + 1)) as usize;
             p.swap(i, j);
@@ -45,7 +45,7 @@ impl NoiseGenerator {
         Self { seed, perm }
     }
 
-    /// Rumore di Perlin 2D standard in [-1.0, 1.0]
+    /// Standard 2D Perlin noise in [-1.0, 1.0]
     pub fn perlin_2d(&self, x: f64, y: f64) -> f64 {
         let xi = (x.floor() as i64 & 255) as usize;
         let yi = (y.floor() as i64 & 255) as usize;
@@ -67,7 +67,7 @@ impl NoiseGenerator {
         lerp(x1, x2, v)
     }
 
-    /// Rumore di Perlin 3D standard in [-1.0, 1.0]
+    /// Standard 3D Perlin noise in [-1.0, 1.0]
     pub fn perlin_3d(&self, x: f64, y: f64, z: f64) -> f64 {
         let xi = (x.floor() as i64 & 255) as usize;
         let yi = (y.floor() as i64 & 255) as usize;
@@ -108,7 +108,7 @@ impl NoiseGenerator {
         lerp(y1, y2, w)
     }
 
-    /// Fractal Brownian Motion (FBM) 2D per altitudini e biomi
+    /// 2D Fractal Brownian Motion (FBM) for terrain elevation and biomes
     pub fn fbm_2d(&self, x: f64, y: f64, octaves: usize, persistence: f64, lacunarity: f64) -> f64 {
         let mut total = 0.0;
         let mut frequency = 1.0;
@@ -125,7 +125,7 @@ impl NoiseGenerator {
         total / max_value
     }
 
-    /// Ridged Multi-Fractal 2D: ideale per vette montuose e creste rocciose
+    /// 2D Ridged Multi-Fractal: ideal for mountain peaks and rocky ridges
     pub fn ridged_fbm_2d(&self, x: f64, y: f64, octaves: usize, persistence: f64, lacunarity: f64) -> f64 {
         let mut total = 0.0;
         let mut frequency = 1.0;
@@ -143,7 +143,7 @@ impl NoiseGenerator {
         total / max_value
     }
 
-    /// FBM 3D per caverne e gallerie sotterranee
+    /// 3D FBM for underground caves and tunnels
     pub fn fbm_3d(&self, x: f64, y: f64, z: f64, octaves: usize, persistence: f64, lacunarity: f64) -> f64 {
         let mut total = 0.0;
         let mut frequency = 1.0;

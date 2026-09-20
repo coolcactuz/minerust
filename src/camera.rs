@@ -37,7 +37,7 @@ pub fn camera_look_system(
         return;
     };
 
-    // Solo se il cursore è bloccato (locked) muoviamo la visuale
+    // Only rotate the camera when the cursor is locked
     if cursor.grab_mode != CursorGrabMode::Locked {
         return;
     }

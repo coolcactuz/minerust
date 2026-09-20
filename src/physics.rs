@@ -53,7 +53,7 @@ impl Default for PlayerPhysics {
 #[derive(Component)]
 pub struct PhysicsDebugText;
 
-/// Verifica se la scatola di collisione (AABB) del giocatore interseca blocchi solidi nel mondo
+/// Checks if the player's bounding box (AABB) intersects solid blocks in the world
 pub fn check_collision(feet_pos: Vec3, world: &WorldGrid) -> bool {
     let half_w = PLAYER_HALF_WIDTH;
     let height = PLAYER_HEIGHT;
@@ -79,7 +79,7 @@ pub fn check_collision(feet_pos: Vec3, world: &WorldGrid) -> bool {
     false
 }
 
-/// Verifica se il giocatore si trova immerso in acqua
+/// Checks if the player is currently immersed in water
 pub fn is_in_water(feet_pos: Vec3, world: &WorldGrid) -> bool {
     let check_at = |pos: Vec3| -> bool {
         let bpos = IVec3::new(pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32);
@@ -108,7 +108,7 @@ pub fn player_physics_system(
 
     let dt = time.delta_secs().min(0.05);
 
-    // Tasto F: Attiva/Disattiva modalità Volo (No-Clip / Creative)
+    // Key F: Toggle Flight Mode (No-Clip / Creative)
     if keys.just_pressed(KeyCode::KeyF) {
         physics.is_flying = !physics.is_flying;
         physics.velocity = Vec3::ZERO;
@@ -116,7 +116,7 @@ pub fn player_physics_system(
 
     let mut feet = transform.translation - Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0);
 
-    // 1. MODALITÀ VOLO (No-Clip / Creative)
+    // 1. FLIGHT MODE (No-Clip / Creative)
     if physics.is_flying {
         let mut forward = Quat::from_rotation_y(fps.yaw) * -Vec3::Z;
         forward.y = 0.0;
@@ -152,7 +152,7 @@ pub fn player_physics_system(
         return;
     }
 
-    // 2. MODALITÀ CAMMINATA (Fisica, Gravità, Collisioni, Salto, Nuoto)
+    // 2. WALKING MODE (Physics, Gravity, Collisions, Jump, Swim)
     let in_water = is_in_water(feet, &world);
     physics.in_water = in_water;
 
@@ -200,7 +200,7 @@ pub fn player_physics_system(
     physics.velocity.x = new_h_vel.x;
     physics.velocity.z = new_h_vel.z;
 
-    // Verticale: Nuoto / Salto / Gravità
+    // Vertical: Swim / Jump / Gravity
     if in_water {
         if keys.pressed(KeyCode::Space) {
             physics.velocity.y = WATER_SWIM_SPEED;
@@ -211,28 +211,28 @@ pub fn player_physics_system(
             physics.velocity.y *= 1.0 - (WATER_DRAG * dt).min(1.0);
         }
     } else {
-        // Salto da terra o balzo fuori dall'acqua
+        // Jump from ground or leap out of water
         if keys.pressed(KeyCode::Space) && physics.is_grounded {
             physics.velocity.y = JUMP_VELOCITY;
             physics.is_grounded = false;
         }
-        // Gravità standard
+        // Standard gravity
         physics.velocity.y = (physics.velocity.y - GRAVITY * dt).max(TERMINAL_VELOCITY);
     }
 
-    // Risoluzione Collisione X
+    // X Collision Resolution
     let dx = physics.velocity.x * dt;
     if dx != 0.0 {
         let test_pos = feet + Vec3::new(dx, 0.0, 0.0);
         if !check_collision(test_pos, &world) {
-            // Sneak edge protection (evita di cadere dai blocchi con Shift)
+            // Sneak edge protection (prevents walking off ledges with Shift)
             if is_sneaking && !check_collision(test_pos - Vec3::new(0.0, 0.1, 0.0), &world) {
                 physics.velocity.x = 0.0;
             } else {
                 feet.x = test_pos.x;
             }
         } else {
-            // Step assist (scavalca dislivelli fino a STEP_HEIGHT)
+            // Step assist (automatically steps up terrain obstacles up to STEP_HEIGHT)
             let mut stepped = false;
             if physics.is_grounded {
                 for step in [0.25, 0.5, 0.75, STEP_HEIGHT] {
@@ -250,7 +250,7 @@ pub fn player_physics_system(
         }
     }
 
-    // Risoluzione Collisione Z
+    // Z Collision Resolution
     let dz = physics.velocity.z * dt;
     if dz != 0.0 {
         let test_pos = feet + Vec3::new(0.0, 0.0, dz);
@@ -280,7 +280,7 @@ pub fn player_physics_system(
         }
     }
 
-    // Risoluzione Collisione Y (Gravità & Soffitto)
+    // Y Collision Resolution (Gravity & Ceiling)
     let dy = physics.velocity.y * dt;
     if dy != 0.0 {
         let test_pos = feet + Vec3::new(0.0, dy, 0.0);
@@ -308,13 +308,13 @@ pub fn player_physics_system(
         }
     }
 
-    // Verifica continuità terreno sotto i piedi
+    // Ground support check
     if !in_water && physics.velocity.y <= 0.0 {
         let ground_check = feet - Vec3::new(0.0, 0.05, 0.0);
         physics.is_grounded = check_collision(ground_check, &world);
     }
 
-    // Protezione caduta nel vuoto (Respawn in superficie)
+    // Void fall protection (Safe surface respawn)
     if feet.y < -20.0 {
         let (_, spawn_y, _) = calculate_biome_and_height(feet.x as f64, feet.z as f64, &world.noise);
         feet.y = (spawn_y as f32 + 4.0).max(28.0);
@@ -341,7 +341,7 @@ pub fn setup_physics_ui(mut commands: Commands) {
         ))
         .with_children(|parent| {
             parent.spawn((
-                Text::new("Pos: (0.0, 0.0, 0.0) | Modo: Camminata 🚶 [F: Volo]"),
+                Text::new("Pos: (0.0, 0.0, 0.0) | Mode: Walking 🚶 [F: Fly]"),
                 TextFont {
                     font_size: FontSize::Px(12.0),
                     ..default()
@@ -368,17 +368,17 @@ pub fn update_physics_hud_system(
     let pz = transform.translation.z;
 
     let mode_str = if physics.is_flying {
-        "🕊️ Volo (Creative)"
+        "🕊️ Flight (Creative)"
     } else if physics.in_water {
-        "🌊 Nuoto"
+        "🌊 Swimming"
     } else if physics.is_grounded {
-        "🚶 A terra"
+        "🚶 Grounded"
     } else {
-        "🪂 In aria"
+        "🪂 Airborne"
     };
 
     *text = Text::new(format!(
-        "X: {:.1} Y: {:.1} Z: {:.1} | {} | [F] Cambia Modalità",
+        "X: {:.1} Y: {:.1} Z: {:.1} | {} | [F] Toggle Flight",
         px, py, pz, mode_str
     ));
 }

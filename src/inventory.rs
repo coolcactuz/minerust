@@ -32,26 +32,26 @@ pub const ALL_BLOCKS: &[BlockType] = &[
 
 pub fn block_name(block: BlockType) -> &'static str {
     match block {
-        BlockType::Air => "Aria",
-        BlockType::Grass => "Erba",
-        BlockType::Dirt => "Terra",
-        BlockType::Stone => "Pietra",
-        BlockType::Cobblestone => "Pietrisco",
-        BlockType::Wood => "Legno",
-        BlockType::Planks => "Assi",
-        BlockType::Leaves => "Foglie",
-        BlockType::Glass => "Vetro",
-        BlockType::Sand => "Sabbia",
-        BlockType::Sandstone => "Arenaria",
-        BlockType::Gravel => "Ghiaia",
-        BlockType::Water => "Acqua",
-        BlockType::Ice => "Ghiaccio",
-        BlockType::Snow => "Neve",
+        BlockType::Air => "Air",
+        BlockType::Grass => "Grass",
+        BlockType::Dirt => "Dirt",
+        BlockType::Stone => "Stone",
+        BlockType::Cobblestone => "Cobblestone",
+        BlockType::Wood => "Wood",
+        BlockType::Planks => "Planks",
+        BlockType::Leaves => "Leaves",
+        BlockType::Glass => "Glass",
+        BlockType::Sand => "Sand",
+        BlockType::Sandstone => "Sandstone",
+        BlockType::Gravel => "Gravel",
+        BlockType::Water => "Water",
+        BlockType::Ice => "Ice",
+        BlockType::Snow => "Snow",
         BlockType::Cactus => "Cactus",
-        BlockType::CoalOre => "Carbone",
-        BlockType::IronOre => "Ferro",
-        BlockType::GoldOre => "Oro",
-        BlockType::DiamondOre => "Diamante",
+        BlockType::CoalOre => "Coal Ore",
+        BlockType::IronOre => "Iron Ore",
+        BlockType::GoldOre => "Gold Ore",
+        BlockType::DiamondOre => "Diamond Ore",
         BlockType::Bedrock => "Bedrock",
     }
 }
@@ -102,7 +102,7 @@ pub struct InventoryModal;
 pub struct InventorySlotBtn(pub BlockType);
 
 pub fn setup_inventory_ui(mut commands: Commands) {
-    // 1. HOTBAR HUD (In basso al centro, sempre visibile durante il gioco)
+    // 1. HOTBAR HUD (Bottom center, always visible during gameplay)
     commands
         .spawn((
             Node {
@@ -110,7 +110,7 @@ pub fn setup_inventory_ui(mut commands: Commands) {
                 bottom: Val::Px(16.0),
                 left: Val::Percent(50.0),
                 margin: UiRect {
-                    left: Val::Px(-240.0), // Centra i 480px di larghezza
+                    left: Val::Px(-240.0), // Center the 480px width
                     ..default()
                 },
                 width: Val::Px(480.0),
@@ -154,14 +154,14 @@ pub fn setup_inventory_ui(mut commands: Commands) {
                         },
                         BackgroundColor(Color::srgba(0.18, 0.18, 0.22, 0.9)),
                         BorderColor::all(if is_selected {
-                            Color::srgb(1.0, 0.85, 0.2) // Oro se selezionato
+                            Color::srgb(1.0, 0.85, 0.2) // Gold when selected
                         } else {
                             Color::srgba(0.4, 0.4, 0.45, 0.6)
                         }),
                         HotbarSlotUi(i),
                     ))
                     .with_children(|slot| {
-                        // Icona colore blocco
+                        // Block color icon
                         slot.spawn((
                             Node {
                                 width: Val::Px(26.0),
@@ -174,7 +174,7 @@ pub fn setup_inventory_ui(mut commands: Commands) {
                             HotbarIconUi(i),
                         ));
 
-                        // Numero slot (1-9)
+                        // Slot number (1-9)
                         slot.spawn((
                             Text::new(format!("{}", i + 1)),
                             TextFont {
@@ -187,7 +187,7 @@ pub fn setup_inventory_ui(mut commands: Commands) {
             }
         });
 
-    // 2. FINESTRA INVENTARIO COMPLETO (Aperta con tasto 'E')
+    // 2. FULL INVENTORY MODAL (Toggled with 'E' key)
     commands
         .spawn((
             Node {
@@ -213,9 +213,9 @@ pub fn setup_inventory_ui(mut commands: Commands) {
             InventoryModal,
         ))
         .with_children(|parent| {
-            // Titolo
+            // Header title
             parent.spawn((
-                Text::new("INVENTARIO - Clicca un blocco per equipaggiarlo nello slot attivo"),
+                Text::new("INVENTORY - Click a block to equip it to the active hotbar slot"),
                 TextFont {
                     font_size: FontSize::Px(14.0),
                     ..default()
@@ -227,7 +227,7 @@ pub fn setup_inventory_ui(mut commands: Commands) {
                 },
             ));
 
-            // Griglia di tutti i blocchi disponibili
+            // Grid of all available blocks
             parent
                 .spawn(Node {
                     width: Val::Percent(100.0),
@@ -261,7 +261,7 @@ pub fn setup_inventory_ui(mut commands: Commands) {
                             InventorySlotBtn(block),
                         ))
                         .with_children(|btn| {
-                            // Anteprima colore blocco
+                            // Block color preview
                             btn.spawn((
                                 Node {
                                     width: Val::Px(24.0),
@@ -274,7 +274,7 @@ pub fn setup_inventory_ui(mut commands: Commands) {
                                 BorderColor::all(Color::BLACK),
                             ));
 
-                            // Nome del blocco
+                            // Block name label
                             btn.spawn((
                                 Text::new(name),
                                 TextFont {
@@ -287,9 +287,9 @@ pub fn setup_inventory_ui(mut commands: Commands) {
                     }
                 });
 
-            // Istruzioni in basso
+            // Footer instructions
             parent.spawn((
-                Text::new("Premi [E] o [ESC] per chiudere l'inventario e tornare al gioco"),
+                Text::new("Press [E] or [ESC] to close inventory and return to game"),
                 TextFont {
                     font_size: FontSize::Px(12.0),
                     ..default()
@@ -313,7 +313,7 @@ pub fn inventory_input_system(
         return;
     };
 
-    // Tasto E: Apri/Chiudi Inventario
+    // Key E: Open/Close Inventory
     if keys.just_pressed(KeyCode::KeyE) {
         inventory.is_open = !inventory.is_open;
 
@@ -326,14 +326,14 @@ pub fn inventory_input_system(
         }
     }
 
-    // ESC chiude l'inventario se aperto
+    // ESC closes inventory if currently open
     if keys.just_pressed(KeyCode::Escape) && inventory.is_open {
         inventory.is_open = false;
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
     }
 
-    // Se l'inventario è chiuso, gestisci la selezione Hotbar (1-9 e Rotellina Mouse)
+    // If inventory is closed, handle Hotbar selection (1-9 and Mouse Wheel)
     if !inventory.is_open {
         if keys.just_pressed(KeyCode::Digit1) {
             inventory.selected_slot = 0;
@@ -355,7 +355,7 @@ pub fn inventory_input_system(
             inventory.selected_slot = 8;
         }
 
-        // Rotellina del mouse per scorrere la hotbar
+        // Mouse wheel scroll to cycle hotbar slots
         if scroll.delta.y < -0.1 {
             inventory.selected_slot = (inventory.selected_slot + 1) % HOTBAR_SLOTS;
         } else if scroll.delta.y > 0.1 {
@@ -374,7 +374,7 @@ pub fn inventory_interaction_system(
     for (interaction, btn_slot, mut border) in &mut interaction_query {
         match *interaction {
             Interaction::Pressed => {
-                // Equipaggia il blocco cliccato nello slot hotbar attualmente selezionato!
+                // Equip clicked block into the currently selected hotbar slot
                 let current_slot = inventory.selected_slot;
                 inventory.hotbar[current_slot] = btn_slot.0;
                 *border = BorderColor::all(Color::srgb(1.0, 0.9, 0.2));
@@ -395,7 +395,7 @@ pub fn update_inventory_ui_system(
     mut slots_query: Query<(&HotbarSlotUi, &mut Node, &mut BorderColor), Without<HotbarIconUi>>,
     mut icons_query: Query<(&HotbarIconUi, &mut BackgroundColor)>,
 ) {
-    // 1. Mostra/Nascondi la finestra inventario modale
+    // 1. Show/Hide inventory modal window
     if let Ok(mut vis) = modal_query.single_mut() {
         let target_vis = if inventory.is_open {
             Visibility::Inherited
@@ -407,18 +407,18 @@ pub fn update_inventory_ui_system(
         }
     }
 
-    // 2. Aggiorna bordi e stile degli slot della Hotbar
+    // 2. Update border and highlight for Hotbar slots
     for (slot, mut node, mut border) in &mut slots_query {
         let is_selected = slot.0 == inventory.selected_slot;
         node.border = UiRect::all(Val::Px(if is_selected { 3.0 } else { 1.5 }));
         *border = if is_selected {
-            BorderColor::all(Color::srgb(1.0, 0.85, 0.2)) // Bordo oro brillante
+            BorderColor::all(Color::srgb(1.0, 0.85, 0.2)) // Bright gold border
         } else {
             BorderColor::all(Color::srgba(0.4, 0.4, 0.45, 0.6))
         };
     }
 
-    // 3. Aggiorna le icone di colore della Hotbar
+    // 3. Update preview color icons in the Hotbar
     for (icon, mut bg) in &mut icons_query {
         if icon.0 < HOTBAR_SLOTS {
             let block = inventory.hotbar[icon.0];

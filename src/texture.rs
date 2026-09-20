@@ -96,12 +96,12 @@ pub fn get_tile_uvs(texture_id: TextureId) -> [[f32; 2]; 4] {
     ]
 }
 
-/// Genera a runtime l'intero Texture Atlas 128x128 pixel in stile retro 16x16 pixel-art Minecraft
+/// Generates at runtime the full 128x128 pixel Texture Atlas in retro 16x16 pixel-art Minecraft style
 pub fn create_texture_atlas() -> Image {
     const ATLAS_SIZE: usize = 128;
     let mut data = vec![0u8; ATLAS_SIZE * ATLAS_SIZE * 4];
 
-    // Helper per colorare i pixel nel tile (px, py in 0..16)
+    // Helper to set pixel color in a specific tile (px, py in 0..16)
     let mut set_px = |tile_id: TextureId, px: usize, py: usize, rgba: [u8; 4]| {
         let id = tile_id as usize;
         let tile_x = id % 8;
@@ -142,7 +142,7 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // 3. Grass Side (Erba in alto con bavette, terra sotto)
+    // 3. Grass Side (Green grass fringe on top, dirt underneath)
     for x in 0..16 {
         for y in 0..16 {
             let overhang = 3 + (p_hash(x, 0, 3) % 3);
@@ -171,7 +171,7 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // 5. Cobblestone (Pietrisco con giunzioni scure)
+    // 5. Cobblestone (Rough cobblestones with dark seams)
     for x in 0..16 {
         for y in 0..16 {
             let is_border = x == 0 || x == 8 || y == 0 || y == 5 || y == 11 || (y < 6 && x == 4) || (y >= 6 && y < 12 && x == 12);
@@ -185,7 +185,7 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // 6. Wood Side (Corteccia con striature verticali)
+    // 6. Wood Side (Bark with vertical striations)
     for x in 0..16 {
         for y in 0..16 {
             let h = (x + p_hash(x, y / 4, 6) % 2) % 4;
@@ -198,24 +198,24 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // 7. Wood Top (Anelli concentrici di crescita e bordo di corteccia)
+    // 7. Wood Top (Concentric growth rings and bark rim)
     for x in 0..16 {
         for y in 0..16 {
             let dx = (x as i32 - 8).abs();
             let dy = (y as i32 - 8).abs();
             let dist = dx.max(dy);
             let col = if dist >= 7 {
-                [82, 58, 33, 255] // Corteccia
+                [82, 58, 33, 255] // Bark
             } else if dist == 4 || dist == 1 {
-                [140, 105, 65, 255] // Anello scuro
+                [140, 105, 65, 255] // Dark ring
             } else {
-                [175, 138, 92, 255] // Legno chiaro
+                [175, 138, 92, 255] // Light wood
             };
             set_px(TextureId::WoodTop, x, y, col);
         }
     }
 
-    // 8. Leaves (Foglie con trasparenza e variazioni verdi)
+    // 8. Leaves (Foliage with transparency and varied green tones)
     for x in 0..16 {
         for y in 0..16 {
             let h = p_hash(x, y, 8) % 10;
@@ -229,7 +229,7 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // 9. Planks (Assi di legno orizzontali)
+    // 9. Planks (Horizontal wooden boards with seams)
     for x in 0..16 {
         for y in 0..16 {
             let is_seam = y % 4 == 0 || (y < 4 && x == 7) || (y >= 4 && y < 8 && x == 14) || (y >= 8 && y < 12 && x == 4) || (y >= 12 && x == 10);
@@ -282,7 +282,7 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // 13. Water (Onde azzurre)
+    // 13. Water (Blue ripple patterns)
     for x in 0..16 {
         for y in 0..16 {
             let wave = (x + y * 2) % 6 == 0;
@@ -307,7 +307,7 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // 15. Snow Side (Neve sopra, terra sotto)
+    // 15. Snow Side (Snow layer on top, dirt below)
     for x in 0..16 {
         for y in 0..16 {
             if y < 4 {
@@ -333,7 +333,7 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // Helper per disegnare minerali incastonati nella pietra
+    // Helper to draw ore flecks embedded in stone
     let mut draw_ore = |ore_id: TextureId, fleck_color: [u8; 4], fleck_dark: [u8; 4]| {
         for x in 0..16 {
             for y in 0..16 {
@@ -346,7 +346,7 @@ pub fn create_texture_atlas() -> Image {
                 set_px(ore_id, x, y, base);
             }
         }
-        // Pepite/cristalli sparsi
+        // Scattered crystal/ore flecks
         let spots = [(3, 4), (4, 4), (3, 5), (10, 8), (11, 8), (10, 9), (6, 12), (7, 12), (13, 3), (13, 4)];
         for (sx, sy) in spots {
             set_px(ore_id, sx, sy, fleck_color);
@@ -403,7 +403,7 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // 24. Ice (Ghiaccio azzurro traslucido con crepe bianche)
+    // 24. Ice (Translucent blue ice with white fracture lines)
     for x in 0..16 {
         for y in 0..16 {
             let is_crack = (x + y) % 7 == 0 || (x == 10 && y > 3 && y < 12);
@@ -416,7 +416,7 @@ pub fn create_texture_atlas() -> Image {
         }
     }
 
-    // 25. Glass (Bordi bianchi e riflessi diagonali trasparenti)
+    // 25. Glass (White border and diagonal transparent glares)
     for x in 0..16 {
         for y in 0..16 {
             let is_border = x == 0 || x == 15 || y == 0 || y == 15;
@@ -444,7 +444,7 @@ pub fn create_texture_atlas() -> Image {
         RenderAssetUsages::default(),
     );
 
-    // Pixel art nitido con filtro Nearest-Neighbor
+    // Sharp pixel art with Nearest-Neighbor filtering
     image.sampler = ImageSampler::nearest();
     image
 }

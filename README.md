@@ -1,63 +1,73 @@
 # MineRust ⛏️🦀
 
-Un clone di Minecraft scritto in Rust, creato per fini didattici, diletto e per esplorare le potenzialità della grafica 3D e della programmazione concorrente e ad alte prestazioni con Rust.
+A Minecraft clone written in Rust with [Bevy](https://bevyengine.org/), created for educational purposes, fun, and exploring modern 3D graphics, procedural generation, and high-performance concurrent programming in Rust.
 
 ---
 
-## 🎯 Obiettivi dell'MVP
+## 🌟 Key Features
 
-Un MVP (Minimum Viable Product) per un voxel game stile Minecraft include tipicamente:
+1. **Procedural World Generation with Deterministic Seed**:
+   - Deterministic PRNG (`SplitMix64`) and Fisher-Yates shuffled 512-permutation table for 2D/3D Perlin noise, Fractal Brownian Motion (FBM), and Ridged Multi-Fractal noise.
+   - Diverse biomes: **Plains**, **Forests**, **Deserts** with cacti, **Snowy Tundra** with pine trees, **Mountains** with snow caps, **Oceans**, **Beaches**, and winding **Rivers**.
+   - **3D Underground Caves & Tunnels**: procedurally carved cavern networks and winding tunnels beneath the surface.
+   - **Ore Veins**: realistic depth-stratified ore generation including **Coal**, **Iron**, **Gold**, and **Diamond**.
+   - **Infinite Realtime Chunk Streaming**: view distance of 8 chunks ($17 \times 17$ loaded grid), background queue generation, and disk persistence for player-modified chunks.
 
-1. **Gestione del Mondo & Chunk**:
-   - Struttura dati per blocchi (`Air`, `Dirt`, `Grass`, `Stone`, `Wood`, ecc.).
-   - Struttura a Chunk (es. $16 \times 16 \times 16$ o $16 \times 256 \times 16$).
-   - Generazione procedurale di base (es. terreno semplice o rumore Perlin/Simplex).
+2. **Pixel-Art Texture Atlas & PBR Rendering**:
+   - Procedural 128x128 texture atlas (8x8 tiles of 16x16 pixels) with nearest-neighbor sampling for an authentic retro voxel aesthetic.
+   - Dedicated textures for every block face (e.g., Grass top/side/bottom, Wood bark/rings, Sandstone, Ores, Glass, Ice, Water).
+   - Alpha-tested transparency (`AlphaMode::Mask`) for clean glass and cutouts without depth sorting artifacts.
+   - Directional face lighting and shadow mapping.
 
-2. **Meshing & Rendering**:
-   - **Culling delle facce nascoste (Hidden Face Removal)**: non generare triangoli per le facce a contatto tra due blocchi solidi.
-   - **Shading base**: illuminazione direzionale o colori/texture per faccia.
-   - **Greedy Meshing** (opzionale/fase successiva) per comprimere i vertici.
+3. **Physics, Gravity & Player Movement**:
+   - **AABB Collision Resolution**: realistic player bounding box ($0.6 \times 1.8 \times 0.6$ blocks) with eye level at 1.62m.
+   - **Gravity & Inertia**: $-28\,\text{m/s}^2$ downward acceleration, terminal velocity, and smooth ground/air acceleration.
+   - **Step Assist**: automatically walks up 1-block terrain steps without needing to jump constantly.
+   - **Jumping & Sneaking**: jumping with `Space`, sneaking with `Shift` (includes edge protection to prevent falling off cliffs).
+   - **Water Physics**: buoyant fluid dynamics, swimming upward (`Space`), diving (`Shift`), and jumping out onto shores.
+   - **Flight Mode Toggle**: toggle between survival walking physics and creative no-clip flight at any time with `F`.
+   - **Anti-Self-Trapping**: prevents placing solid blocks inside the player's own bounding box.
 
-3. **Camera & Movimento First-Person**:
-   - Camera FPS con controlli WASD + Spazio/Shift.
-   - Mouse lock per la visuale (Pitch & Yaw).
-
-4. **Interazione**:
-   - Raycasting / Voxel traversal (algoritmo di Amanatides & Woo) per selezionare il blocco mirato.
-   - Rimozione (tasto sinistro) e posizionamento (tasto destro) di blocchi.
-
----
-
-## 🏗️ Architettura Consigliata
-
-```text
-minerust/
-├── assets/             # Shaders, texture e font
-├── src/
-│   ├── main.rs         # Entry point e loop dell'applicazione
-│   ├── camera.rs       # Gestione visuale, proiezioni e controlli FPS
-│   ├── world/          # Logica del mondo voxel
-│   │   ├── mod.rs
-│   │   ├── block.rs    # Tipi di blocco e proprietà
-│   │   ├── chunk.rs    # Dati dei voxel per chunk (es. array 16^3)
-│   │   └── terrain.rs  # Generatore di terreno (noise)
-│   ├── mesh/           # Algoritmi di meshing per la GPU
-│   │   ├── mod.rs
-│   │   └── chunk_mesh.rs
-│   ├── renderer/       # Pipeline grafica (WGPU o Engine)
-│   │   └── mod.rs
-│   └── input.rs        # Gestione input tastiera e mouse
-└── Cargo.toml
-```
+4. **Inventory & Quick Items (Hotbar HUD)**:
+   - **9-Slot Hotbar HUD**: always visible at the bottom of the screen with active slot highlighting, numeric keys (`1`-`9`), and mouse wheel scrolling.
+   - **Full Inventory Screen (`E`)**: accessible modal displaying all 20 blocks with localized names and preview badges; click any block to equip it to the active hotbar slot.
+   - **Realtime HUD**: displays coordinates ($X, Y, Z$), current movement mode (Grounded, Airborne, Swimming, Flying), and control prompts.
 
 ---
 
-## 🚀 Esecuzione
+## 🎮 Controls
 
+| Key / Input | Action |
+| :--- | :--- |
+| **`W` `A` `S` `D`** | Horizontal movement with inertia and ground friction |
+| **Mouse** | First-person camera look (Left click to capture / `ESC` to release) |
+| **`Space`** | Jump (from ground) / Swim upward (in water) / Ascend (in flight mode) |
+| **`Shift`** | Sneak (crouch with edge protection) / Dive (in water) / Descend (in flight mode) |
+| **`Ctrl`** | Sprint (speed boost) |
+| **`F`** | Toggle **Flight Mode** (No-Clip / Creative) |
+| **Left Click** | Mine / break targeted block |
+| **Right Click** | Place active block (protected against self-collision) |
+| **`1` - `9` / Mouse Wheel** | Select active hotbar slot |
+| **`E`** | Open / close full Inventory screen |
+| **`ESC`** | Close inventory / unlock mouse cursor |
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- [Rust](https://www.rust-lang.org/) (edition 2024 or latest stable)
+- Standard development tools and graphics libraries for your OS (Vulkan, DX12, or Metal via WGPU/Bevy)
+
+### Running the Game
 ```bash
-# Esecuzione in modalità debug
+# Run with default seed
 cargo run
 
-# Esecuzione ottimizzata (consigliata per voxel generation/meshing)
+# Run with a custom numeric or string seed
+cargo run -- --seed "my_minecraft_world"
+cargo run -- -s 123456789
+
+# Optimized release build (recommended for optimal voxel generation performance)
 cargo run --release
 ```

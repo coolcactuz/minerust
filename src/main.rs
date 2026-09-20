@@ -27,7 +27,7 @@ use world::{
 };
 
 fn main() {
-    // 1. Parsing del Seed da riga di comando (es: cargo run -- --seed "minecraft" oppure -s 123456)
+    // 1. Parse World Seed from command line (e.g.: cargo run -- --seed "minecraft" or -s 123456)
     let mut seed = WorldSeed::default();
     let args: Vec<String> = std::env::args().collect();
     for i in 0..args.len() {
@@ -73,7 +73,7 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    // 0. Texture Atlas 128x128 pixel-art e Materiale PBR condiviso con Alpha Mask per trasparenze (Vetro)
+    // 0. 128x128 pixel-art Texture Atlas and shared PBR material with Alpha Mask for transparency (Glass)
     let atlas_image = texture::create_texture_atlas();
     let atlas_handle = images.add(atlas_image);
 
@@ -90,7 +90,7 @@ fn setup(
     let seed = world.seed.0;
     let noise = world.noise.clone();
 
-    // 1. Pre-genera una griglia iniziale 5x5 di chunk attorno allo spawn (0, 0)
+    // 1. Pre-generate initial 5x5 chunk grid around spawn (0, 0)
     for cx in -2..=2 {
         for cz in -2..=2 {
             let coord = IVec2::new(cx, cz);
@@ -100,11 +100,11 @@ fn setup(
         }
     }
 
-    // 2. Calcola la quota del terreno al punto di spawn per posizionare il giocatore in modo naturale
+    // 2. Calculate terrain height at spawn to position the player naturally
     let (spawn_biome, spawn_y, _) = calculate_biome_and_height(0.0, 0.0, &noise);
     let player_y = (spawn_y as f32 + 4.0).max(28.0);
 
-    // 3. Spawna la camera FPS con AmbientLight integrata e componente PlayerPhysics
+    // 3. Spawn FPS camera with integrated AmbientLight and PlayerPhysics component
     commands.spawn((
         Camera3d::default(),
         AmbientLight {
@@ -117,7 +117,7 @@ fn setup(
         PlayerPhysics::default(),
     ));
 
-    // 4. Luce del Sole (Directional Light) con ombre
+    // 4. Sun light (Directional Light) with shadows
     commands.spawn((
         DirectionalLight {
             illuminance: 14_000.0,
@@ -128,20 +128,20 @@ fn setup(
     ));
 
     println!("\n=======================================================");
-    println!("⛏️  MINERUST: FISICA, GRAVITÀ & COLLISIONI ATTIVE");
+    println!("⛏️  MINERUST: FULL VOXEL ENGINE ACTIVE");
     println!("=======================================================");
-    println!("* SEED DEL MONDO: {}", seed);
-    println!("* BIOMA DI SPAWN: {:?}", spawn_biome);
-    println!("* CONTROLLI:");
-    println!("  - WASD: Movimento orizzontale con attrito e inerzia");
-    println!("  - Mouse: Visuale libera FPS (Click per bloccare / ESC per sbloccare)");
-    println!("  - SPAZIO: Salto (o nuoto verso l'alto in acqua)");
-    println!("  - SHIFT: Accovacciati (Sneak, non cadi dai bordi!) / Nuoto verso il basso");
-    println!("  - CTRL: Scatto veloce (Sprint)");
-    println!("  - TASTO 'F': Attiva / Disattiva modalità Volo (No-Clip / Creative)");
-    println!("  - Click Sinistro: Spacca blocco puntato");
-    println!("  - Click Destro: Piazza blocco (con protezione anticollisione)");
-    println!("  - Tasti 1-9 o Rotellina: Seleziona slot rapido nella Hotbar");
-    println!("  - Tasto 'E': Apri / Chiudi Inventario Completo");
+    println!("* WORLD SEED: {}", seed);
+    println!("* SPAWN BIOME: {:?}", spawn_biome);
+    println!("* CONTROLS:");
+    println!("  - WASD: Horizontal movement with inertia and friction");
+    println!("  - Mouse: Free-look FPS (Left-click to lock / ESC to unlock)");
+    println!("  - SPACE: Jump (or swim upward in water)");
+    println!("  - SHIFT: Sneak (crouch, edge protection prevents falling) / Dive in water");
+    println!("  - CTRL: Sprint");
+    println!("  - KEY 'F': Toggle Flight Mode (No-Clip / Creative)");
+    println!("  - Left Click: Break targeted block");
+    println!("  - Right Click: Place selected block (with anti-self-collision protection)");
+    println!("  - Keys 1-9 or Mouse Wheel: Select quick slot in Hotbar");
+    println!("  - Key 'E': Open / Close Full Inventory");
     println!("=======================================================\n");
 }
