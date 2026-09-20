@@ -52,7 +52,7 @@ impl Default for GraphicsSettings {
             vsync: true,
             fullscreen: false,
             fps_cap: None,
-            view_distance: 64,
+            view_distance: 16,
         }
     }
 }
@@ -499,7 +499,7 @@ pub fn menu_button_click_system(
                         24 => 32,
                         32 => 64,
                         64 => 8,
-                        _ => 64,
+                        _ => 16,
                     };
                 }
             }
