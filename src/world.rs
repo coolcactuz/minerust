@@ -51,6 +51,17 @@ impl std::str::FromStr for WorldSeed {
 
 impl WorldSeed {
     #[must_use]
+    pub fn random() -> Self {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(133742, |d| d.as_nanos());
+        let mut z = (nanos as u64).wrapping_add(0x9e3779b97f4a7c15);
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+        Self((z ^ (z >> 31)) & 0x7fff_ffff_ffff_ffff)
+    }
+
+    #[must_use]
     pub fn from_seed_str(s: &str) -> Self {
         use std::str::FromStr;
         Self::from_str(s).unwrap_or_default()
@@ -320,6 +331,80 @@ impl WorldGrid {
     #[allow(dead_code)]
     pub fn load_chunk_from_disk(&self, coord: impl Into<ChunkPos>) -> Result<Chunk, WorldError> {
         Self::load_chunk_from_disk_path(&self.save_dir, coord)
+    }
+
+    /// Despawns all active chunk meshes and resets world state to switch to a new seed.
+    pub fn reinitialize_with_seed(&mut self, new_seed: WorldSeed, commands: &mut Commands) {
+        for (_, entity) in self.chunk_entities.drain() {
+            commands.entity(entity).despawn();
+        }
+        self.chunks.clear();
+        self.chunk_lod.clear();
+        self.chunk_vertices.clear();
+        self.total_vertices = 0;
+        self.in_progress_chunks.clear();
+        self.in_progress_meshes.clear();
+        self.generation_queue.clear();
+        self.mesh_queue.clear();
+        self.queued_for_mesh.clear();
+        self.dirty_chunks.clear();
+        self.modified_chunks.clear();
+        self.chunk_cache = quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY);
+        self.last_player_chunk = IVec2::new(i32::MAX, i32::MAX);
+
+        self.seed = new_seed;
+        self.noise = NoiseGenerator::new(new_seed.0);
+        self.save_dir = PathBuf::from(format!("saves/world_{}/chunks", new_seed.0));
+    }
+
+    /// Pre-generates the initial 9x9 chunk grid around a center chunk in parallel across CPU cores.
+    pub fn pregenerate_spawn_grid(
+        &mut self,
+        center_chunk: IVec2,
+        commands: &mut Commands,
+        meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<StandardMaterial>,
+    ) {
+        let seed = self.seed.0;
+        let noise = self.noise.clone();
+        let save_dir = self.save_dir.clone();
+        let initial_coords: Vec<IVec2> = (-4..=4)
+            .flat_map(|cx| (-4..=4).map(move |cz| center_chunk + IVec2::new(cx, cz)))
+            .collect();
+
+        let mut loaded_chunks: Vec<(IVec2, Chunk, bool)> = Vec::with_capacity(initial_coords.len());
+
+        std::thread::scope(|s| {
+            let mut handles = Vec::with_capacity(initial_coords.len());
+            for coord in &initial_coords {
+                let noise_ref = &noise;
+                let save_dir_ref = &save_dir;
+                handles.push(s.spawn(move || {
+                    if let Ok(chunk) = WorldGrid::load_chunk_from_disk_path(save_dir_ref, *coord) {
+                        (*coord, chunk, true)
+                    } else {
+                        let chunk = generate_chunk(coord.x, coord.y, noise_ref, seed);
+                        (*coord, chunk, false)
+                    }
+                }));
+            }
+            for handle in handles {
+                if let Ok(res) = handle.join() {
+                    loaded_chunks.push(res);
+                }
+            }
+        });
+
+        for (coord, chunk, from_disk) in loaded_chunks {
+            if from_disk {
+                self.modified_chunks.insert(coord);
+            }
+            self.chunks.insert(coord, chunk);
+        }
+
+        for coord in &initial_coords {
+            update_chunk_mesh(coord, commands, self, meshes, materials, true, true);
+        }
     }
 }
 
@@ -1278,5 +1363,28 @@ mod tests {
             far_diff > unload_dist,
             "Far chunk must exceed unload threshold"
         );
+    }
+
+    #[test]
+    fn test_world_seed_random_and_alphanumeric() {
+        let seed1 = WorldSeed::random();
+        let seed2 = WorldSeed::random();
+
+        // Valid positive numbers
+        assert!(seed1.0 > 0);
+        assert!(seed2.0 > 0);
+
+        // Numeric string parsing
+        let num_seed = WorldSeed::from_seed_str("987654321");
+        assert_eq!(num_seed.0, 987654321);
+
+        // Alphanumeric string parsing (deterministic)
+        let alpha1 = WorldSeed::from_seed_str("minecraft");
+        let alpha2 = WorldSeed::from_seed_str("minecraft");
+        let alpha3 = WorldSeed::from_seed_str("custom_seed_42");
+
+        assert_eq!(alpha1, alpha2);
+        assert_ne!(alpha1, alpha3);
+        assert_ne!(alpha1.0, 0);
     }
 }

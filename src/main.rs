@@ -5,28 +5,26 @@ use bevy::window::WindowResolution;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use minerust::camera::{CameraPlugin, FpsCamera};
-use minerust::chunk::Chunk;
 use minerust::fluid::FluidPlugin;
 use minerust::interaction::InteractionPlugin;
 use minerust::inventory::{Inventory, InventoryPlugin};
-use minerust::menu::{DevSettings, MenuPlugin};
+use minerust::menu::{DevSettings, MenuPlugin, SeedInputState};
 use minerust::physics::{PhysicsPlugin, PlayerPhysics};
 use minerust::save::{SavePlugin, load_player_from_disk};
 use minerust::stage::VoxelStage;
 use minerust::texture;
-use minerust::world::{
-    SEA_LEVEL, WorldGrid, WorldPlugin, WorldSeed, calculate_biome_and_height, generate_chunk,
-    update_chunk_mesh,
-};
+use minerust::world::{SEA_LEVEL, WorldGrid, WorldPlugin, WorldSeed, calculate_biome_and_height};
 
 fn main() {
     // 1. Parse World Seed and Dev flags from command line
     let mut seed = WorldSeed::default();
+    let mut seed_specified = false;
     let mut dev_mode = false;
     let args: Vec<String> = std::env::args().collect();
     for i in 0..args.len() {
         if (args[i] == "--seed" || args[i] == "-s") && i + 1 < args.len() {
             seed = WorldSeed::from_seed_str(&args[i + 1]);
+            seed_specified = true;
         }
         if args[i] == "--dev" || args[i] == "--debug" || args[i] == "-d" {
             dev_mode = true;
@@ -41,6 +39,16 @@ fn main() {
             return;
         }
     }
+
+    // Default to a fresh random seed for new game if not provided via CLI
+    if !seed_specified {
+        seed = WorldSeed::random();
+    }
+
+    let seed_state = SeedInputState {
+        seed_text: seed.0.to_string(),
+        is_editing: false,
+    };
 
     let dev_settings = DevSettings {
         dev_mode,
@@ -65,6 +73,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .insert_resource(dev_settings)
+        .insert_resource(seed_state)
         .configure_sets(
             Update,
             (
@@ -157,52 +166,7 @@ fn setup(
 
     // 2. Pre-generate initial 9x9 chunk grid around center_chunk in parallel across all CPU cores,
     // checking disk first to restore player modifications.
-    let save_dir = world.save_dir.clone();
-    let initial_coords: Vec<IVec2> = (-4..=4)
-        .flat_map(|cx| (-4..=4).map(move |cz| center_chunk + IVec2::new(cx, cz)))
-        .collect();
-
-    let mut loaded_chunks: Vec<(IVec2, Chunk, bool)> = Vec::with_capacity(initial_coords.len());
-
-    std::thread::scope(|s| {
-        let mut handles = Vec::with_capacity(initial_coords.len());
-        for coord in &initial_coords {
-            let noise_ref = &noise;
-            let save_dir_ref = &save_dir;
-            handles.push(s.spawn(move || {
-                if let Ok(chunk) = WorldGrid::load_chunk_from_disk_path(save_dir_ref, *coord) {
-                    (*coord, chunk, true)
-                } else {
-                    let chunk = generate_chunk(coord.x, coord.y, noise_ref, seed);
-                    (*coord, chunk, false)
-                }
-            }));
-        }
-        for handle in handles {
-            if let Ok(res) = handle.join() {
-                loaded_chunks.push(res);
-            }
-        }
-    });
-
-    for (coord, chunk, from_disk) in loaded_chunks {
-        if from_disk {
-            world.modified_chunks.insert(coord);
-        }
-        world.chunks.insert(coord, chunk);
-    }
-
-    for coord in &initial_coords {
-        update_chunk_mesh(
-            coord,
-            &mut commands,
-            &mut world,
-            &mut meshes,
-            &mut materials,
-            true,
-            true,
-        );
-    }
+    world.pregenerate_spawn_grid(center_chunk, &mut commands, &mut meshes, &mut materials);
 
     // 3. Spawn FPS camera with integrated AmbientLight, DistanceFog, and PlayerPhysics component
     let fps_camera = FpsCamera {

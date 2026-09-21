@@ -6,7 +6,11 @@ use bevy::window::{
     CursorGrabMode, CursorOptions, MonitorSelection, PresentMode, PrimaryWindow, WindowMode,
 };
 
+use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
+use crate::physics::PlayerPhysics;
+use crate::save::load_player_from_disk;
+use crate::world::{SEA_LEVEL, WorldGrid, WorldSeed, calculate_biome_and_height};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MenuScreen {
@@ -98,6 +102,12 @@ pub struct FpsLimiter {
     pub last_frame_instant: Option<std::time::Instant>,
 }
 
+#[derive(Resource, Debug, Clone, Default)]
+pub struct SeedInputState {
+    pub seed_text: String,
+    pub is_editing: bool,
+}
+
 #[derive(Component)]
 pub enum MenuButtonAction {
     Play,
@@ -108,6 +118,8 @@ pub enum MenuButtonAction {
     BackFromDevSettings,
     BackToMain,
     QuitGame,
+    ToggleEditSeed,
+    RandomizeSeed,
     ToggleVsync,
     ToggleFullscreen,
     CycleFpsCap,
@@ -124,6 +136,12 @@ pub enum MenuButtonAction {
     ToggleDebugHud,
     CyclePregenMargin,
 }
+
+#[derive(Component)]
+pub struct SeedInputBox;
+
+#[derive(Component)]
+pub struct SeedInputText;
 
 #[derive(Component)]
 pub struct MainMenuRoot;
@@ -182,8 +200,15 @@ pub struct DebugHudBtnText;
 #[derive(Component)]
 pub struct PregenMarginBtnText;
 
-pub fn setup_menu_ui(mut commands: Commands, dev_settings: Option<Res<DevSettings>>) {
+pub fn setup_menu_ui(
+    mut commands: Commands,
+    dev_settings: Option<Res<DevSettings>>,
+    seed_state: Option<Res<SeedInputState>>,
+) {
     let is_dev = dev_settings.as_ref().is_some_and(|d| d.dev_mode);
+    let initial_seed_str = seed_state
+        .as_ref()
+        .map_or_else(|| "[Random]".to_string(), |s| s.seed_text.clone());
 
     // 1. MAIN MENU SCREEN
     commands
@@ -209,7 +234,7 @@ pub fn setup_menu_ui(mut commands: Commands, dev_settings: Option<Res<DevSetting
                 .spawn(Node {
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    margin: UiRect::bottom(Val::Px(40.0)),
+                    margin: UiRect::bottom(Val::Px(30.0)),
                     ..default()
                 })
                 .with_children(|header| {
@@ -233,6 +258,92 @@ pub fn setup_menu_ui(mut commands: Commands, dev_settings: Option<Res<DevSetting
                             ..default()
                         },
                     ));
+                });
+
+            // Seed Configuration Panel
+            parent
+                .spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    margin: UiRect::bottom(Val::Px(24.0)),
+                    row_gap: Val::Px(6.0),
+                    ..default()
+                })
+                .with_children(|seed_col| {
+                    seed_col.spawn((
+                        Text::new("WORLD SEED (CLICK TO EDIT / TYPE):"),
+                        TextFont {
+                            font_size: FontSize::Px(12.0),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.7, 0.75, 0.85)),
+                    ));
+
+                    seed_col
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            align_items: AlignItems::Center,
+                            column_gap: Val::Px(8.0),
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            // Seed text box button
+                            row.spawn((
+                                Button,
+                                Node {
+                                    width: Val::Px(260.0),
+                                    height: Val::Px(38.0),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    padding: UiRect::axes(Val::Px(10.0), Val::Px(4.0)),
+                                    border: UiRect::all(Val::Px(2.0)),
+                                    border_radius: BorderRadius::all(Val::Px(6.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgba(0.12, 0.14, 0.20, 0.9)),
+                                BorderColor::all(Color::srgba(0.35, 0.4, 0.55, 0.8)),
+                                MenuButtonAction::ToggleEditSeed,
+                                SeedInputBox,
+                            ))
+                            .with_children(|box_parent| {
+                                box_parent.spawn((
+                                    Text::new(format!("Seed: {initial_seed_str}")),
+                                    TextFont {
+                                        font_size: FontSize::Px(14.0),
+                                        ..default()
+                                    },
+                                    TextColor(Color::srgb(0.95, 0.95, 0.95)),
+                                    SeedInputText,
+                                ));
+                            });
+
+                            // Randomize Seed Button
+                            row.spawn((
+                                Button,
+                                Node {
+                                    width: Val::Px(110.0),
+                                    height: Val::Px(38.0),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    border: UiRect::all(Val::Px(2.0)),
+                                    border_radius: BorderRadius::all(Val::Px(6.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgba(0.18, 0.25, 0.38, 0.9)),
+                                BorderColor::all(Color::srgba(0.3, 0.5, 0.8, 0.8)),
+                                MenuButtonAction::RandomizeSeed,
+                            ))
+                            .with_children(|rand_parent| {
+                                rand_parent.spawn((
+                                    Text::new("🎲 Random"),
+                                    TextFont {
+                                        font_size: FontSize::Px(14.0),
+                                        ..default()
+                                    },
+                                    TextColor(Color::srgb(0.9, 0.95, 1.0)),
+                                ));
+                            });
+                        });
                 });
 
             // Main Menu Buttons Panel
@@ -615,6 +726,7 @@ pub fn menu_input_system(
     mut menu: ResMut<MenuState>,
     inventory: Option<Res<Inventory>>,
     mut dev_settings: Option<ResMut<DevSettings>>,
+    mut seed_state: Option<ResMut<SeedInputState>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     let Ok(mut cursor) = cursor_options.single_mut() else {
@@ -637,6 +749,13 @@ pub fn menu_input_system(
     }
 
     if keys.just_pressed(KeyCode::Escape) {
+        if let Some(ref mut state) = seed_state {
+            if state.is_editing {
+                state.is_editing = false;
+                return;
+            }
+        }
+
         match menu.screen {
             MenuScreen::None => {
                 // In game -> Open pause menu and unlock cursor
@@ -747,7 +866,7 @@ pub fn update_menu_visibility_system(
 pub fn menu_button_hover_system(
     mut query: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
-        (Changed<Interaction>, With<Button>),
+        (Changed<Interaction>, With<Button>, Without<SeedInputBox>),
     >,
 ) {
     for (interaction, mut bg, mut border) in &mut query {
@@ -768,7 +887,130 @@ pub fn menu_button_hover_system(
     }
 }
 
+fn keycode_to_char(key: KeyCode, shift: bool) -> Option<char> {
+    match key {
+        KeyCode::KeyA => Some(if shift { 'A' } else { 'a' }),
+        KeyCode::KeyB => Some(if shift { 'B' } else { 'b' }),
+        KeyCode::KeyC => Some(if shift { 'C' } else { 'c' }),
+        KeyCode::KeyD => Some(if shift { 'D' } else { 'd' }),
+        KeyCode::KeyE => Some(if shift { 'E' } else { 'e' }),
+        KeyCode::KeyF => Some(if shift { 'F' } else { 'f' }),
+        KeyCode::KeyG => Some(if shift { 'G' } else { 'g' }),
+        KeyCode::KeyH => Some(if shift { 'H' } else { 'h' }),
+        KeyCode::KeyI => Some(if shift { 'I' } else { 'i' }),
+        KeyCode::KeyJ => Some(if shift { 'J' } else { 'j' }),
+        KeyCode::KeyK => Some(if shift { 'K' } else { 'k' }),
+        KeyCode::KeyL => Some(if shift { 'L' } else { 'l' }),
+        KeyCode::KeyM => Some(if shift { 'M' } else { 'm' }),
+        KeyCode::KeyN => Some(if shift { 'N' } else { 'n' }),
+        KeyCode::KeyO => Some(if shift { 'O' } else { 'o' }),
+        KeyCode::KeyP => Some(if shift { 'P' } else { 'p' }),
+        KeyCode::KeyQ => Some(if shift { 'Q' } else { 'q' }),
+        KeyCode::KeyR => Some(if shift { 'R' } else { 'r' }),
+        KeyCode::KeyS => Some(if shift { 'S' } else { 's' }),
+        KeyCode::KeyT => Some(if shift { 'T' } else { 't' }),
+        KeyCode::KeyU => Some(if shift { 'U' } else { 'u' }),
+        KeyCode::KeyV => Some(if shift { 'V' } else { 'v' }),
+        KeyCode::KeyW => Some(if shift { 'W' } else { 'w' }),
+        KeyCode::KeyX => Some(if shift { 'X' } else { 'x' }),
+        KeyCode::KeyY => Some(if shift { 'Y' } else { 'y' }),
+        KeyCode::KeyZ => Some(if shift { 'Z' } else { 'z' }),
+        KeyCode::Digit0 => Some(if shift { ')' } else { '0' }),
+        KeyCode::Digit1 => Some(if shift { '!' } else { '1' }),
+        KeyCode::Digit2 => Some(if shift { '@' } else { '2' }),
+        KeyCode::Digit3 => Some(if shift { '#' } else { '3' }),
+        KeyCode::Digit4 => Some(if shift { '$' } else { '4' }),
+        KeyCode::Digit5 => Some(if shift { '%' } else { '5' }),
+        KeyCode::Digit6 => Some(if shift { '^' } else { '6' }),
+        KeyCode::Digit7 => Some(if shift { '&' } else { '7' }),
+        KeyCode::Digit8 => Some(if shift { '*' } else { '8' }),
+        KeyCode::Digit9 => Some(if shift { '(' } else { '9' }),
+        KeyCode::Numpad0 => Some('0'),
+        KeyCode::Numpad1 => Some('1'),
+        KeyCode::Numpad2 => Some('2'),
+        KeyCode::Numpad3 => Some('3'),
+        KeyCode::Numpad4 => Some('4'),
+        KeyCode::Numpad5 => Some('5'),
+        KeyCode::Numpad6 => Some('6'),
+        KeyCode::Numpad7 => Some('7'),
+        KeyCode::Numpad8 => Some('8'),
+        KeyCode::Numpad9 => Some('9'),
+        KeyCode::Minus => Some(if shift { '_' } else { '-' }),
+        KeyCode::Space => Some(' '),
+        _ => None,
+    }
+}
+
+pub fn update_seed_input_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    menu: Res<MenuState>,
+    mut seed_state: Option<ResMut<SeedInputState>>,
+    mut text_query: Query<&mut Text, With<SeedInputText>>,
+    mut box_query: Query<&mut BorderColor, With<SeedInputBox>>,
+) {
+    let Some(ref mut state) = seed_state else {
+        return;
+    };
+
+    if menu.screen != MenuScreen::Main {
+        if state.is_editing {
+            state.is_editing = false;
+        }
+        return;
+    }
+
+    let mut state_changed = false;
+
+    if state.is_editing {
+        if keys.just_pressed(KeyCode::Enter)
+            || keys.just_pressed(KeyCode::NumpadEnter)
+            || keys.just_pressed(KeyCode::Escape)
+        {
+            state.is_editing = false;
+            state_changed = true;
+        } else if keys.just_pressed(KeyCode::Backspace) {
+            state.seed_text.pop();
+            state_changed = true;
+        } else {
+            let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+            for &key in keys.get_just_pressed() {
+                if let Some(ch) = keycode_to_char(key, shift) {
+                    if state.seed_text.len() < 32 {
+                        state.seed_text.push(ch);
+                        state_changed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if state_changed || state.is_changed() {
+        if let Ok(mut text) = text_query.single_mut() {
+            *text = Text::new(if state.is_editing {
+                if state.seed_text.is_empty() {
+                    "Seed: ▌".to_string()
+                } else {
+                    format!("Seed: {}▌", state.seed_text)
+                }
+            } else if state.seed_text.is_empty() {
+                "Seed: [Random Seed]".to_string()
+            } else {
+                format!("Seed: {}", state.seed_text)
+            });
+        }
+
+        if let Ok(mut border) = box_query.single_mut() {
+            *border = if state.is_editing {
+                BorderColor::all(Color::srgb(0.2, 0.8, 1.0))
+            } else {
+                BorderColor::all(Color::srgba(0.35, 0.4, 0.55, 0.8))
+            };
+        }
+    }
+}
+
 pub fn menu_button_click_system(
+    mut commands: Commands,
     mut interaction_query: Query<
         (&Interaction, &MenuButtonAction),
         (Changed<Interaction>, With<Button>),
@@ -776,6 +1018,12 @@ pub fn menu_button_click_system(
     mut menu: ResMut<MenuState>,
     mut settings: ResMut<GraphicsSettings>,
     mut dev_settings: Option<ResMut<DevSettings>>,
+    mut seed_state: Option<ResMut<SeedInputState>>,
+    mut world: Option<ResMut<WorldGrid>>,
+    mut inventory: Option<ResMut<Inventory>>,
+    mut player_query: Query<(&mut Transform, &mut FpsCamera, &mut PlayerPhysics)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut window_query: Query<&mut Window, With<PrimaryWindow>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut exit_writer: MessageWriter<AppExit>,
@@ -790,7 +1038,108 @@ pub fn menu_button_click_system(
     for (interaction, action) in &mut interaction_query {
         if *interaction == Interaction::Pressed {
             match action {
-                MenuButtonAction::Play | MenuButtonAction::ResumeGame => {
+                MenuButtonAction::ToggleEditSeed => {
+                    if let Some(ref mut state) = seed_state {
+                        state.is_editing = !state.is_editing;
+                    }
+                }
+                MenuButtonAction::RandomizeSeed => {
+                    if let Some(ref mut state) = seed_state {
+                        let new_seed = WorldSeed::random();
+                        state.seed_text = new_seed.0.to_string();
+                        state.is_editing = false;
+                    }
+                }
+                MenuButtonAction::Play => {
+                    if let Some(ref mut state) = seed_state {
+                        state.is_editing = false;
+                        let target_seed = if state.seed_text.trim().is_empty() {
+                            WorldSeed::random()
+                        } else {
+                            WorldSeed::from_seed_str(&state.seed_text)
+                        };
+
+                        if let Some(ref mut w) = world {
+                            if w.seed != target_seed {
+                                w.reinitialize_with_seed(target_seed, &mut commands);
+
+                                let player_save_file = w.player_save_path();
+                                let (player_pos, player_yaw, player_pitch) =
+                                    if player_save_file.exists() {
+                                        if let Ok(data) = load_player_from_disk(&player_save_file) {
+                                            if let Some(ref mut inv) = inventory {
+                                                inv.hotbar = data.hotbar;
+                                                inv.main = data.main;
+                                                inv.selected_slot = data.selected_slot;
+                                            }
+                                            (Vec3::from_array(data.position), data.yaw, data.pitch)
+                                        } else {
+                                            let (_, spawn_y, _) =
+                                                calculate_biome_and_height(0.0, 0.0, &w.noise);
+                                            let player_y =
+                                                (spawn_y as f32 + 4.0).max((SEA_LEVEL + 4) as f32);
+                                            if let Some(ref mut inv) = inventory {
+                                                **inv = Inventory::default();
+                                            }
+                                            (
+                                                Vec3::new(0.0, player_y, 0.0),
+                                                -std::f32::consts::FRAC_PI_2,
+                                                -0.3,
+                                            )
+                                        }
+                                    } else {
+                                        let (_, spawn_y, _) =
+                                            calculate_biome_and_height(0.0, 0.0, &w.noise);
+                                        let player_y =
+                                            (spawn_y as f32 + 4.0).max((SEA_LEVEL + 4) as f32);
+                                        if let Some(ref mut inv) = inventory {
+                                            **inv = Inventory::default();
+                                        }
+                                        (
+                                            Vec3::new(0.0, player_y, 0.0),
+                                            -std::f32::consts::FRAC_PI_2,
+                                            -0.3,
+                                        )
+                                    };
+
+                                if let Ok((mut transform, mut fps_cam, mut physics)) =
+                                    player_query.single_mut()
+                                {
+                                    transform.translation = player_pos;
+                                    transform.rotation = Quat::from_rotation_y(player_yaw)
+                                        * Quat::from_rotation_x(player_pitch);
+                                    fps_cam.yaw = player_yaw;
+                                    fps_cam.pitch = player_pitch;
+                                    physics.velocity = Vec3::ZERO;
+                                }
+
+                                let center_chunk = WorldGrid::world_to_chunk_coord(
+                                    player_pos.x.floor() as i32,
+                                    player_pos.z.floor() as i32,
+                                )
+                                .0;
+
+                                w.pregenerate_spawn_grid(
+                                    center_chunk,
+                                    &mut commands,
+                                    &mut meshes,
+                                    &mut materials,
+                                );
+
+                                window.title = if dev_settings.as_ref().is_some_and(|d| d.dev_mode)
+                                {
+                                    format!("MineRust ⛏️🦀 [DEV MODE] - Seed: {}", target_seed.0)
+                                } else {
+                                    format!("MineRust ⛏️🦀 - Seed: {}", target_seed.0)
+                                };
+                            }
+                        }
+                    }
+                    menu.screen = MenuScreen::None;
+                    cursor.grab_mode = CursorGrabMode::Locked;
+                    cursor.visible = false;
+                }
+                MenuButtonAction::ResumeGame => {
                     menu.screen = MenuScreen::None;
                     cursor.grab_mode = CursorGrabMode::Locked;
                     cursor.visible = false;
@@ -1397,11 +1746,13 @@ impl Plugin for MenuPlugin {
             .init_resource::<GraphicsSettings>()
             .init_resource::<DevSettings>()
             .init_resource::<FpsLimiter>()
+            .init_resource::<SeedInputState>()
             .add_systems(Startup, setup_menu_ui)
             .add_systems(
                 Update,
                 (
                     menu_input_system.in_set(crate::stage::VoxelStage::InputHandling),
+                    update_seed_input_system.in_set(crate::stage::VoxelStage::InputHandling),
                     update_menu_visibility_system,
                     menu_button_hover_system,
                     menu_button_click_system,
@@ -1462,5 +1813,19 @@ mod tests {
         assert!(dev.dev_mode);
         assert!(dev.show_debug_hud);
         assert!(dev.greedy_meshing);
+    }
+
+    #[test]
+    fn test_seed_input_state_and_keycode_to_char() {
+        let default_state = SeedInputState::default();
+        assert!(default_state.seed_text.is_empty());
+        assert!(!default_state.is_editing);
+
+        // Test character conversion
+        assert_eq!(keycode_to_char(KeyCode::KeyA, false), Some('a'));
+        assert_eq!(keycode_to_char(KeyCode::KeyA, true), Some('A'));
+        assert_eq!(keycode_to_char(KeyCode::Digit7, false), Some('7'));
+        assert_eq!(keycode_to_char(KeyCode::Minus, false), Some('-'));
+        assert_eq!(keycode_to_char(KeyCode::Minus, true), Some('_'));
     }
 }
