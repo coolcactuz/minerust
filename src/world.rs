@@ -69,9 +69,12 @@ pub enum BiomeType {
     Mountains,
 }
 
+pub const CHUNK_CACHE_CAPACITY: usize = 512;
+
 #[derive(Resource)]
 pub struct WorldGrid {
     pub chunks: HashMap<IVec2, Chunk>,
+    pub chunk_cache: quick_cache::sync::Cache<IVec2, Chunk>,
     pub chunk_entities: HashMap<IVec2, Entity>,
     pub modified_chunks: HashSet<IVec2>,
     pub in_progress_chunks: HashSet<IVec2>,
@@ -95,6 +98,7 @@ impl Default for WorldGrid {
         let noise = NoiseGenerator::new(seed.0);
         Self {
             chunks: HashMap::default(),
+            chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
             chunk_entities: HashMap::default(),
             modified_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
@@ -151,6 +155,7 @@ impl WorldGrid {
         let noise = NoiseGenerator::new(seed.0);
         Self {
             chunks: HashMap::default(),
+            chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
             chunk_entities: HashMap::default(),
             modified_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
@@ -242,7 +247,7 @@ impl WorldGrid {
         let path = self
             .save_dir
             .join(format!("chunk_{}_{}.bin", coord.x(), coord.z()));
-        std::fs::write(path, chunk.to_bytes())?;
+        std::fs::write(path, chunk.to_compressed_bytes())?;
         Ok(())
     }
 
@@ -253,7 +258,7 @@ impl WorldGrid {
         let coord = coord.into();
         let path = save_dir.join(format!("chunk_{}_{}.bin", coord.x(), coord.z()));
         let bytes = std::fs::read(path)?;
-        Chunk::from_bytes(&bytes)
+        Chunk::from_compressed_bytes(&bytes)
     }
 
     #[allow(dead_code)]
@@ -856,9 +861,9 @@ pub fn world_streaming_system(
                 if let Err(e) = world.save_chunk_to_disk(coord) {
                     tracing::warn!("Failed to save chunk at {coord:?}: {e}");
                 }
-            } else {
-                // Unmodified chunks can be unloaded from RAM to conserve memory
-                world.chunks.remove(&coord);
+            } else if let Some(removed_chunk) = world.chunks.remove(&coord) {
+                // Keep recently unloaded chunks in RAM LRU cache to prevent thrashing
+                world.chunk_cache.insert(coord, removed_chunk);
             }
         }
     }
@@ -870,6 +875,13 @@ pub fn world_streaming_system(
             break;
         };
         if world.chunks.contains_key(&coord) || world.in_progress_chunks.contains(&coord) {
+            continue;
+        }
+
+        // Fast path: recover from in-memory LRU cache if player turned back into this chunk
+        if let Some(cached_chunk) = world.chunk_cache.get(&coord) {
+            world.chunks.insert(coord, cached_chunk);
+            world.queue_mesh(coord);
             continue;
         }
 
@@ -1091,6 +1103,7 @@ impl Plugin for WorldPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coords::LocalBlockPos;
 
     #[test]
     #[allow(clippy::float_cmp)]
@@ -1119,6 +1132,27 @@ mod tests {
         assert!(
             d_sq_high > threshold_sq,
             "Chunk viewed from high altitude should compress to Greedy Mesh (LOD 1)"
+        );
+    }
+
+    #[test]
+    fn test_lru_chunk_cache_insertion_and_retrieval() {
+        let world = WorldGrid::default();
+        let coord = IVec2::new(42, -99);
+        let mut chunk = Chunk::new();
+        chunk.set_local(LocalBlockPos::new(1, 2, 3), BlockType::DiamondOre);
+
+        assert!(world.chunk_cache.get(&coord).is_none());
+
+        world.chunk_cache.insert(coord, chunk);
+
+        let retrieved = world
+            .chunk_cache
+            .get(&coord)
+            .expect("chunk should be in cache");
+        assert_eq!(
+            retrieved.get_local(LocalBlockPos::new(1, 2, 3)),
+            BlockType::DiamondOre
         );
     }
 }

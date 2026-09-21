@@ -131,6 +131,22 @@ impl Chunk {
         chunk.max_y = max_y;
         Ok(chunk)
     }
+
+    /// Serializes the chunk to LZ4-compressed bytes, dramatically reducing memory and disk size.
+    pub fn to_compressed_bytes(&self) -> Vec<u8> {
+        let raw = self.to_bytes();
+        lz4_flex::compress_prepend_size(&raw)
+    }
+
+    /// Deserializes a chunk from bytes, automatically handling both LZ4-compressed data and legacy uncompressed chunks.
+    pub fn from_compressed_bytes(bytes: &[u8]) -> Result<Self, WorldError> {
+        if bytes.len() == CHUNK_BLOCKS {
+            return Self::from_bytes(bytes);
+        }
+        let decompressed = lz4_flex::decompress_size_prepended(bytes)
+            .map_err(|e| WorldError::Corruption(format!("LZ4 decompression failed: {e}")))?;
+        Self::from_bytes(&decompressed)
+    }
 }
 
 #[cfg(test)]
@@ -175,6 +191,41 @@ mod tests {
             BlockType::GoldOre
         );
         assert_eq!(loaded.max_y, 50);
+    }
+
+    #[test]
+    fn test_chunk_compression_ratio_and_roundtrip() {
+        let mut chunk = Chunk::new();
+        // Emulate realistic terrain: bottom bedrock + stone layers + grass top
+        for x in 0..CHUNK_WIDTH {
+            for z in 0..CHUNK_DEPTH {
+                chunk.set_local(LocalBlockPos::new(x as u8, 0, z as u8), BlockType::Bedrock);
+                for y in 1..=40 {
+                    chunk.set_local(LocalBlockPos::new(x as u8, y, z as u8), BlockType::Stone);
+                }
+                chunk.set_local(LocalBlockPos::new(x as u8, 41, z as u8), BlockType::Grass);
+            }
+        }
+
+        let compressed = chunk.to_compressed_bytes();
+        // Uncompressed is 32,768 bytes. Highly redundant voxel data compresses to < 1,000 bytes!
+        assert!(
+            compressed.len() < 1000,
+            "Expected high compression ratio on voxel data, got {} bytes",
+            compressed.len()
+        );
+
+        let loaded =
+            Chunk::from_compressed_bytes(&compressed).expect("decompression should succeed");
+        assert_eq!(loaded.max_y, 41);
+        assert_eq!(
+            loaded.get_local(LocalBlockPos::new(7, 41, 7)),
+            BlockType::Grass
+        );
+        assert_eq!(
+            loaded.get_local(LocalBlockPos::new(7, 20, 7)),
+            BlockType::Stone
+        );
     }
 
     #[test]

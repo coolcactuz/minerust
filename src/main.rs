@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use minerust::camera::{CameraPlugin, FpsCamera};
 use minerust::chunk::Chunk;
 use minerust::fluid::FluidPlugin;
