@@ -96,7 +96,7 @@ Whether you are exploring rolling foothills and soaring alpine peaks, digging in
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/cactuz/minerust.git
+git clone https://github.com/coolcactuz/minerust.git
 cd minerust
 
 # 2. Run in Production Mode (All optimizations enabled by default)
