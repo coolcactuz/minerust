@@ -51,6 +51,7 @@ pub struct DevSettings {
     pub distance_lod: bool,
     pub lod_threshold: i32,
     pub show_debug_hud: bool,
+    pub pregen_margin: i32,
 }
 
 impl Default for DevSettings {
@@ -66,6 +67,7 @@ impl Default for DevSettings {
             distance_lod: true,
             lod_threshold: 4,
             show_debug_hud: true,
+            pregen_margin: 2,
         }
     }
 }
@@ -118,6 +120,7 @@ pub enum MenuButtonAction {
     ToggleDistanceLod,
     CycleLodThreshold,
     ToggleDebugHud,
+    CyclePregenMargin,
 }
 
 #[derive(Component)]
@@ -173,6 +176,9 @@ pub struct LodThresholdBtnText;
 
 #[derive(Component)]
 pub struct DebugHudBtnText;
+
+#[derive(Component)]
+pub struct PregenMarginBtnText;
 
 pub fn setup_menu_ui(mut commands: Commands) {
     // 1. MAIN MENU SCREEN
@@ -500,6 +506,12 @@ pub fn setup_menu_ui(mut commands: Commands) {
                         "LOD Distance: 4 Chunks (64m)",
                         MenuButtonAction::CycleLodThreshold,
                         LodThresholdBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "Lookahead Buffer: 2 Chunks (+32m)",
+                        MenuButtonAction::CyclePregenMargin,
+                        PregenMarginBtnText,
                     );
                     spawn_settings_button(
                         btn_col,
@@ -874,6 +886,17 @@ pub fn menu_button_click_system(
                         };
                     }
                 }
+                MenuButtonAction::CyclePregenMargin => {
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.pregen_margin = match dev.pregen_margin {
+                            0 => 1,
+                            1 => 2,
+                            2 => 3,
+                            3 => 4,
+                            _ => 0,
+                        };
+                    }
+                }
                 MenuButtonAction::ToggleDebugHud => {
                     if let Some(ref mut dev) = dev_settings {
                         dev.show_debug_hud = !dev.show_debug_hud;
@@ -977,6 +1000,7 @@ pub fn update_dev_button_text_system(
             Without<DistanceLodBtnText>,
             Without<LodThresholdBtnText>,
             Without<DebugHudBtnText>,
+            Without<PregenMarginBtnText>,
         ),
     >,
     mut shadow_text_query: Query<
@@ -992,6 +1016,7 @@ pub fn update_dev_button_text_system(
             Without<DistanceLodBtnText>,
             Without<LodThresholdBtnText>,
             Without<DebugHudBtnText>,
+            Without<PregenMarginBtnText>,
         ),
     >,
     mut max_y_text_query: Query<
@@ -1007,6 +1032,7 @@ pub fn update_dev_button_text_system(
             Without<DistanceLodBtnText>,
             Without<LodThresholdBtnText>,
             Without<DebugHudBtnText>,
+            Without<PregenMarginBtnText>,
         ),
     >,
     mut fog_text_query: Query<
@@ -1022,6 +1048,7 @@ pub fn update_dev_button_text_system(
             Without<DistanceLodBtnText>,
             Without<LodThresholdBtnText>,
             Without<DebugHudBtnText>,
+            Without<PregenMarginBtnText>,
         ),
     >,
     mut budget_text_query: Query<
@@ -1037,6 +1064,7 @@ pub fn update_dev_button_text_system(
             Without<DistanceLodBtnText>,
             Without<LodThresholdBtnText>,
             Without<DebugHudBtnText>,
+            Without<PregenMarginBtnText>,
         ),
     >,
     mut async_text_query: Query<
@@ -1052,6 +1080,7 @@ pub fn update_dev_button_text_system(
             Without<DistanceLodBtnText>,
             Without<LodThresholdBtnText>,
             Without<DebugHudBtnText>,
+            Without<PregenMarginBtnText>,
         ),
     >,
     mut greedy_text_query: Query<
@@ -1067,6 +1096,7 @@ pub fn update_dev_button_text_system(
             Without<DistanceLodBtnText>,
             Without<LodThresholdBtnText>,
             Without<DebugHudBtnText>,
+            Without<PregenMarginBtnText>,
         ),
     >,
     mut lod_text_query: Query<
@@ -1082,6 +1112,7 @@ pub fn update_dev_button_text_system(
             Without<GreedyMeshingBtnText>,
             Without<LodThresholdBtnText>,
             Without<DebugHudBtnText>,
+            Without<PregenMarginBtnText>,
         ),
     >,
     mut thresh_text_query: Query<
@@ -1097,6 +1128,7 @@ pub fn update_dev_button_text_system(
             Without<GreedyMeshingBtnText>,
             Without<DistanceLodBtnText>,
             Without<DebugHudBtnText>,
+            Without<PregenMarginBtnText>,
         ),
     >,
     mut hud_text_query: Query<
@@ -1112,6 +1144,23 @@ pub fn update_dev_button_text_system(
             Without<GreedyMeshingBtnText>,
             Without<DistanceLodBtnText>,
             Without<LodThresholdBtnText>,
+            Without<PregenMarginBtnText>,
+        ),
+    >,
+    mut margin_text_query: Query<
+        &mut Text,
+        (
+            With<PregenMarginBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<LodThresholdBtnText>,
+            Without<DebugHudBtnText>,
         ),
     >,
 ) {
@@ -1205,6 +1254,17 @@ pub fn update_dev_button_text_system(
                 dev.lod_threshold,
                 dev.lod_threshold * 16
             ));
+        }
+        if let Ok(mut text) = margin_text_query.single_mut() {
+            *text = Text::new(if dev.pregen_margin == 0 {
+                "Lookahead Buffer: 0 (Disabled / Stutter prone)".to_string()
+            } else {
+                format!(
+                    "Lookahead Buffer: {} Chunks (+{}m RAM cache)",
+                    dev.pregen_margin,
+                    dev.pregen_margin * 16
+                )
+            });
         }
         if let Ok(mut text) = hud_text_query.single_mut() {
             *text = Text::new(format!(

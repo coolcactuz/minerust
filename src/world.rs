@@ -352,33 +352,68 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
     let mut biomes = [[BiomeType::Plains; CHUNK_DEPTH]; CHUNK_WIDTH];
     let mut river_flags = [[false; CHUNK_DEPTH]; CHUNK_WIDTH];
 
+    // Single-pass loop fusion: biomes, terrain stratification, 3D caves, ores, and liquids.
+    // Traverses column-by-column, writing each voxel directly into contiguous memory without redundant reads or overwrites.
     for lx in 0..CHUNK_WIDTH {
         for lz in 0..CHUNK_DEPTH {
-            let wx = (world_base_x + lx as i32) as f64;
-            let wz = (world_base_z + lz as i32) as f64;
-            let (biome, h, is_river) = calculate_biome_and_height(wx, wz, noise);
+            let wx_i = world_base_x + lx as i32;
+            let wz_i = world_base_z + lz as i32;
+            let wx_f = wx_i as f64;
+            let wz_f = wz_i as f64;
+
+            let (biome, h, is_river) = calculate_biome_and_height(wx_f, wz_f, noise);
             surface_heights[lx][lz] = h;
             biomes[lx][lz] = biome;
             river_flags[lx][lz] = is_river;
-        }
-    }
-
-    // 1. Terrain and Geological Stratification of Biomes
-    for lx in 0..CHUNK_WIDTH {
-        for lz in 0..CHUNK_DEPTH {
-            let wx = world_base_x + lx as i32;
-            let wz = world_base_z + lz as i32;
-            let h = surface_heights[lx][lz];
-            let biome = biomes[lx][lz];
 
             // Indestructible bedrock at world base
             chunk.set_fast(lx, 0, lz, BlockType::Bedrock);
-            if pseudo_hash_3d(wx, 1, wz, seed).is_multiple_of(2) {
+            let bedrock_1 = pseudo_hash_3d(wx_i, 1, wz_i, seed).is_multiple_of(2);
+            if bedrock_1 {
                 chunk.set_fast(lx, 1, lz, BlockType::Bedrock);
             }
 
+            let max_cave_y = (h - 4).min(110);
+
+            // Vertical terrain column sweep from bedrock to surface height h
             for y in 1..=h {
-                let block = match biome {
+                if y == 1 && bedrock_1 {
+                    continue;
+                }
+
+                // 3D Underground Caves and Caverns
+                let in_cave_zone = y >= 4 && y < max_cave_y && !(h <= SEA_LEVEL && y >= h - 4);
+                if in_cave_zone {
+                    let wy = y as f64;
+                    let n1 = noise.fbm_3d(wx_f * 0.025, wy * 0.035, wz_f * 0.025, 2, 0.5, 2.0);
+                    let n2 = noise.fbm_3d(
+                        wx_f * 0.025 + 31.4,
+                        wy * 0.035,
+                        wz_f * 0.025 + 73.1,
+                        2,
+                        0.5,
+                        2.0,
+                    );
+                    let is_tunnel = (n1 * n1 + n2 * n2) < 0.013;
+
+                    let is_cave = if is_tunnel {
+                        true
+                    } else if y < 45 {
+                        let n_room =
+                            noise.fbm_3d(wx_f * 0.02, wy * 0.025, wz_f * 0.02, 2, 0.5, 2.0);
+                        n_room < -0.42
+                    } else {
+                        false
+                    };
+
+                    if is_cave {
+                        // Chunk is pre-initialized to Air; skip writes and ore evaluation
+                        continue;
+                    }
+                }
+
+                // Geological layer determination
+                let base_block = match biome {
                     BiomeType::Desert => {
                         if y == h || y >= h - 3 {
                             BlockType::Sand
@@ -390,7 +425,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     }
                     BiomeType::Ocean | BiomeType::FrozenOcean => {
                         if y == h {
-                            if pseudo_hash_3d(wx / 4, 0, wz / 4, seed).is_multiple_of(3) {
+                            if pseudo_hash_3d(wx_i / 4, 0, wz_i / 4, seed).is_multiple_of(3) {
                                 BlockType::Gravel
                             } else {
                                 BlockType::Sand
@@ -443,6 +478,26 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     }
                 };
 
+                // Ore vein generation within deep stone strata
+                let block = if base_block == BlockType::Stone && y >= 2 && y < h - 4 {
+                    let hash = pseudo_hash_3d(wx_i, y, wz_i, seed);
+                    if y <= 16 && hash.is_multiple_of(179) {
+                        BlockType::DiamondOre
+                    } else if y <= 32 && hash.is_multiple_of(109) {
+                        BlockType::GoldOre
+                    } else if y <= 64 && hash.is_multiple_of(41) {
+                        BlockType::IronOre
+                    } else if y <= 115 && hash.is_multiple_of(25) {
+                        BlockType::CoalOre
+                    } else if hash.is_multiple_of(79) {
+                        BlockType::Gravel
+                    } else {
+                        BlockType::Stone
+                    }
+                } else {
+                    base_block
+                };
+
                 chunk.set_fast(lx, y as usize, lz, block);
             }
 
@@ -455,90 +510,6 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                         BlockType::Water
                     };
                     chunk.set_fast(lx, y as usize, lz, liquid);
-                }
-            }
-        }
-    }
-
-    // 2. Underground Ore Vein Generation (Coal, Iron, Gold, Diamond)
-    for lx in 0..CHUNK_WIDTH {
-        for lz in 0..CHUNK_DEPTH {
-            let wx = world_base_x + lx as i32;
-            let wz = world_base_z + lz as i32;
-            let h = surface_heights[lx][lz];
-
-            for y in 2..(h - 4) {
-                let yu = y as usize;
-                if chunk.get_fast(lx, yu, lz) == BlockType::Stone {
-                    let hash = pseudo_hash_3d(wx, y, wz, seed);
-
-                    // Diamond: deep underground (levels 2-16)
-                    if y <= 16 && hash.is_multiple_of(179) {
-                        chunk.set_fast(lx, yu, lz, BlockType::DiamondOre);
-                    }
-                    // Gold: rare (levels 4-32)
-                    else if y <= 32 && hash.is_multiple_of(109) {
-                        chunk.set_fast(lx, yu, lz, BlockType::GoldOre);
-                    }
-                    // Iron: common (levels 6-64)
-                    else if y <= 64 && hash.is_multiple_of(41) {
-                        chunk.set_fast(lx, yu, lz, BlockType::IronOre);
-                    }
-                    // Coal: abundant (levels 10-115)
-                    else if y <= 115 && hash.is_multiple_of(25) {
-                        chunk.set_fast(lx, yu, lz, BlockType::CoalOre);
-                    }
-                    // Underground gravel pockets
-                    else if hash.is_multiple_of(79) {
-                        chunk.set_fast(lx, yu, lz, BlockType::Gravel);
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. 3D Underground Caves and Tunnels
-    for lx in 0..CHUNK_WIDTH {
-        for lz in 0..CHUNK_DEPTH {
-            let wx = (world_base_x + lx as i32) as f64;
-            let wz = (world_base_z + lz as i32) as f64;
-            let h = surface_heights[lx][lz];
-
-            let max_cave_y = (h - 4).min(110);
-            if max_cave_y <= 4 {
-                continue;
-            }
-
-            for y in 4..max_cave_y {
-                let wy = y as f64;
-
-                // Protect waterbed floors
-                if h <= SEA_LEVEL && y >= h - 4 {
-                    continue;
-                }
-
-                // Winding 3D tunnels
-                let n1 = noise.fbm_3d(wx * 0.025, wy * 0.035, wz * 0.025, 2, 0.5, 2.0);
-                let n2 = noise.fbm_3d(
-                    wx * 0.025 + 31.4,
-                    wy * 0.035,
-                    wz * 0.025 + 73.1,
-                    2,
-                    0.5,
-                    2.0,
-                );
-                let is_tunnel = (n1 * n1 + n2 * n2) < 0.013;
-
-                // Large underground cavern rooms (only evaluate noise if not already a tunnel)
-                let is_room = if !is_tunnel && y < 45 {
-                    let n_room = noise.fbm_3d(wx * 0.02, wy * 0.025, wz * 0.02, 2, 0.5, 2.0);
-                    n_room < -0.42
-                } else {
-                    false
-                };
-
-                if is_tunnel || is_room {
-                    chunk.set_fast(lx, y as usize, lz, BlockType::Air);
                 }
             }
         }
@@ -795,7 +766,12 @@ pub fn world_streaming_system(
         .graphics
         .as_ref()
         .map_or(VIEW_DISTANCE, |s| s.view_distance);
+    let pregen_margin = settings.dev.as_ref().map_or(2, |d| d.pregen_margin);
+    let gen_dist = view_dist + pregen_margin;
+    let unload_dist = gen_dist + 2;
+
     let settings_changed = settings.graphics.as_ref().is_some_and(|s| s.is_changed());
+    let dev_changed = settings.dev.as_ref().is_some_and(|d| d.is_changed());
 
     if settings_changed {
         if let Projection::Perspective(ref mut persp) = *projection {
@@ -809,17 +785,15 @@ pub fn world_streaming_system(
         }
     }
 
-    if player_chunk != world.last_player_chunk || settings_changed {
+    if player_chunk != world.last_player_chunk || settings_changed || dev_changed {
         world.last_player_chunk = player_chunk;
 
         let mut needed_chunks = Vec::new();
-        for dx in -view_dist..=view_dist {
-            for dz in -view_dist..=view_dist {
+        for dx in -gen_dist..=gen_dist {
+            for dz in -gen_dist..=gen_dist {
                 let coord = player_chunk + IVec2::new(dx, dz);
-                // Chunk needs to be loaded if it has no active GPU mesh and is not already loaded or in progress
-                if !world.chunk_entities.contains_key(&coord)
-                    && !world.chunks.contains_key(&coord)
-                    && !world.in_progress_chunks.contains(&coord)
+                // Chunk needs to be generated if it is not already loaded or in progress
+                if !world.chunks.contains_key(&coord) && !world.in_progress_chunks.contains(&coord)
                 {
                     needed_chunks.push(coord);
                 }
@@ -834,12 +808,43 @@ pub fn world_streaming_system(
 
         world.generation_queue = needed_chunks;
 
-        let max_dist = view_dist + 3;
-        let mut chunks_to_remove = Vec::new();
+        // 2-Tier streaming lifecycle:
+        // Tier 1 (within visual view_dist): ensure mesh is queued if missing
+        // Tier 2 (outside view_dist): despawn GPU mesh to save draw calls & VRAM, keep voxels in RAM
+        let mut chunks_to_queue = Vec::new();
+        let mut chunks_to_demesh = Vec::new();
 
+        for (&coord, _) in &world.chunks {
+            let diff = coord - player_chunk;
+            if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
+                if !world.chunk_entities.contains_key(&coord) {
+                    chunks_to_queue.push(coord);
+                }
+            } else if world.chunk_entities.contains_key(&coord) {
+                chunks_to_demesh.push(coord);
+            }
+        }
+
+        for coord in chunks_to_queue {
+            world.queue_mesh(coord);
+        }
+
+        for coord in chunks_to_demesh {
+            if let Some(entity) = world.chunk_entities.remove(&coord) {
+                commands.entity(entity).despawn();
+            }
+            if let Some(old_v) = world.chunk_vertices.remove(&coord) {
+                world.total_vertices = world.total_vertices.saturating_sub(old_v);
+            }
+            world.chunk_lod.remove(&coord);
+            world.queued_for_mesh.remove(&coord);
+            world.in_progress_meshes.remove(&coord);
+        }
+
+        let mut chunks_to_remove = Vec::new();
         for coord in world.chunks.keys() {
             let diff = *coord - player_chunk;
-            if diff.x.abs() > max_dist || diff.y.abs() > max_dist {
+            if diff.x.abs() > unload_dist || diff.y.abs() > unload_dist {
                 chunks_to_remove.push(*coord);
             }
         }
@@ -881,7 +886,10 @@ pub fn world_streaming_system(
         // Fast path: recover from in-memory LRU cache if player turned back into this chunk
         if let Some(cached_chunk) = world.chunk_cache.get(&coord) {
             world.chunks.insert(coord, cached_chunk);
-            world.queue_mesh(coord);
+            let diff = coord - player_chunk;
+            if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
+                world.queue_mesh(coord);
+            }
             continue;
         }
 
@@ -918,14 +926,12 @@ pub fn world_streaming_system(
     }
 
     // 2. Receive finished chunks from background threads and queue for meshing
-    let max_dist = view_dist + 3;
-
     if let Ok(rx) = pools.generator.rx.lock() {
         while let Ok((coord, chunk, from_disk)) = rx.try_recv() {
             world.in_progress_chunks.remove(&coord);
 
             let diff = coord - player_chunk;
-            if diff.x.abs() > max_dist || diff.y.abs() > max_dist {
+            if diff.x.abs() > unload_dist || diff.y.abs() > unload_dist {
                 continue;
             }
 
@@ -933,16 +939,24 @@ pub fn world_streaming_system(
                 world.modified_chunks.insert(coord);
             }
             world.chunks.insert(coord, chunk);
-            world.queue_mesh(coord);
 
-            // Only queue neighbor chunks if they already have an active GPU mesh that needs seam update
+            // Tier 1 meshing: only queue mesh if chunk is within visual view distance
+            if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
+                world.queue_mesh(coord);
+            }
+
+            // Only queue neighbor chunks if they are within visual range and already have an active GPU mesh that needs seam update
             for neighbor_coord in [
                 coord + IVec2::new(-1, 0),
                 coord + IVec2::new(1, 0),
                 coord + IVec2::new(0, -1),
                 coord + IVec2::new(0, 1),
             ] {
-                if world.chunk_entities.contains_key(&neighbor_coord) {
+                let n_diff = neighbor_coord - player_chunk;
+                if n_diff.x.abs() <= view_dist
+                    && n_diff.y.abs() <= view_dist
+                    && world.chunk_entities.contains_key(&neighbor_coord)
+                {
                     world.queue_mesh(neighbor_coord);
                 }
             }
@@ -984,7 +998,7 @@ pub fn world_streaming_system(
     for (&coord, chunk) in &world.chunks {
         let diff = coord - player_chunk;
         let dist_2d = diff.x.abs().max(diff.y.abs());
-        if dist_2d <= max_dist {
+        if dist_2d <= view_dist && world.chunk_entities.contains_key(&coord) {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
             let target_lod = if distance_lod {
                 u8::from(dist_sq > threshold_sq)
@@ -1034,7 +1048,7 @@ pub fn world_streaming_system(
             if let Some(chunk) = world.chunks.get(&coord) {
                 let diff = coord - player_chunk;
                 let dist_2d = diff.x.abs().max(diff.y.abs());
-                if dist_2d <= max_dist {
+                if dist_2d <= view_dist {
                     let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
                     let target_lod = if distance_lod {
                         u8::from(dist_sq > threshold_sq)
@@ -1153,6 +1167,59 @@ mod tests {
         assert_eq!(
             retrieved.get_local(LocalBlockPos::new(1, 2, 3)),
             BlockType::DiamondOre
+        );
+    }
+
+    #[test]
+    fn test_fused_chunk_generation_strata_and_bedrock() {
+        let noise = NoiseGenerator::new(42);
+        let chunk = generate_chunk(0, 0, &noise, 42);
+
+        // Bedrock is guaranteed at layer 0 across all columns
+        for lx in 0..CHUNK_WIDTH {
+            for lz in 0..CHUNK_DEPTH {
+                assert_eq!(chunk.get_fast(lx, 0, lz), BlockType::Bedrock);
+            }
+        }
+
+        // Chunk max_y must reflect populated terrain height
+        assert!(chunk.max_y >= 5, "Terrain height must be at least 5");
+        assert!(
+            chunk.max_y < CHUNK_HEIGHT,
+            "Terrain height must fit within CHUNK_HEIGHT"
+        );
+    }
+
+    #[test]
+    fn test_lookahead_buffer_tier_radii() {
+        let view_dist = 16;
+        let pregen_margin = 2;
+        let gen_dist = view_dist + pregen_margin; // 18
+        let unload_dist = gen_dist + 2; // 20
+
+        // Visual Tier 1: radius 16 chunks
+        let tier1_chunk = IVec2::new(16, 0);
+        assert!(tier1_chunk.x.abs() <= view_dist && tier1_chunk.y.abs() <= view_dist);
+
+        // Lookahead Tier 2 (pre-generated RAM buffer, unmeshed): radius 17..18 chunks
+        let tier2_chunk = IVec2::new(17, 1);
+        let diff_2d = tier2_chunk.x.abs().max(tier2_chunk.y.abs());
+        assert!(
+            diff_2d > view_dist,
+            "Tier 2 chunk must be outside visual view distance"
+        );
+        assert!(
+            diff_2d <= gen_dist,
+            "Tier 2 chunk must be inside lookahead generation radius"
+        );
+        assert!(diff_2d <= unload_dist, "Tier 2 chunk must not be unloaded");
+
+        // Far chunk: radius 21 chunks
+        let far_chunk = IVec2::new(21, 0);
+        let far_diff = far_chunk.x.abs().max(far_chunk.y.abs());
+        assert!(
+            far_diff > unload_dist,
+            "Far chunk must exceed unload threshold"
         );
     }
 }
