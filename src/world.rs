@@ -408,7 +408,23 @@ impl WorldGrid {
     }
 }
 
-/// Determines biome type, surface height, and presence of rivers
+/// Hermite smoothstep interpolation (3t^2 - 2t^3)
+#[inline]
+pub fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
+    if (edge1 - edge0).abs() < 1e-9 {
+        return 0.0;
+    }
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Linear interpolation between `a` and `b` by factor `t`
+#[inline]
+pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
+    a + (b - a) * t
+}
+
+/// Determines biome type, surface height, and presence of rivers with continuous slopes
 pub fn calculate_biome_and_height(
     wx: f64,
     wz: f64,
@@ -417,55 +433,78 @@ pub fn calculate_biome_and_height(
     let cont = noise.fbm_2d(wx * 0.0025, wz * 0.0025, 3, 0.5, 2.0);
     let temp = noise.fbm_2d(wx * 0.0018 + 500.0, wz * 0.0018 + 500.0, 3, 0.5, 2.0);
     let humid = noise.fbm_2d(wx * 0.0020 - 500.0, wz * 0.0020 - 500.0, 3, 0.5, 2.0);
-    let mountain = noise.ridged_fbm_2d(wx * 0.006, wz * 0.006, 4, 0.5, 2.0);
-    let hills = noise.fbm_2d(wx * 0.012, wz * 0.012, 3, 0.5, 2.0);
+    let mountain_noise = noise.ridged_fbm_2d(wx * 0.0035, wz * 0.0035, 4, 0.5, 2.0);
+    let hills = noise.fbm_2d(wx * 0.009, wz * 0.009, 3, 0.5, 2.0);
 
-    let (biome, base_height) = if cont < -0.15 {
-        // Deep ocean basin (depth ~14..36 blocks below sea level 64)
-        let ocean_h = 42.0 + (cont + 0.15) * 30.0;
-        if temp < -0.25 {
-            (BiomeType::FrozenOcean, ocean_h)
-        } else {
-            (BiomeType::Ocean, ocean_h)
-        }
-    } else if cont < 0.02 {
-        // Coast and beach
-        (BiomeType::Beach, (SEA_LEVEL as f64) + hills * 2.0)
+    // 1. Continuous continental elevation curve (C1-smooth, eliminates sheer ocean/coast drop-offs)
+    let base_cont_h = if cont < -0.25 {
+        // Deep ocean basin (depth ~40..48)
+        let ocean_t = smoothstep(-0.60, -0.25, cont);
+        lerp(40.0, 48.0, ocean_t)
+    } else if cont < -0.05 {
+        // Continental shelf (depth ~48..61.5)
+        let shelf_t = smoothstep(-0.25, -0.05, cont);
+        lerp(48.0, 61.5, shelf_t)
+    } else if cont < 0.05 {
+        // Beach & coastal shoreline (Y ~61.5..65.5, crossing sea level 64.0)
+        let coast_t = smoothstep(-0.05, 0.05, cont);
+        lerp(61.5, 65.5, coast_t)
+    } else if cont < 0.25 {
+        // Coastal lowlands & plains (Y ~65.5..70.0)
+        let land_t = smoothstep(0.05, 0.25, cont);
+        lerp(65.5, 70.0, land_t)
     } else {
-        // Inland
-        if cont > 0.10 && mountain > 0.35 {
-            // High mountain range (peaks reaching up to Y=105..122)
-            let m_h = (SEA_LEVEL as f64 + 14.0) + hills * 12.0 + mountain * 35.0;
-            (BiomeType::Mountains, m_h)
-        } else if temp > 0.26 && humid < -0.05 {
-            // Hot desert
-            let d_h = (SEA_LEVEL as f64 + 4.0) + hills * 8.0;
-            (BiomeType::Desert, d_h)
-        } else if temp < -0.22 {
-            // Snowy tundra
-            let t_h = (SEA_LEVEL as f64 + 6.0) + hills * 10.0;
-            (BiomeType::SnowyTundra, t_h)
-        } else if humid > 0.15 {
-            // Forest
-            let f_h = (SEA_LEVEL as f64 + 5.0) + hills * 10.0;
-            (BiomeType::Forest, f_h)
-        } else {
-            // Plains
-            let p_h = (SEA_LEVEL as f64 + 4.0) + hills * 8.0;
-            (BiomeType::Plains, p_h)
-        }
+        // Inland plateaus (Y ~70.0..73.5)
+        let high_t = smoothstep(0.25, 0.60, cont);
+        lerp(70.0, 73.5, high_t)
     };
 
-    // Rivers: carve winding river valleys toward the sea
+    // 2. Rolling hills: gentle ripples on the ocean floor, rolling terrain inland
+    let hill_weight = smoothstep(-0.10, 0.15, cont);
+    let hill_amp = lerp(1.5, 5.0, hill_weight);
+    let hill_h = hills * hill_amp;
+
+    // 3. Mountain elevation: inland gating with smoothstep foothills and quadratic alpine peaks
+    let inland_factor = smoothstep(0.08, 0.28, cont);
+    let mountain_weight = smoothstep(0.22, 0.68, mountain_noise) * inland_factor;
+    // Linear term gives gentle, walkable foothills; quadratic term creates majestic peaks up to Y=118
+    let mountain_h = mountain_weight * 10.0 + (mountain_weight * mountain_weight) * 34.0;
+
+    let base_height = base_cont_h + hill_h + mountain_h;
+
+    // 4. Biome classification
+    let biome = if cont < -0.05 {
+        if temp < -0.22 {
+            BiomeType::FrozenOcean
+        } else {
+            BiomeType::Ocean
+        }
+    } else if cont < 0.05 {
+        BiomeType::Beach
+    } else if mountain_weight > 0.38 {
+        BiomeType::Mountains
+    } else if temp > 0.26 && humid < -0.05 {
+        BiomeType::Desert
+    } else if temp < -0.22 {
+        BiomeType::SnowyTundra
+    } else if humid > 0.15 {
+        BiomeType::Forest
+    } else {
+        BiomeType::Plains
+    };
+
+    // 5. Smooth U-shaped river valley carving
     let river_noise = noise
-        .perlin_2d(wx * 0.004 + 100.0, wz * 0.004 + 200.0)
+        .perlin_2d(wx * 0.0035 + 100.0, wz * 0.0035 + 200.0)
         .abs();
-    let is_river = river_noise < 0.038 && cont > -0.10 && biome != BiomeType::Desert;
+    let is_river = river_noise < 0.035 && cont > -0.05 && biome != BiomeType::Desert;
 
     let final_height = if is_river {
-        let river_factor = (river_noise / 0.038).clamp(0.0, 1.0);
-        let river_bed = (SEA_LEVEL as f64 - 4.0).min(base_height - 4.0);
-        river_bed + (base_height - river_bed) * river_factor
+        let river_factor = river_noise / 0.035;
+        let t = smoothstep(0.0, 1.0, river_factor);
+        let max_carve = 7.0 + 3.0 * (1.0 - mountain_weight);
+        let river_bed = (base_height - max_carve).max(SEA_LEVEL as f64 - 3.0);
+        lerp(river_bed, base_height, t)
     } else {
         base_height
     };
@@ -595,14 +634,14 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     }
                     BiomeType::Mountains => {
                         if y == h {
-                            if h > 105 {
+                            if h > 102 {
                                 BlockType::Snow
-                            } else if h > 88 {
+                            } else if h > 86 {
                                 BlockType::Stone
                             } else {
                                 BlockType::Grass
                             }
-                        } else if y >= h - 2 && h <= 88 {
+                        } else if y >= h - 3 && h <= 86 {
                             BlockType::Dirt
                         } else {
                             BlockType::Stone
@@ -703,6 +742,15 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     // Conical pine trees in snowy tundra
                     if hash.is_multiple_of(35)
                         && chunk.get(lx as i32, h, lz as i32) == BlockType::Snow
+                    {
+                        spawn_tree(&mut chunk, lx as i32, h, lz as i32, true);
+                    }
+                }
+                BiomeType::Mountains => {
+                    // Conical pine trees in lower mountain foothills below the alpine tree line
+                    if h <= 84
+                        && hash.is_multiple_of(30)
+                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass
                     {
                         spawn_tree(&mut chunk, lx as i32, h, lz as i32, true);
                     }
@@ -1549,6 +1597,71 @@ mod tests {
             meshes.len(),
             0,
             "Discarded mesh must not be added to Assets<Mesh>"
+        );
+    }
+
+    #[test]
+    fn test_smoothstep_and_lerp_properties() {
+        assert!((smoothstep(0.0, 1.0, -0.5) - 0.0).abs() < 1e-6);
+        assert!((smoothstep(0.0, 1.0, 1.5) - 1.0).abs() < 1e-6);
+        assert!((smoothstep(0.0, 1.0, 0.5) - 0.5).abs() < 1e-6);
+        assert!((smoothstep(5.0, 5.0, 5.0) - 0.0).abs() < 1e-6);
+
+        assert!((lerp(10.0, 20.0, 0.0) - 10.0).abs() < 1e-6);
+        assert!((lerp(10.0, 20.0, 0.5) - 15.0).abs() < 1e-6);
+        assert!((lerp(10.0, 20.0, 1.0) - 20.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_terrain_slope_continuity_and_no_sheer_walls() {
+        let noise = NoiseGenerator::new(12345);
+        let mut max_single_step_slope = 0i32;
+        let mut min_height = i32::MAX;
+        let mut max_height = i32::MIN;
+
+        // Traverse a wide horizontal cross section of 2000 blocks across biomes
+        let mut prev_h = calculate_biome_and_height(0.0, 0.0, &noise).1;
+        for x in 1..2000 {
+            let (_, h, _) = calculate_biome_and_height(x as f64, 0.0, &noise);
+            let diff = (h - prev_h).abs();
+            if diff > max_single_step_slope {
+                max_single_step_slope = diff;
+            }
+            min_height = min_height.min(h);
+            max_height = max_height.max(h);
+            prev_h = h;
+        }
+
+        // Also test along Z axis across 2000 blocks
+        prev_h = calculate_biome_and_height(0.0, 0.0, &noise).1;
+        for z in 1..2000 {
+            let (_, h, _) = calculate_biome_and_height(0.0, z as f64, &noise);
+            let diff = (h - prev_h).abs();
+            if diff > max_single_step_slope {
+                max_single_step_slope = diff;
+            }
+            min_height = min_height.min(h);
+            max_height = max_height.max(h);
+            prev_h = h;
+        }
+
+        // No unnatural 20+ block vertical cliff faces: single step horizontal slope must be gentle (<= 3 blocks)
+        assert!(
+            max_single_step_slope <= 3,
+            "Terrain has unnatural sheer cliff wall: max single step was {}",
+            max_single_step_slope
+        );
+
+        // Verify terrain reaches oceans and high peaks
+        assert!(
+            min_height <= 50,
+            "Terrain should include deep water/ocean basins, got min {}",
+            min_height
+        );
+        assert!(
+            max_height >= 95,
+            "Terrain should include tall mountain peaks, got max {}",
+            max_height
         );
     }
 }
