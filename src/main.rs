@@ -1,31 +1,16 @@
-mod block;
-mod camera;
-mod chunk;
-pub mod coords;
-pub mod error;
-mod fluid;
-mod interaction;
-mod inventory;
-mod menu;
-mod mesher;
-mod noise;
-mod physics;
-pub mod stage;
-mod texture;
-mod world;
-
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 
-use camera::{CameraPlugin, FpsCamera};
-use chunk::Chunk;
-use fluid::FluidPlugin;
-use interaction::InteractionPlugin;
-use inventory::InventoryPlugin;
-use menu::MenuPlugin;
-use physics::{PhysicsPlugin, PlayerPhysics};
-use stage::VoxelStage;
-use world::{
+use minerust::camera::{CameraPlugin, FpsCamera};
+use minerust::chunk::Chunk;
+use minerust::fluid::FluidPlugin;
+use minerust::interaction::InteractionPlugin;
+use minerust::inventory::InventoryPlugin;
+use minerust::menu::MenuPlugin;
+use minerust::physics::{PhysicsPlugin, PlayerPhysics};
+use minerust::stage::VoxelStage;
+use minerust::texture;
+use minerust::world::{
     SEA_LEVEL, WorldGrid, WorldPlugin, WorldSeed, calculate_biome_and_height, generate_chunk,
     update_chunk_mesh,
 };
@@ -36,7 +21,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     for i in 0..args.len() {
         if (args[i] == "--seed" || args[i] == "-s") && i + 1 < args.len() {
-            seed = WorldSeed::from_str(&args[i + 1]);
+            seed = WorldSeed::from_seed_str(&args[i + 1]);
         }
     }
 

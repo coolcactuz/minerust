@@ -923,7 +923,7 @@ mod tests {
         for lx in 0..CHUNK_WIDTH {
             for lz in 0..CHUNK_DEPTH {
                 for ly in 0..=9 {
-                    chunk.set(lx as i32, ly as i32, lz as i32, BlockType::Bedrock);
+                    chunk.set(lx as i32, ly, lz as i32, BlockType::Bedrock);
                 }
             }
         }
@@ -931,7 +931,7 @@ mod tests {
         for lx in 0..CHUNK_WIDTH {
             for lz in 0..CHUNK_DEPTH {
                 for ly in 10..=20 {
-                    chunk.set(lx as i32, ly as i32, lz as i32, BlockType::Water);
+                    chunk.set(lx as i32, ly, lz as i32, BlockType::Water);
                 }
             }
         }

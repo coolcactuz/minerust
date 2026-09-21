@@ -30,11 +30,13 @@ impl Default for WorldSeed {
     }
 }
 
-impl WorldSeed {
-    pub fn from_str(s: &str) -> Self {
+impl std::str::FromStr for WorldSeed {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let trimmed = s.trim();
         if let Ok(num) = trimmed.parse::<u64>() {
-            Self(num)
+            Ok(Self(num))
         } else {
             // Deterministic 64-bit FNV-1a hash algorithm for strings
             let mut hash: u64 = 0xcbf29ce484222325;
@@ -42,8 +44,16 @@ impl WorldSeed {
                 hash ^= *byte as u64;
                 hash = hash.wrapping_mul(0x100000001b3);
             }
-            Self(hash)
+            Ok(Self(hash))
         }
+    }
+}
+
+impl WorldSeed {
+    #[must_use]
+    pub fn from_seed_str(s: &str) -> Self {
+        use std::str::FromStr;
+        Self::from_str(s).unwrap_or_default()
     }
 }
 
@@ -1083,6 +1093,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_chunk_3d_distance_and_vertical_flight() {
         let coord = IVec2::new(0, 0); // bounds: [0..16, 0..16]
         let mut chunk = Chunk::new();
