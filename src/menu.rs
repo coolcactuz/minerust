@@ -10,7 +10,7 @@ use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
 use crate::physics::PlayerPhysics;
 use crate::save::load_player_from_disk;
-use crate::world::{SEA_LEVEL, WorldGrid, WorldSeed, calculate_biome_and_height};
+use crate::world::{WorldGrid, WorldSeed, find_safe_surface_spawn};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MenuScreen {
@@ -1470,32 +1470,20 @@ pub fn menu_button_click_system(
                                             }
                                             (Vec3::from_array(data.position), data.yaw, data.pitch)
                                         } else {
-                                            let (_, spawn_y, _) =
-                                                calculate_biome_and_height(0.0, 0.0, &w.noise);
-                                            let player_y =
-                                                (spawn_y as f32 + 4.0).max((SEA_LEVEL + 4) as f32);
+                                            let spawn_pos =
+                                                find_safe_surface_spawn(&w.noise, target_seed.0);
                                             if let Some(ref mut inv) = inventory {
                                                 **inv = Inventory::default();
                                             }
-                                            (
-                                                Vec3::new(0.0, player_y, 0.0),
-                                                -std::f32::consts::FRAC_PI_2,
-                                                -0.3,
-                                            )
+                                            (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
                                         }
                                     } else {
-                                        let (_, spawn_y, _) =
-                                            calculate_biome_and_height(0.0, 0.0, &w.noise);
-                                        let player_y =
-                                            (spawn_y as f32 + 4.0).max((SEA_LEVEL + 4) as f32);
+                                        let spawn_pos =
+                                            find_safe_surface_spawn(&w.noise, target_seed.0);
                                         if let Some(ref mut inv) = inventory {
                                             **inv = Inventory::default();
                                         }
-                                        (
-                                            Vec3::new(0.0, player_y, 0.0),
-                                            -std::f32::consts::FRAC_PI_2,
-                                            -0.3,
-                                        )
+                                        (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
                                     };
 
                                 if let Ok((mut transform, mut fps_cam, mut physics)) =

@@ -14,7 +14,9 @@ use minerust::profile::ProfilePlugin;
 use minerust::save::{SavePlugin, load_player_from_disk};
 use minerust::stage::VoxelStage;
 use minerust::texture;
-use minerust::world::{SEA_LEVEL, WorldGrid, WorldPlugin, WorldSeed, calculate_biome_and_height};
+use minerust::world::{
+    WorldGrid, WorldPlugin, WorldSeed, calculate_biome_and_height, find_safe_surface_spawn,
+};
 
 fn main() {
     // 1. Parse World Seed and Dev flags from command line
@@ -164,13 +166,8 @@ fn setup(
         inventory.selected_slot = data.selected_slot;
         (Vec3::from_array(data.position), data.yaw, data.pitch)
     } else {
-        let (_, spawn_y, _) = calculate_biome_and_height(0.0, 0.0, &noise);
-        let player_y = (spawn_y as f32 + 4.0).max((SEA_LEVEL + 4) as f32);
-        (
-            Vec3::new(0.0, player_y, 0.0),
-            default_fps.yaw,
-            default_fps.pitch,
-        )
+        let spawn_pos = find_safe_surface_spawn(&noise, seed);
+        (spawn_pos, default_fps.yaw, default_fps.pitch)
     };
 
     let center_chunk =
