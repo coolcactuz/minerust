@@ -41,6 +41,7 @@ impl MenuState {
 
 #[derive(Resource, Clone, Debug)]
 pub struct DevSettings {
+    pub dev_mode: bool,
     pub backface_culling: bool,
     pub shadows_enabled: bool,
     pub max_y_skip: bool,
@@ -57,6 +58,7 @@ pub struct DevSettings {
 impl Default for DevSettings {
     fn default() -> Self {
         Self {
+            dev_mode: false,
             backface_culling: true,
             shadows_enabled: true,
             max_y_skip: true,
@@ -66,7 +68,7 @@ impl Default for DevSettings {
             greedy_meshing: true,
             distance_lod: true,
             lod_threshold: 4,
-            show_debug_hud: true,
+            show_debug_hud: false,
             pregen_margin: 2,
         }
     }
@@ -180,7 +182,9 @@ pub struct DebugHudBtnText;
 #[derive(Component)]
 pub struct PregenMarginBtnText;
 
-pub fn setup_menu_ui(mut commands: Commands) {
+pub fn setup_menu_ui(mut commands: Commands, dev_settings: Option<Res<DevSettings>>) {
+    let is_dev = dev_settings.as_ref().is_some_and(|d| d.dev_mode);
+
     // 1. MAIN MENU SCREEN
     commands
         .spawn((
@@ -247,12 +251,14 @@ pub fn setup_menu_ui(mut commands: Commands) {
                         MenuButtonAction::OpenSettings,
                         false,
                     );
-                    spawn_menu_button(
-                        btn_col,
-                        "🛠 Dev & Benchmarks",
-                        MenuButtonAction::OpenDevSettings,
-                        false,
-                    );
+                    if is_dev {
+                        spawn_menu_button(
+                            btn_col,
+                            "🛠 Dev & Benchmarks",
+                            MenuButtonAction::OpenDevSettings,
+                            false,
+                        );
+                    }
                     spawn_menu_button(btn_col, "✕ Quit Game", MenuButtonAction::QuitGame, false);
                 });
         });
@@ -304,12 +310,14 @@ pub fn setup_menu_ui(mut commands: Commands) {
                         MenuButtonAction::OpenSettings,
                         false,
                     );
-                    spawn_menu_button(
-                        btn_col,
-                        "🛠 Dev & Benchmarks",
-                        MenuButtonAction::OpenDevSettings,
-                        false,
-                    );
+                    if is_dev {
+                        spawn_menu_button(
+                            btn_col,
+                            "🛠 Dev & Benchmarks",
+                            MenuButtonAction::OpenDevSettings,
+                            false,
+                        );
+                    }
                     spawn_menu_button(
                         btn_col,
                         "⌂ Return to Main Menu",
@@ -615,7 +623,9 @@ pub fn menu_input_system(
 
     if keys.just_pressed(KeyCode::F3) {
         if let Some(ref mut dev) = dev_settings {
-            dev.show_debug_hud = !dev.show_debug_hud;
+            if dev.dev_mode {
+                dev.show_debug_hud = !dev.show_debug_hud;
+            }
         }
     }
 
@@ -653,6 +663,7 @@ pub fn menu_input_system(
 
 pub fn update_menu_visibility_system(
     menu: Res<MenuState>,
+    dev_settings: Option<Res<DevSettings>>,
     mut main_query: Query<
         &mut Visibility,
         (
@@ -721,7 +732,8 @@ pub fn update_menu_visibility_system(
         }
     }
     if let Ok(mut vis) = dev_query.single_mut() {
-        let target = if menu.screen == MenuScreen::DevSettings {
+        let is_dev = dev_settings.as_ref().is_some_and(|d| d.dev_mode);
+        let target = if is_dev && menu.screen == MenuScreen::DevSettings {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -788,8 +800,10 @@ pub fn menu_button_click_system(
                     menu.screen = MenuScreen::Settings;
                 }
                 MenuButtonAction::OpenDevSettings => {
-                    menu.previous_screen = menu.screen;
-                    menu.screen = MenuScreen::DevSettings;
+                    if dev_settings.as_ref().is_some_and(|d| d.dev_mode) {
+                        menu.previous_screen = menu.screen;
+                        menu.screen = MenuScreen::DevSettings;
+                    }
                 }
                 MenuButtonAction::BackFromSettings | MenuButtonAction::BackFromDevSettings => {
                     menu.screen = menu.previous_screen;
@@ -837,69 +851,91 @@ pub fn menu_button_click_system(
                 }
                 MenuButtonAction::ToggleBackfaceCulling => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.backface_culling = !dev.backface_culling;
+                        if dev.dev_mode {
+                            dev.backface_culling = !dev.backface_culling;
+                        }
                     }
                 }
                 MenuButtonAction::ToggleShadows => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.shadows_enabled = !dev.shadows_enabled;
+                        if dev.dev_mode {
+                            dev.shadows_enabled = !dev.shadows_enabled;
+                        }
                     }
                 }
                 MenuButtonAction::ToggleMaxYSkip => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.max_y_skip = !dev.max_y_skip;
+                        if dev.dev_mode {
+                            dev.max_y_skip = !dev.max_y_skip;
+                        }
                     }
                 }
                 MenuButtonAction::ToggleDistanceFog => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.distance_fog = !dev.distance_fog;
+                        if dev.dev_mode {
+                            dev.distance_fog = !dev.distance_fog;
+                        }
                     }
                 }
                 MenuButtonAction::ToggleMeshBudget => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.mesh_budget = !dev.mesh_budget;
+                        if dev.dev_mode {
+                            dev.mesh_budget = !dev.mesh_budget;
+                        }
                     }
                 }
                 MenuButtonAction::ToggleAsyncMeshing => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.async_meshing = !dev.async_meshing;
+                        if dev.dev_mode {
+                            dev.async_meshing = !dev.async_meshing;
+                        }
                     }
                 }
                 MenuButtonAction::ToggleGreedyMeshing => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.greedy_meshing = !dev.greedy_meshing;
+                        if dev.dev_mode {
+                            dev.greedy_meshing = !dev.greedy_meshing;
+                        }
                     }
                 }
                 MenuButtonAction::ToggleDistanceLod => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.distance_lod = !dev.distance_lod;
+                        if dev.dev_mode {
+                            dev.distance_lod = !dev.distance_lod;
+                        }
                     }
                 }
                 MenuButtonAction::CycleLodThreshold => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.lod_threshold = match dev.lod_threshold {
-                            2 => 3,
-                            4 => 6,
-                            6 => 8,
-                            8 => 2,
-                            _ => 4,
-                        };
+                        if dev.dev_mode {
+                            dev.lod_threshold = match dev.lod_threshold {
+                                2 => 3,
+                                4 => 6,
+                                6 => 8,
+                                8 => 2,
+                                _ => 4,
+                            };
+                        }
                     }
                 }
                 MenuButtonAction::CyclePregenMargin => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.pregen_margin = match dev.pregen_margin {
-                            0 => 1,
-                            1 => 2,
-                            2 => 3,
-                            3 => 4,
-                            _ => 0,
-                        };
+                        if dev.dev_mode {
+                            dev.pregen_margin = match dev.pregen_margin {
+                                0 => 1,
+                                1 => 2,
+                                2 => 3,
+                                3 => 4,
+                                _ => 0,
+                            };
+                        }
                     }
                 }
                 MenuButtonAction::ToggleDebugHud => {
                     if let Some(ref mut dev) = dev_settings {
-                        dev.show_debug_hud = !dev.show_debug_hud;
+                        if dev.dev_mode {
+                            dev.show_debug_hud = !dev.show_debug_hud;
+                        }
                     }
                 }
             }
@@ -1375,5 +1411,56 @@ impl Plugin for MenuPlugin {
                     fps_limiter_system,
                 ),
             );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dev_settings_production_defaults() {
+        let dev = DevSettings::default();
+
+        // Production mode must be default
+        assert!(
+            !dev.dev_mode,
+            "dev_mode must default to false for public release"
+        );
+        assert!(
+            !dev.show_debug_hud,
+            "debug HUD must default to false for public release"
+        );
+
+        // All performance optimizations must be locked ON by default
+        assert!(dev.backface_culling, "backface culling must be enabled");
+        assert!(dev.shadows_enabled, "shadows must be enabled");
+        assert!(dev.max_y_skip, "max_y skip must be enabled");
+        assert!(dev.distance_fog, "distance fog must be enabled");
+        assert!(dev.mesh_budget, "mesh budget must be enabled");
+        assert!(dev.async_meshing, "async meshing must be enabled");
+        assert!(dev.greedy_meshing, "greedy meshing must be enabled");
+        assert!(dev.distance_lod, "distance LOD must be enabled");
+        assert_eq!(
+            dev.lod_threshold, 4,
+            "default LOD threshold should be 4 chunks"
+        );
+        assert_eq!(
+            dev.pregen_margin, 2,
+            "default lookahead pregen margin should be 2 chunks"
+        );
+    }
+
+    #[test]
+    fn test_dev_settings_custom_dev_mode() {
+        let dev = DevSettings {
+            dev_mode: true,
+            show_debug_hud: true,
+            ..Default::default()
+        };
+
+        assert!(dev.dev_mode);
+        assert!(dev.show_debug_hud);
+        assert!(dev.greedy_meshing);
     }
 }

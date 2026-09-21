@@ -408,7 +408,9 @@ pub fn update_physics_hud_system(
     mut text_query: Query<&mut Text, With<PhysicsDebugText>>,
     mut root_query: Query<&mut Visibility, With<PhysicsDebugRoot>>,
 ) {
-    let show_hud = dev_settings.as_ref().map_or(true, |d| d.show_debug_hud);
+    let show_hud = dev_settings
+        .as_ref()
+        .is_some_and(|d| d.dev_mode && d.show_debug_hud);
     if let Ok(mut vis) = root_query.single_mut() {
         let target = if show_hud {
             Visibility::Inherited
