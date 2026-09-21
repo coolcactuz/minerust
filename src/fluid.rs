@@ -1,10 +1,10 @@
-use std::collections::{HashSet, VecDeque};
 use bevy::prelude::*;
+use std::collections::{HashSet, VecDeque};
 
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::chunk::CHUNK_HEIGHT;
-use crate::world::{chunk_distance_sq_to_player, update_chunk_mesh, WorldGrid, SEA_LEVEL};
+use crate::world::{SEA_LEVEL, WorldGrid, chunk_distance_sq_to_player, update_chunk_mesh};
 
 pub const MAX_FLUID_TICKS_PER_FRAME: usize = 48;
 
@@ -51,17 +51,13 @@ impl FluidSimulation {
 
 /// Executes a single batch of fluid simulation ticks, propagating water downwards
 /// (waterfalls), horizontally into canals and excavated seabed holes, and drying up disconnected water.
-pub fn process_fluid_step(
-    world: &mut WorldGrid,
-    fluid_sim: &mut FluidSimulation,
-) -> Vec<IVec2> {
+pub fn process_fluid_step(world: &mut WorldGrid, fluid_sim: &mut FluidSimulation) -> Vec<IVec2> {
     let mut dirty_coords = Vec::new();
     let batch_size = fluid_sim.queue.len().min(MAX_FLUID_TICKS_PER_FRAME);
 
     for _ in 0..batch_size {
-        let pos = match fluid_sim.queue.pop_front() {
-            Some(p) => p,
-            None => break,
+        let Some(pos) = fluid_sim.queue.pop_front() else {
+            break;
         };
         fluid_sim.queued.remove(&pos);
 
@@ -89,16 +85,15 @@ pub fn process_fluid_step(
                 for npos in neighbors {
                     if world.get_block(npos) == BlockType::Water {
                         // At or below sea level: natural hole filling (seabed, lakes, excavated channels)
-                        if pos.y <= SEA_LEVEL as i32 {
+                        if pos.y <= SEA_LEVEL {
                             should_fill_water = true;
                             break;
-                        } else {
-                            // Above sea level: water flows horizontally if resting on a solid surface
-                            let below_npos = npos - IVec3::Y;
-                            if world.is_solid_at(below_npos) || below_npos.y <= 0 {
-                                should_fill_water = true;
-                                break;
-                            }
+                        }
+                        // Above sea level: water flows horizontally if resting on a solid surface
+                        let below_npos = npos - IVec3::Y;
+                        if world.is_solid_at(below_npos) || below_npos.y <= 0 {
+                            should_fill_water = true;
+                            break;
                         }
                     }
                 }
@@ -138,7 +133,7 @@ pub fn process_fluid_step(
             }
 
             // B. Above sea level, check if supply was cut off (e.g. player plugged the source with a block)
-            if pos.y > SEA_LEVEL as i32 && !fluid_sim.sources.contains(&pos) {
+            if pos.y > SEA_LEVEL && !fluid_sim.sources.contains(&pos) {
                 let above_pos = pos + IVec3::Y;
                 let has_water_above = world.get_block(above_pos) == BlockType::Water;
 
@@ -200,7 +195,10 @@ pub fn fluid_simulation_system(
         dirty_coords.sort_unstable_by_key(|c| (c.x, c.y));
         dirty_coords.dedup();
 
-        let player_pos = camera_query.single().ok().map_or(Vec3::ZERO, |t| t.translation);
+        let player_pos = camera_query
+            .single()
+            .ok()
+            .map_or(Vec3::ZERO, |t| t.translation);
         let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
         let distance_lod = dev_settings.as_ref().map_or(true, |d| d.distance_lod);
         let lod_threshold = dev_settings.as_ref().map_or(4, |d| d.lod_threshold);

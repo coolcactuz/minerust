@@ -42,7 +42,7 @@ pub fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
             BlockFace::Bottom => TextureId::Dirt,
             _ => TextureId::GrassSide,
         },
-        BlockType::Dirt => TextureId::Dirt,
+        BlockType::Dirt | BlockType::Air => TextureId::Dirt,
         BlockType::Stone => TextureId::Stone,
         BlockType::Cobblestone => TextureId::Cobblestone,
         BlockType::Wood => match face {
@@ -74,7 +74,6 @@ pub fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
         BlockType::Gravel => TextureId::Gravel,
         BlockType::Ice => TextureId::Ice,
         BlockType::Glass => TextureId::Glass,
-        BlockType::Air => TextureId::Dirt,
     }
 }
 
@@ -148,11 +147,19 @@ pub fn create_texture_atlas() -> Image {
             let overhang = 3 + (p_hash(x, 0, 3) % 3);
             if y < overhang {
                 let h = p_hash(x, y, 2) % 3;
-                let col = if h == 0 { [76, 134, 39, 255] } else { [95, 159, 53, 255] };
+                let col = if h == 0 {
+                    [76, 134, 39, 255]
+                } else {
+                    [95, 159, 53, 255]
+                };
                 set_px(TextureId::GrassSide, x, y, col);
             } else {
                 let h = p_hash(x, y, 1) % 3;
-                let col = if h == 0 { [108, 73, 47, 255] } else { [134, 96, 67, 255] };
+                let col = if h == 0 {
+                    [108, 73, 47, 255]
+                } else {
+                    [134, 96, 67, 255]
+                };
                 set_px(TextureId::GrassSide, x, y, col);
             }
         }
@@ -174,12 +181,22 @@ pub fn create_texture_atlas() -> Image {
     // 5. Cobblestone (Rough cobblestones with dark seams)
     for x in 0..16 {
         for y in 0..16 {
-            let is_border = x == 0 || x == 8 || y == 0 || y == 5 || y == 11 || (y < 6 && x == 4) || (y >= 6 && y < 12 && x == 12);
+            let is_border = x == 0
+                || x == 8
+                || y == 0
+                || y == 5
+                || y == 11
+                || (y < 6 && x == 4)
+                || ((6..12).contains(&y) && x == 12);
             let col = if is_border {
                 [65, 65, 65, 255]
             } else {
                 let h = p_hash(x, y, 5) % 4;
-                if h == 0 { [100, 100, 100, 255] } else { [135, 135, 135, 255] }
+                if h == 0 {
+                    [100, 100, 100, 255]
+                } else {
+                    [135, 135, 135, 255]
+                }
             };
             set_px(TextureId::Cobblestone, x, y, col);
         }
@@ -230,14 +247,22 @@ pub fn create_texture_atlas() -> Image {
     }
 
     // 9. Planks (Horizontal wooden boards with seams)
-    for x in 0..16 {
-        for y in 0..16 {
-            let is_seam = y % 4 == 0 || (y < 4 && x == 7) || (y >= 4 && y < 8 && x == 14) || (y >= 8 && y < 12 && x == 4) || (y >= 12 && x == 10);
+    for x in 0..16_usize {
+        for y in 0..16_usize {
+            let is_seam = y.is_multiple_of(4)
+                || (y < 4 && x == 7)
+                || ((4..8).contains(&y) && x == 14)
+                || ((8..12).contains(&y) && x == 4)
+                || (y >= 12 && x == 10);
             let col = if is_seam {
                 [130, 95, 50, 255]
             } else {
                 let h = p_hash(x, y, 9) % 3;
-                if h == 0 { [170, 130, 78, 255] } else { [188, 146, 92, 255] }
+                if h == 0 {
+                    [170, 130, 78, 255]
+                } else {
+                    [188, 146, 92, 255]
+                }
             };
             set_px(TextureId::Planks, x, y, col);
         }
@@ -264,7 +289,11 @@ pub fn create_texture_atlas() -> Image {
                 [180, 165, 115, 255]
             } else {
                 let h = p_hash(x, y, 11) % 3;
-                if h == 0 { [205, 192, 140, 255] } else { [216, 204, 152, 255] }
+                if h == 0 {
+                    [205, 192, 140, 255]
+                } else {
+                    [216, 204, 152, 255]
+                }
             };
             set_px(TextureId::SandstoneSide, x, y, col);
         }
@@ -314,7 +343,11 @@ pub fn create_texture_atlas() -> Image {
                 set_px(TextureId::SnowSide, x, y, [245, 248, 252, 255]);
             } else {
                 let h = p_hash(x, y, 1) % 3;
-                let col = if h == 0 { [108, 73, 47, 255] } else { [134, 96, 67, 255] };
+                let col = if h == 0 {
+                    [108, 73, 47, 255]
+                } else {
+                    [134, 96, 67, 255]
+                };
                 set_px(TextureId::SnowSide, x, y, col);
             }
         }
@@ -347,7 +380,18 @@ pub fn create_texture_atlas() -> Image {
             }
         }
         // Scattered crystal/ore flecks
-        let spots = [(3, 4), (4, 4), (3, 5), (10, 8), (11, 8), (10, 9), (6, 12), (7, 12), (13, 3), (13, 4)];
+        let spots = [
+            (3, 4),
+            (4, 4),
+            (3, 5),
+            (10, 8),
+            (11, 8),
+            (10, 9),
+            (6, 12),
+            (7, 12),
+            (13, 3),
+            (13, 4),
+        ];
         for (sx, sy) in spots {
             set_px(ore_id, sx, sy, fleck_color);
             set_px(ore_id, (sx + 1) % 16, sy, fleck_dark);
@@ -357,11 +401,19 @@ pub fn create_texture_atlas() -> Image {
     // 17. Coal Ore
     draw_ore(TextureId::CoalOre, [25, 25, 25, 255], [45, 45, 45, 255]);
     // 18. Iron Ore
-    draw_ore(TextureId::IronOre, [210, 175, 145, 255], [175, 135, 105, 255]);
+    draw_ore(
+        TextureId::IronOre,
+        [210, 175, 145, 255],
+        [175, 135, 105, 255],
+    );
     // 19. Gold Ore
     draw_ore(TextureId::GoldOre, [250, 220, 60, 255], [215, 175, 35, 255]);
     // 20. Diamond Ore
-    draw_ore(TextureId::DiamondOre, [75, 230, 235, 255], [45, 185, 195, 255]);
+    draw_ore(
+        TextureId::DiamondOre,
+        [75, 230, 235, 255],
+        [45, 185, 195, 255],
+    );
 
     // 21. Cactus Side
     for x in 0..16 {
@@ -385,7 +437,11 @@ pub fn create_texture_atlas() -> Image {
             let dx = (x as i32 - 8).abs();
             let dy = (y as i32 - 8).abs();
             let dist = dx.max(dy);
-            let col = if dist >= 7 { [42, 120, 45, 255] } else { [55, 155, 60, 255] };
+            let col = if dist >= 7 {
+                [42, 120, 45, 255]
+            } else {
+                [55, 155, 60, 255]
+            };
             set_px(TextureId::CactusTop, x, y, col);
         }
     }

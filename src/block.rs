@@ -37,17 +37,17 @@ pub enum BlockFace {
 
 impl BlockType {
     #[inline]
-    pub fn is_solid(&self) -> bool {
+    pub fn is_solid(self) -> bool {
         !matches!(self, BlockType::Air | BlockType::Water)
     }
 
     #[inline]
-    pub fn is_water(&self) -> bool {
-        matches!(self, BlockType::Water)
+    pub fn is_water(self) -> bool {
+        self == BlockType::Water
     }
 
     #[inline]
-    pub fn is_transparent(&self) -> bool {
+    pub fn is_transparent(self) -> bool {
         matches!(self, BlockType::Air | BlockType::Water | BlockType::Glass)
     }
 
@@ -82,7 +82,7 @@ impl BlockType {
         self as u8
     }
 
-    pub fn color(&self, face: BlockFace) -> [f32; 4] {
+    pub fn color(self, face: BlockFace) -> [f32; 4] {
         let (base_rgb, shade) = match self {
             BlockType::Air => ([0.0, 0.0, 0.0], 1.0),
             BlockType::Grass => match face {

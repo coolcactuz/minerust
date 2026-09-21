@@ -5,7 +5,7 @@ use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
 use crate::menu::MenuState;
-use crate::world::{chunk_distance_sq_to_player, update_chunk_mesh, WorldGrid};
+use crate::world::{WorldGrid, chunk_distance_sq_to_player, update_chunk_mesh};
 
 pub struct RaycastHit {
     pub hit_block: IVec3,
@@ -31,9 +31,21 @@ pub fn voxel_raycast(
     let step_y = if dir.y > 0.0 { 1 } else { -1 };
     let step_z = if dir.z > 0.0 { 1 } else { -1 };
 
-    let delta_x = if dir.x != 0.0 { (1.0 / dir.x).abs() } else { f32::INFINITY };
-    let delta_y = if dir.y != 0.0 { (1.0 / dir.y).abs() } else { f32::INFINITY };
-    let delta_z = if dir.z != 0.0 { (1.0 / dir.z).abs() } else { f32::INFINITY };
+    let delta_x = if dir.x != 0.0 {
+        (1.0 / dir.x).abs()
+    } else {
+        f32::INFINITY
+    };
+    let delta_y = if dir.y != 0.0 {
+        (1.0 / dir.y).abs()
+    } else {
+        f32::INFINITY
+    };
+    let delta_z = if dir.z != 0.0 {
+        (1.0 / dir.z).abs()
+    } else {
+        f32::INFINITY
+    };
 
     let mut t_max_x = if dir.x > 0.0 {
         (current.x as f32 + 1.0 - origin.x) * delta_x
@@ -201,7 +213,15 @@ pub fn block_interaction_system(
                 } else {
                     global_greedy
                 };
-                update_chunk_mesh(&coord, &mut commands, &mut world, &mut meshes, &mut materials, max_y_skip, greedy);
+                update_chunk_mesh(
+                    &coord,
+                    &mut commands,
+                    &mut world,
+                    &mut meshes,
+                    &mut materials,
+                    max_y_skip,
+                    greedy,
+                );
             }
         }
     }

@@ -16,10 +16,7 @@ impl Default for NoiseGenerator {
 impl NoiseGenerator {
     pub fn new(seed: u64) -> Self {
         let mut perm = [0u8; 512];
-        let mut p = [0u8; 256];
-        for i in 0..256 {
-            p[i] = i as u8;
-        }
+        let mut p: [u8; 256] = std::array::from_fn(|i| i as u8);
 
         // SplitMix64 PRNG: robust, deterministic 64-bit algorithm
         let mut s = seed.wrapping_add(0x9e3779b97f4a7c15);
@@ -37,10 +34,8 @@ impl NoiseGenerator {
             p.swap(i, j);
         }
 
-        for i in 0..256 {
-            perm[i] = p[i];
-            perm[256 + i] = p[i];
-        }
+        perm[..256].copy_from_slice(&p);
+        perm[256..].copy_from_slice(&p);
 
         Self { seed, perm }
     }
@@ -131,7 +126,14 @@ impl NoiseGenerator {
     }
 
     /// 2D Ridged Multi-Fractal: ideal for mountain peaks and rocky ridges
-    pub fn ridged_fbm_2d(&self, x: f64, y: f64, octaves: usize, persistence: f64, lacunarity: f64) -> f64 {
+    pub fn ridged_fbm_2d(
+        &self,
+        x: f64,
+        y: f64,
+        octaves: usize,
+        persistence: f64,
+        lacunarity: f64,
+    ) -> f64 {
         let mut total = 0.0;
         let mut frequency = 1.0;
         let mut amplitude = 1.0;
@@ -149,7 +151,15 @@ impl NoiseGenerator {
     }
 
     /// 3D FBM for underground caves and tunnels
-    pub fn fbm_3d(&self, x: f64, y: f64, z: f64, octaves: usize, persistence: f64, lacunarity: f64) -> f64 {
+    pub fn fbm_3d(
+        &self,
+        x: f64,
+        y: f64,
+        z: f64,
+        octaves: usize,
+        persistence: f64,
+        lacunarity: f64,
+    ) -> f64 {
         let mut total = 0.0;
         let mut frequency = 1.0;
         let mut amplitude = 1.0;

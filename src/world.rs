@@ -1,13 +1,13 @@
-use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Mutex;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy::tasks::AsyncComputeTaskPool;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
-use crate::chunk::{Chunk, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
+use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
 use crate::menu::GraphicsSettings;
 use crate::mesher::build_chunk_mesh;
 use crate::noise::NoiseGenerator;
@@ -217,28 +217,26 @@ impl WorldGrid {
         dirty_chunks
     }
 
-    pub fn save_chunk_to_disk(&self, coord: &IVec2) -> std::io::Result<()> {
-        let Some(chunk) = self.chunks.get(coord) else {
+    pub fn save_chunk_to_disk(&self, coord: IVec2) -> std::io::Result<()> {
+        let Some(chunk) = self.chunks.get(&coord) else {
             return Ok(());
         };
         std::fs::create_dir_all(&self.save_dir)?;
-        let path = self.save_dir.join(format!("chunk_{}_{}.bin", coord.x, coord.y));
+        let path = self
+            .save_dir
+            .join(format!("chunk_{}_{}.bin", coord.x, coord.y));
         std::fs::write(path, chunk.to_bytes())?;
         Ok(())
     }
 
-    pub fn load_chunk_from_disk_path(save_dir: &std::path::Path, coord: &IVec2) -> Option<Chunk> {
+    pub fn load_chunk_from_disk_path(save_dir: &std::path::Path, coord: IVec2) -> Option<Chunk> {
         let path = save_dir.join(format!("chunk_{}_{}.bin", coord.x, coord.y));
-        if path.exists() {
-            if let Ok(bytes) = std::fs::read(path) {
-                return Chunk::from_bytes(&bytes);
-            }
-        }
-        None
+        let bytes = std::fs::read(path).ok()?;
+        Chunk::from_bytes(&bytes)
     }
 
     #[allow(dead_code)]
-    pub fn load_chunk_from_disk(&self, coord: &IVec2) -> Option<Chunk> {
+    pub fn load_chunk_from_disk(&self, coord: IVec2) -> Option<Chunk> {
         Self::load_chunk_from_disk_path(&self.save_dir, coord)
     }
 }
@@ -292,7 +290,9 @@ pub fn calculate_biome_and_height(
     };
 
     // Rivers: carve winding river valleys toward the sea
-    let river_noise = noise.perlin_2d(wx * 0.004 + 100.0, wz * 0.004 + 200.0).abs();
+    let river_noise = noise
+        .perlin_2d(wx * 0.004 + 100.0, wz * 0.004 + 200.0)
+        .abs();
     let is_river = river_noise < 0.038 && cont > -0.10 && biome != BiomeType::Desert;
 
     let final_height = if is_river {
@@ -347,7 +347,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
 
             // Indestructible bedrock at world base
             chunk.set_fast(lx, 0, lz, BlockType::Bedrock);
-            if pseudo_hash_3d(wx, 1, wz, seed) % 2 == 0 {
+            if pseudo_hash_3d(wx, 1, wz, seed).is_multiple_of(2) {
                 chunk.set_fast(lx, 1, lz, BlockType::Bedrock);
             }
 
@@ -364,7 +364,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     }
                     BiomeType::Ocean | BiomeType::FrozenOcean => {
                         if y == h {
-                            if pseudo_hash_3d(wx / 4, 0, wz / 4, seed) % 3 == 0 {
+                            if pseudo_hash_3d(wx / 4, 0, wz / 4, seed).is_multiple_of(3) {
                                 BlockType::Gravel
                             } else {
                                 BlockType::Sand
@@ -447,23 +447,23 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     let hash = pseudo_hash_3d(wx, y, wz, seed);
 
                     // Diamond: deep underground (levels 2-16)
-                    if y <= 16 && hash % 179 == 0 {
+                    if y <= 16 && hash.is_multiple_of(179) {
                         chunk.set_fast(lx, yu, lz, BlockType::DiamondOre);
                     }
                     // Gold: rare (levels 4-32)
-                    else if y <= 32 && hash % 109 == 0 {
+                    else if y <= 32 && hash.is_multiple_of(109) {
                         chunk.set_fast(lx, yu, lz, BlockType::GoldOre);
                     }
                     // Iron: common (levels 6-64)
-                    else if y <= 64 && hash % 41 == 0 {
+                    else if y <= 64 && hash.is_multiple_of(41) {
                         chunk.set_fast(lx, yu, lz, BlockType::IronOre);
                     }
                     // Coal: abundant (levels 10-115)
-                    else if y <= 115 && hash % 25 == 0 {
+                    else if y <= 115 && hash.is_multiple_of(25) {
                         chunk.set_fast(lx, yu, lz, BlockType::CoalOre);
                     }
                     // Underground gravel pockets
-                    else if hash % 79 == 0 {
+                    else if hash.is_multiple_of(79) {
                         chunk.set_fast(lx, yu, lz, BlockType::Gravel);
                     }
                 }
@@ -493,7 +493,14 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
 
                 // Winding 3D tunnels
                 let n1 = noise.fbm_3d(wx * 0.025, wy * 0.035, wz * 0.025, 2, 0.5, 2.0);
-                let n2 = noise.fbm_3d(wx * 0.025 + 31.4, wy * 0.035, wz * 0.025 + 73.1, 2, 0.5, 2.0);
+                let n2 = noise.fbm_3d(
+                    wx * 0.025 + 31.4,
+                    wy * 0.035,
+                    wz * 0.025 + 73.1,
+                    2,
+                    0.5,
+                    2.0,
+                );
                 let is_tunnel = (n1 * n1 + n2 * n2) < 0.013;
 
                 // Large underground cavern rooms (only evaluate noise if not already a tunnel)
@@ -529,7 +536,9 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
             match biome {
                 BiomeType::Desert => {
                     // Desert cacti
-                    if hash % 41 == 0 && chunk.get(lx as i32, h, lz as i32) == BlockType::Sand {
+                    if hash.is_multiple_of(41)
+                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Sand
+                    {
                         let cactus_h = 2 + (hash % 2) as i32;
                         for cy in 1..=cactus_h {
                             chunk.set(lx as i32, h + cy, lz as i32, BlockType::Cactus);
@@ -538,19 +547,25 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                 }
                 BiomeType::Forest => {
                     // Dense forest trees
-                    if hash % 16 == 0 && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass {
+                    if hash.is_multiple_of(16)
+                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass
+                    {
                         spawn_tree(&mut chunk, lx as i32, h, lz as i32, false);
                     }
                 }
                 BiomeType::Plains => {
                     // Scattered plains trees
-                    if hash % 45 == 0 && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass {
+                    if hash.is_multiple_of(45)
+                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass
+                    {
                         spawn_tree(&mut chunk, lx as i32, h, lz as i32, false);
                     }
                 }
                 BiomeType::SnowyTundra => {
                     // Conical pine trees in snowy tundra
-                    if hash % 35 == 0 && chunk.get(lx as i32, h, lz as i32) == BlockType::Snow {
+                    if hash.is_multiple_of(35)
+                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Snow
+                    {
                         spawn_tree(&mut chunk, lx as i32, h, lz as i32, true);
                     }
                 }
@@ -571,7 +586,13 @@ fn spawn_tree(chunk: &mut Chunk, lx: i32, h: i32, lz: i32, is_pine: bool) {
     if is_pine {
         // Conical pine
         for dy in (h + 3)..=(h + 6) {
-            let radius: i32 = if dy == h + 6 { 0 } else if dy >= h + 5 { 1 } else { 2 };
+            let radius: i32 = if dy == h + 6 {
+                0
+            } else if dy >= h + 5 {
+                1
+            } else {
+                2
+            };
             for dx in -radius..=radius {
                 for dz in -radius..=radius {
                     if radius == 2 && dx.abs() == 2 && dz.abs() == 2 {
@@ -609,11 +630,7 @@ fn spawn_tree(chunk: &mut Chunk, lx: i32, h: i32, lz: i32, is_pine: bool) {
 
 /// Computes the squared 3D Euclidean distance in world units from a player camera position to a chunk's geometry (AABB)
 #[inline]
-pub fn chunk_distance_sq_to_player(
-    coord: IVec2,
-    player_pos: Vec3,
-    chunk: Option<&Chunk>,
-) -> f32 {
+pub fn chunk_distance_sq_to_player(coord: IVec2, player_pos: Vec3, chunk: Option<&Chunk>) -> f32 {
     let min_x = (coord.x * CHUNK_WIDTH as i32) as f32;
     let max_x = min_x + CHUNK_WIDTH as f32;
     let min_z = (coord.y * CHUNK_DEPTH as i32) as f32;
@@ -650,8 +667,11 @@ pub fn apply_chunk_mesh(
 
     // Track vertex counts and LOD
     world.chunk_lod.insert(coord, lod);
-    let new_vert_count = new_mesh.as_ref().map_or(0, |m| m.count_vertices());
-    let old_vert_count = world.chunk_vertices.insert(coord, new_vert_count).unwrap_or(0);
+    let new_vert_count = new_mesh.as_ref().map_or(0, Mesh::count_vertices);
+    let old_vert_count = world
+        .chunk_vertices
+        .insert(coord, new_vert_count)
+        .unwrap_or(0);
     world.total_vertices = world.total_vertices.saturating_sub(old_vert_count) + new_vert_count;
 
     let material = world.block_material.clone().unwrap_or_else(|| {
@@ -702,7 +722,7 @@ pub fn update_chunk_mesh(
     let east = world.chunks.get(&(*coord + IVec2::new(1, 0)));
     let west = world.chunks.get(&(*coord + IVec2::new(-1, 0)));
 
-    let lod = if greedy { 1 } else { 0 };
+    let lod = u8::from(greedy);
     let new_mesh = build_chunk_mesh(chunk, north, south, east, west, max_y_skip, greedy);
     apply_chunk_mesh(*coord, new_mesh, lod, commands, world, meshes, materials);
 }
@@ -710,7 +730,10 @@ pub fn update_chunk_mesh(
 /// Continuous chunk streaming system based on player camera position with multithreaded generation
 pub fn world_streaming_system(
     mut commands: Commands,
-    mut camera_query: Query<(&Transform, &mut Projection, Option<&mut DistanceFog>), With<FpsCamera>>,
+    mut camera_query: Query<
+        (&Transform, &mut Projection, Option<&mut DistanceFog>),
+        With<FpsCamera>,
+    >,
     mut world: ResMut<WorldGrid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -728,7 +751,7 @@ pub fn world_streaming_system(
     let (player_chunk, _, _) = WorldGrid::world_to_chunk_coord(px, pz);
 
     let view_dist = settings.as_ref().map_or(VIEW_DISTANCE, |s| s.view_distance);
-    let settings_changed = settings.as_ref().map_or(false, |s| s.is_changed());
+    let settings_changed = settings.as_ref().is_some_and(|s| s.is_changed());
 
     if settings_changed {
         if let Projection::Perspective(ref mut persp) = *projection {
@@ -791,7 +814,7 @@ pub fn world_streaming_system(
 
             // If the chunk was modified by the player, persist it to disk and keep it tracked
             if world.modified_chunks.contains(&coord) {
-                let _ = world.save_chunk_to_disk(&coord);
+                let _ = world.save_chunk_to_disk(coord);
             } else {
                 // Unmodified chunks can be unloaded from RAM to conserve memory
                 world.chunks.remove(&coord);
@@ -817,7 +840,7 @@ pub fn world_streaming_system(
         AsyncComputeTaskPool::get()
             .spawn(async move {
                 // Check disk cache first
-                if let Some(loaded_chunk) = WorldGrid::load_chunk_from_disk_path(&save_dir, &coord) {
+                if let Some(loaded_chunk) = WorldGrid::load_chunk_from_disk_path(&save_dir, coord) {
                     let _ = tx.send((coord, loaded_chunk, true));
                     return;
                 }
@@ -885,9 +908,9 @@ pub fn world_streaming_system(
         }
     }
 
-    let distance_lod = dev_settings.as_ref().map_or(true, |d| d.distance_lod);
+    let distance_lod = dev_settings.as_ref().is_none_or(|d| d.distance_lod);
     let lod_threshold = dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
-    let global_greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
+    let global_greedy = dev_settings.as_ref().is_none_or(|d| d.greedy_meshing);
 
     let player_pos = cam_transform.translation;
     let threshold_world = (lod_threshold as f32) * 16.0;
@@ -901,9 +924,9 @@ pub fn world_streaming_system(
         if dist_2d <= max_dist {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
             let target_lod = if distance_lod {
-                if dist_sq <= threshold_sq { 0 } else { 1 }
+                u8::from(dist_sq > threshold_sq)
             } else {
-                if global_greedy { 1 } else { 0 }
+                u8::from(global_greedy)
             };
 
             if world.chunk_lod.get(&coord) != Some(&target_lod)
@@ -929,10 +952,14 @@ pub fn world_streaming_system(
             -(d_sq as i64)
         });
 
-        let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
-        let budget_enabled = dev_settings.as_ref().map_or(true, |d| d.mesh_budget);
-        let async_meshing = dev_settings.as_ref().map_or(true, |d| d.async_meshing);
-        let max_meshes_per_frame = if budget_enabled { MAX_MESHES_PER_FRAME } else { usize::MAX };
+        let max_y_skip = dev_settings.as_ref().is_none_or(|d| d.max_y_skip);
+        let budget_enabled = dev_settings.as_ref().is_none_or(|d| d.mesh_budget);
+        let async_meshing = dev_settings.as_ref().is_none_or(|d| d.async_meshing);
+        let max_meshes_per_frame = if budget_enabled {
+            MAX_MESHES_PER_FRAME
+        } else {
+            usize::MAX
+        };
 
         let mut meshed = 0;
         while meshed < max_meshes_per_frame && !world.mesh_queue.is_empty() {
@@ -945,9 +972,9 @@ pub fn world_streaming_system(
                 if dist_2d <= max_dist {
                     let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
                     let target_lod = if distance_lod {
-                        if dist_sq <= threshold_sq { 0 } else { 1 }
+                        u8::from(dist_sq > threshold_sq)
                     } else {
-                        if global_greedy { 1 } else { 0 }
+                        u8::from(global_greedy)
                     };
                     let use_greedy = target_lod == 1;
 
@@ -1019,8 +1046,13 @@ mod tests {
 
         // Threshold of 4 chunks = 64 meters (threshold_sq = 4096)
         let threshold_sq = (4.0 * 16.0_f32).powi(2); // 4096.0
-        assert!(d_sq_ground <= threshold_sq, "Ground chunk should be detailed (LOD 0)");
-        assert!(d_sq_high > threshold_sq, "Chunk viewed from high altitude should compress to Greedy Mesh (LOD 1)");
+        assert!(
+            d_sq_ground <= threshold_sq,
+            "Ground chunk should be detailed (LOD 0)"
+        );
+        assert!(
+            d_sq_high > threshold_sq,
+            "Chunk viewed from high altitude should compress to Greedy Mesh (LOD 1)"
+        );
     }
 }
-

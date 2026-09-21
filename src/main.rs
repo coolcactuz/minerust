@@ -14,26 +14,24 @@ mod world;
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 
-use camera::{camera_look_system, cursor_grab_system, FpsCamera};
+use camera::{FpsCamera, camera_look_system, cursor_grab_system};
 use chunk::Chunk;
-use fluid::{fluid_simulation_system, FluidSimulation};
+use fluid::{FluidSimulation, fluid_simulation_system};
 use interaction::block_interaction_system;
 use inventory::{
-    inventory_input_system, inventory_interaction_system, setup_inventory_ui,
-    update_inventory_ui_system, Inventory,
+    Inventory, inventory_input_system, inventory_interaction_system, setup_inventory_ui,
+    update_inventory_ui_system,
 };
 use menu::{
-    fps_limiter_system, menu_button_click_system, menu_button_hover_system, menu_input_system,
-    setup_menu_ui, update_dev_button_text_system, update_dev_settings_system,
-    update_menu_visibility_system, update_settings_button_text_system, DevSettings, FpsLimiter,
-    GraphicsSettings, MenuState,
+    DevSettings, FpsLimiter, GraphicsSettings, MenuState, fps_limiter_system,
+    menu_button_click_system, menu_button_hover_system, menu_input_system, setup_menu_ui,
+    update_dev_button_text_system, update_dev_settings_system, update_menu_visibility_system,
+    update_settings_button_text_system,
 };
-use physics::{
-    player_physics_system, setup_physics_ui, update_physics_hud_system, PlayerPhysics,
-};
+use physics::{PlayerPhysics, player_physics_system, setup_physics_ui, update_physics_hud_system};
 use world::{
+    ChunkGeneratorPool, ChunkMesherPool, SEA_LEVEL, WorldGrid, WorldSeed,
     calculate_biome_and_height, generate_chunk, update_chunk_mesh, world_streaming_system,
-    ChunkGeneratorPool, ChunkMesherPool, WorldGrid, WorldSeed, SEA_LEVEL,
 };
 
 fn main() {
@@ -153,7 +151,15 @@ fn setup(
     }
 
     for coord in &initial_coords {
-        update_chunk_mesh(coord, &mut commands, &mut world, &mut meshes, &mut materials, true, true);
+        update_chunk_mesh(
+            coord,
+            &mut commands,
+            &mut world,
+            &mut meshes,
+            &mut materials,
+            true,
+            true,
+        );
     }
 
     // 2. Calculate terrain height at spawn to position the player naturally
@@ -180,7 +186,8 @@ fn setup(
             },
             ..default()
         },
-        Transform::from_xyz(0.0, player_y, 0.0).looking_at(Vec3::new(20.0, player_y - 2.0, 20.0), Vec3::Y),
+        Transform::from_xyz(0.0, player_y, 0.0)
+            .looking_at(Vec3::new(20.0, player_y - 2.0, 20.0), Vec3::Y),
         FpsCamera::default(),
         PlayerPhysics::default(),
     ));
@@ -205,8 +212,8 @@ fn setup(
     println!("\n=======================================================");
     println!("⛏️  MINERUST: FULL VOXEL ENGINE ACTIVE");
     println!("=======================================================");
-    println!("* WORLD SEED: {}", seed);
-    println!("* SPAWN BIOME: {:?}", spawn_biome);
+    println!("* WORLD SEED: {seed}");
+    println!("* SPAWN BIOME: {spawn_biome:?}");
     println!("* CONTROLS:");
     println!("  - WASD: Horizontal movement with inertia and friction");
     println!("  - Mouse: Free-look FPS (Left-click to lock / ESC to unlock)");

@@ -235,8 +235,18 @@ pub fn setup_menu_ui(mut commands: Commands) {
                 })
                 .with_children(|btn_col| {
                     spawn_menu_button(btn_col, "▶ Play Game", MenuButtonAction::Play, true);
-                    spawn_menu_button(btn_col, "⚙ Graphics Settings", MenuButtonAction::OpenSettings, false);
-                    spawn_menu_button(btn_col, "🛠 Dev & Benchmarks", MenuButtonAction::OpenDevSettings, false);
+                    spawn_menu_button(
+                        btn_col,
+                        "⚙ Graphics Settings",
+                        MenuButtonAction::OpenSettings,
+                        false,
+                    );
+                    spawn_menu_button(
+                        btn_col,
+                        "🛠 Dev & Benchmarks",
+                        MenuButtonAction::OpenDevSettings,
+                        false,
+                    );
                     spawn_menu_button(btn_col, "✕ Quit Game", MenuButtonAction::QuitGame, false);
                 });
         });
@@ -282,9 +292,24 @@ pub fn setup_menu_ui(mut commands: Commands) {
                 })
                 .with_children(|btn_col| {
                     spawn_menu_button(btn_col, "▶ Resume Game", MenuButtonAction::ResumeGame, true);
-                    spawn_menu_button(btn_col, "⚙ Graphics Settings", MenuButtonAction::OpenSettings, false);
-                    spawn_menu_button(btn_col, "🛠 Dev & Benchmarks", MenuButtonAction::OpenDevSettings, false);
-                    spawn_menu_button(btn_col, "⌂ Return to Main Menu", MenuButtonAction::BackToMain, false);
+                    spawn_menu_button(
+                        btn_col,
+                        "⚙ Graphics Settings",
+                        MenuButtonAction::OpenSettings,
+                        false,
+                    );
+                    spawn_menu_button(
+                        btn_col,
+                        "🛠 Dev & Benchmarks",
+                        MenuButtonAction::OpenDevSettings,
+                        false,
+                    );
+                    spawn_menu_button(
+                        btn_col,
+                        "⌂ Return to Main Menu",
+                        MenuButtonAction::BackToMain,
+                        false,
+                    );
                 });
         });
 
@@ -329,19 +354,44 @@ pub fn setup_menu_ui(mut commands: Commands) {
                 })
                 .with_children(|btn_col| {
                     // VSync Button
-                    spawn_settings_button(btn_col, "VSync: ON (Smooth)", MenuButtonAction::ToggleVsync, VsyncBtnText);
+                    spawn_settings_button(
+                        btn_col,
+                        "VSync: ON (Smooth)",
+                        MenuButtonAction::ToggleVsync,
+                        VsyncBtnText,
+                    );
 
                     // Fullscreen Button
-                    spawn_settings_button(btn_col, "Display: Windowed (1280x720)", MenuButtonAction::ToggleFullscreen, FullscreenBtnText);
+                    spawn_settings_button(
+                        btn_col,
+                        "Display: Windowed (1280x720)",
+                        MenuButtonAction::ToggleFullscreen,
+                        FullscreenBtnText,
+                    );
 
                     // FPS Cap Button
-                    spawn_settings_button(btn_col, "FPS Limit: Uncapped", MenuButtonAction::CycleFpsCap, FpsCapBtnText);
+                    spawn_settings_button(
+                        btn_col,
+                        "FPS Limit: Uncapped",
+                        MenuButtonAction::CycleFpsCap,
+                        FpsCapBtnText,
+                    );
 
                     // Render Distance Button
-                    spawn_settings_button(btn_col, "Render Distance: 16 Chunks", MenuButtonAction::CycleViewDistance, ViewDistanceBtnText);
+                    spawn_settings_button(
+                        btn_col,
+                        "Render Distance: 16 Chunks",
+                        MenuButtonAction::CycleViewDistance,
+                        ViewDistanceBtnText,
+                    );
 
                     // Back Button
-                    spawn_menu_button(btn_col, "◀ Back / Done", MenuButtonAction::BackFromSettings, true);
+                    spawn_menu_button(
+                        btn_col,
+                        "◀ Back / Done",
+                        MenuButtonAction::BackFromSettings,
+                        true,
+                    );
                 });
         });
 
@@ -397,17 +447,72 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     ..default()
                 })
                 .with_children(|btn_col| {
-                    spawn_settings_button(btn_col, "Backface Culling: ON", MenuButtonAction::ToggleBackfaceCulling, BackfaceCullingBtnText);
-                    spawn_settings_button(btn_col, "Dynamic Shadows: ON", MenuButtonAction::ToggleShadows, ShadowsBtnText);
-                    spawn_settings_button(btn_col, "Mesher max_y Skip: ON", MenuButtonAction::ToggleMaxYSkip, MaxYSkipBtnText);
-                    spawn_settings_button(btn_col, "Distance Fog: ON", MenuButtonAction::ToggleDistanceFog, DistanceFogBtnText);
-                    spawn_settings_button(btn_col, "Mesh Budget: ON (6/frame)", MenuButtonAction::ToggleMeshBudget, MeshBudgetBtnText);
-                    spawn_settings_button(btn_col, "Async Meshing: ON (0ms main thread)", MenuButtonAction::ToggleAsyncMeshing, AsyncMeshingBtnText);
-                    spawn_settings_button(btn_col, "Greedy Meshing: ON (-75% verts)", MenuButtonAction::ToggleGreedyMeshing, GreedyMeshingBtnText);
-                    spawn_settings_button(btn_col, "Distance LOD: ON (Dynamic detail)", MenuButtonAction::ToggleDistanceLod, DistanceLodBtnText);
-                    spawn_settings_button(btn_col, "LOD Distance: 4 Chunks (64m)", MenuButtonAction::CycleLodThreshold, LodThresholdBtnText);
-                    spawn_settings_button(btn_col, "Dev HUD (F3): ON", MenuButtonAction::ToggleDebugHud, DebugHudBtnText);
-                    spawn_menu_button(btn_col, "◀ Back / Done", MenuButtonAction::BackFromDevSettings, true);
+                    spawn_settings_button(
+                        btn_col,
+                        "Backface Culling: ON",
+                        MenuButtonAction::ToggleBackfaceCulling,
+                        BackfaceCullingBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "Dynamic Shadows: ON",
+                        MenuButtonAction::ToggleShadows,
+                        ShadowsBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "Mesher max_y Skip: ON",
+                        MenuButtonAction::ToggleMaxYSkip,
+                        MaxYSkipBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "Distance Fog: ON",
+                        MenuButtonAction::ToggleDistanceFog,
+                        DistanceFogBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "Mesh Budget: ON (6/frame)",
+                        MenuButtonAction::ToggleMeshBudget,
+                        MeshBudgetBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "Async Meshing: ON (0ms main thread)",
+                        MenuButtonAction::ToggleAsyncMeshing,
+                        AsyncMeshingBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "Greedy Meshing: ON (-75% verts)",
+                        MenuButtonAction::ToggleGreedyMeshing,
+                        GreedyMeshingBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "Distance LOD: ON (Dynamic detail)",
+                        MenuButtonAction::ToggleDistanceLod,
+                        DistanceLodBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "LOD Distance: 4 Chunks (64m)",
+                        MenuButtonAction::CycleLodThreshold,
+                        LodThresholdBtnText,
+                    );
+                    spawn_settings_button(
+                        btn_col,
+                        "Dev HUD (F3): ON",
+                        MenuButtonAction::ToggleDebugHud,
+                        DebugHudBtnText,
+                    );
+                    spawn_menu_button(
+                        btn_col,
+                        "◀ Back / Done",
+                        MenuButtonAction::BackFromDevSettings,
+                        true,
+                    );
                 });
         });
 }
@@ -536,26 +641,82 @@ pub fn menu_input_system(
 
 pub fn update_menu_visibility_system(
     menu: Res<MenuState>,
-    mut main_query: Query<&mut Visibility, (With<MainMenuRoot>, Without<PauseMenuRoot>, Without<SettingsMenuRoot>, Without<DevSettingsMenuRoot>)>,
-    mut pause_query: Query<&mut Visibility, (With<PauseMenuRoot>, Without<MainMenuRoot>, Without<SettingsMenuRoot>, Without<DevSettingsMenuRoot>)>,
-    mut settings_query: Query<&mut Visibility, (With<SettingsMenuRoot>, Without<MainMenuRoot>, Without<PauseMenuRoot>, Without<DevSettingsMenuRoot>)>,
-    mut dev_query: Query<&mut Visibility, (With<DevSettingsMenuRoot>, Without<MainMenuRoot>, Without<PauseMenuRoot>, Without<SettingsMenuRoot>)>,
+    mut main_query: Query<
+        &mut Visibility,
+        (
+            With<MainMenuRoot>,
+            Without<PauseMenuRoot>,
+            Without<SettingsMenuRoot>,
+            Without<DevSettingsMenuRoot>,
+        ),
+    >,
+    mut pause_query: Query<
+        &mut Visibility,
+        (
+            With<PauseMenuRoot>,
+            Without<MainMenuRoot>,
+            Without<SettingsMenuRoot>,
+            Without<DevSettingsMenuRoot>,
+        ),
+    >,
+    mut settings_query: Query<
+        &mut Visibility,
+        (
+            With<SettingsMenuRoot>,
+            Without<MainMenuRoot>,
+            Without<PauseMenuRoot>,
+            Without<DevSettingsMenuRoot>,
+        ),
+    >,
+    mut dev_query: Query<
+        &mut Visibility,
+        (
+            With<DevSettingsMenuRoot>,
+            Without<MainMenuRoot>,
+            Without<PauseMenuRoot>,
+            Without<SettingsMenuRoot>,
+        ),
+    >,
 ) {
     if let Ok(mut vis) = main_query.single_mut() {
-        let target = if menu.screen == MenuScreen::Main { Visibility::Inherited } else { Visibility::Hidden };
-        if *vis != target { *vis = target; }
+        let target = if menu.screen == MenuScreen::Main {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != target {
+            *vis = target;
+        }
     }
     if let Ok(mut vis) = pause_query.single_mut() {
-        let target = if menu.screen == MenuScreen::Pause { Visibility::Inherited } else { Visibility::Hidden };
-        if *vis != target { *vis = target; }
+        let target = if menu.screen == MenuScreen::Pause {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != target {
+            *vis = target;
+        }
     }
     if let Ok(mut vis) = settings_query.single_mut() {
-        let target = if menu.screen == MenuScreen::Settings { Visibility::Inherited } else { Visibility::Hidden };
-        if *vis != target { *vis = target; }
+        let target = if menu.screen == MenuScreen::Settings {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != target {
+            *vis = target;
+        }
     }
     if let Ok(mut vis) = dev_query.single_mut() {
-        let target = if menu.screen == MenuScreen::DevSettings { Visibility::Inherited } else { Visibility::Hidden };
-        if *vis != target { *vis = target; }
+        let target = if menu.screen == MenuScreen::DevSettings {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != target {
+            *vis = target;
+        }
     }
 }
 
@@ -650,13 +811,11 @@ pub fn menu_button_click_system(
                         None => Some(60),
                         Some(60) => Some(120),
                         Some(120) => Some(144),
-                        Some(144) => None,
                         _ => None,
                     };
                 }
                 MenuButtonAction::CycleViewDistance => {
                     settings.view_distance = match settings.view_distance {
-                        8 => 16,
                         16 => 24,
                         24 => 32,
                         32 => 64,
@@ -708,7 +867,6 @@ pub fn menu_button_click_system(
                     if let Some(ref mut dev) = dev_settings {
                         dev.lod_threshold = match dev.lod_threshold {
                             2 => 3,
-                            3 => 4,
                             4 => 6,
                             6 => 8,
                             8 => 2,
@@ -728,22 +886,62 @@ pub fn menu_button_click_system(
 
 pub fn update_settings_button_text_system(
     settings: Res<GraphicsSettings>,
-    mut vsync_text_query: Query<&mut Text, (With<VsyncBtnText>, Without<FullscreenBtnText>, Without<FpsCapBtnText>, Without<ViewDistanceBtnText>)>,
-    mut fs_text_query: Query<&mut Text, (With<FullscreenBtnText>, Without<VsyncBtnText>, Without<FpsCapBtnText>, Without<ViewDistanceBtnText>)>,
-    mut fps_text_query: Query<&mut Text, (With<FpsCapBtnText>, Without<VsyncBtnText>, Without<FullscreenBtnText>, Without<ViewDistanceBtnText>)>,
-    mut dist_text_query: Query<&mut Text, (With<ViewDistanceBtnText>, Without<VsyncBtnText>, Without<FullscreenBtnText>, Without<FpsCapBtnText>)>,
+    mut vsync_text_query: Query<
+        &mut Text,
+        (
+            With<VsyncBtnText>,
+            Without<FullscreenBtnText>,
+            Without<FpsCapBtnText>,
+            Without<ViewDistanceBtnText>,
+        ),
+    >,
+    mut fs_text_query: Query<
+        &mut Text,
+        (
+            With<FullscreenBtnText>,
+            Without<VsyncBtnText>,
+            Without<FpsCapBtnText>,
+            Without<ViewDistanceBtnText>,
+        ),
+    >,
+    mut fps_text_query: Query<
+        &mut Text,
+        (
+            With<FpsCapBtnText>,
+            Without<VsyncBtnText>,
+            Without<FullscreenBtnText>,
+            Without<ViewDistanceBtnText>,
+        ),
+    >,
+    mut dist_text_query: Query<
+        &mut Text,
+        (
+            With<ViewDistanceBtnText>,
+            Without<VsyncBtnText>,
+            Without<FullscreenBtnText>,
+            Without<FpsCapBtnText>,
+        ),
+    >,
 ) {
     if settings.is_changed() {
         if let Ok(mut text) = vsync_text_query.single_mut() {
             *text = Text::new(format!(
                 "VSync: {}",
-                if settings.vsync { "ON (Smooth)" } else { "OFF (Uncapped)" }
+                if settings.vsync {
+                    "ON (Smooth)"
+                } else {
+                    "OFF (Uncapped)"
+                }
             ));
         }
         if let Ok(mut text) = fs_text_query.single_mut() {
             *text = Text::new(format!(
                 "Display: {}",
-                if settings.fullscreen { "Fullscreen" } else { "Windowed (1280x720)" }
+                if settings.fullscreen {
+                    "Fullscreen"
+                } else {
+                    "Windowed (1280x720)"
+                }
             ));
         }
         if let Ok(mut text) = fps_text_query.single_mut() {
@@ -766,65 +964,239 @@ pub fn update_settings_button_text_system(
 
 pub fn update_dev_button_text_system(
     dev_settings: Option<Res<DevSettings>>,
-    mut cull_text_query: Query<&mut Text, (With<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
-    mut shadow_text_query: Query<&mut Text, (With<ShadowsBtnText>, Without<BackfaceCullingBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
-    mut max_y_text_query: Query<&mut Text, (With<MaxYSkipBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
-    mut fog_text_query: Query<&mut Text, (With<DistanceFogBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
-    mut budget_text_query: Query<&mut Text, (With<MeshBudgetBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
-    mut async_text_query: Query<&mut Text, (With<AsyncMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
-    mut greedy_text_query: Query<&mut Text, (With<GreedyMeshingBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
-    mut lod_text_query: Query<&mut Text, (With<DistanceLodBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<LodThresholdBtnText>, Without<DebugHudBtnText>)>,
-    mut thresh_text_query: Query<&mut Text, (With<LodThresholdBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<DebugHudBtnText>)>,
-    mut hud_text_query: Query<&mut Text, (With<DebugHudBtnText>, Without<BackfaceCullingBtnText>, Without<ShadowsBtnText>, Without<MaxYSkipBtnText>, Without<DistanceFogBtnText>, Without<MeshBudgetBtnText>, Without<AsyncMeshingBtnText>, Without<GreedyMeshingBtnText>, Without<DistanceLodBtnText>, Without<LodThresholdBtnText>)>,
+    mut cull_text_query: Query<
+        &mut Text,
+        (
+            With<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<LodThresholdBtnText>,
+            Without<DebugHudBtnText>,
+        ),
+    >,
+    mut shadow_text_query: Query<
+        &mut Text,
+        (
+            With<ShadowsBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<LodThresholdBtnText>,
+            Without<DebugHudBtnText>,
+        ),
+    >,
+    mut max_y_text_query: Query<
+        &mut Text,
+        (
+            With<MaxYSkipBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<LodThresholdBtnText>,
+            Without<DebugHudBtnText>,
+        ),
+    >,
+    mut fog_text_query: Query<
+        &mut Text,
+        (
+            With<DistanceFogBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<LodThresholdBtnText>,
+            Without<DebugHudBtnText>,
+        ),
+    >,
+    mut budget_text_query: Query<
+        &mut Text,
+        (
+            With<MeshBudgetBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<LodThresholdBtnText>,
+            Without<DebugHudBtnText>,
+        ),
+    >,
+    mut async_text_query: Query<
+        &mut Text,
+        (
+            With<AsyncMeshingBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<LodThresholdBtnText>,
+            Without<DebugHudBtnText>,
+        ),
+    >,
+    mut greedy_text_query: Query<
+        &mut Text,
+        (
+            With<GreedyMeshingBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<LodThresholdBtnText>,
+            Without<DebugHudBtnText>,
+        ),
+    >,
+    mut lod_text_query: Query<
+        &mut Text,
+        (
+            With<DistanceLodBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<LodThresholdBtnText>,
+            Without<DebugHudBtnText>,
+        ),
+    >,
+    mut thresh_text_query: Query<
+        &mut Text,
+        (
+            With<LodThresholdBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<DebugHudBtnText>,
+        ),
+    >,
+    mut hud_text_query: Query<
+        &mut Text,
+        (
+            With<DebugHudBtnText>,
+            Without<BackfaceCullingBtnText>,
+            Without<ShadowsBtnText>,
+            Without<MaxYSkipBtnText>,
+            Without<DistanceFogBtnText>,
+            Without<MeshBudgetBtnText>,
+            Without<AsyncMeshingBtnText>,
+            Without<GreedyMeshingBtnText>,
+            Without<DistanceLodBtnText>,
+            Without<LodThresholdBtnText>,
+        ),
+    >,
 ) {
-    let Some(dev) = dev_settings else { return; };
+    let Some(dev) = dev_settings else {
+        return;
+    };
     if dev.is_changed() {
         if let Ok(mut text) = cull_text_query.single_mut() {
             *text = Text::new(format!(
                 "Backface Culling: {}",
-                if dev.backface_culling { "ON (GPU -50%)" } else { "OFF (Draw front & back)" }
+                if dev.backface_culling {
+                    "ON (GPU -50%)"
+                } else {
+                    "OFF (Draw front & back)"
+                }
             ));
         }
         if let Ok(mut text) = shadow_text_query.single_mut() {
             *text = Text::new(format!(
                 "Dynamic Shadows: {}",
-                if dev.shadows_enabled { "ON (120m Cascades)" } else { "OFF (Zero shadow passes)" }
+                if dev.shadows_enabled {
+                    "ON (120m Cascades)"
+                } else {
+                    "OFF (Zero shadow passes)"
+                }
             ));
         }
         if let Ok(mut text) = max_y_text_query.single_mut() {
             *text = Text::new(format!(
                 "Mesher max_y Skip: {}",
-                if dev.max_y_skip { "ON (2x faster meshing)" } else { "OFF (Loop all 384 layers)" }
+                if dev.max_y_skip {
+                    "ON (2x faster meshing)"
+                } else {
+                    "OFF (Loop all 384 layers)"
+                }
             ));
         }
         if let Ok(mut text) = fog_text_query.single_mut() {
             *text = Text::new(format!(
                 "Distance Fog: {}",
-                if dev.distance_fog { "ON (Blended horizon)" } else { "OFF (Harsh edge)" }
+                if dev.distance_fog {
+                    "ON (Blended horizon)"
+                } else {
+                    "OFF (Harsh edge)"
+                }
             ));
         }
         if let Ok(mut text) = budget_text_query.single_mut() {
             *text = Text::new(format!(
                 "Mesh Budget: {}",
-                if dev.mesh_budget { "ON (6/frame smooth)" } else { "OFF (Spike benchmark)" }
+                if dev.mesh_budget {
+                    "ON (6/frame smooth)"
+                } else {
+                    "OFF (Spike benchmark)"
+                }
             ));
         }
         if let Ok(mut text) = async_text_query.single_mut() {
             *text = Text::new(format!(
                 "Async Meshing: {}",
-                if dev.async_meshing { "ON (0ms main thread)" } else { "OFF (Sync frame spikes)" }
+                if dev.async_meshing {
+                    "ON (0ms main thread)"
+                } else {
+                    "OFF (Sync frame spikes)"
+                }
             ));
         }
         if let Ok(mut text) = greedy_text_query.single_mut() {
             *text = Text::new(format!(
                 "Greedy Meshing: {}",
-                if dev.greedy_meshing { "ON (-75% verts)" } else { "OFF (1x1 block quads)" }
+                if dev.greedy_meshing {
+                    "ON (-75% verts)"
+                } else {
+                    "OFF (1x1 block quads)"
+                }
             ));
         }
         if let Ok(mut text) = lod_text_query.single_mut() {
             *text = Text::new(format!(
                 "Distance LOD: {}",
-                if dev.distance_lod { "ON (Dynamic detail)" } else { "OFF (Uniform meshing)" }
+                if dev.distance_lod {
+                    "ON (Dynamic detail)"
+                } else {
+                    "OFF (Uniform meshing)"
+                }
             ));
         }
         if let Ok(mut text) = thresh_text_query.single_mut() {
@@ -837,7 +1209,11 @@ pub fn update_dev_button_text_system(
         if let Ok(mut text) = hud_text_query.single_mut() {
             *text = Text::new(format!(
                 "Dev HUD (F3): {}",
-                if dev.show_debug_hud { "ON (Visible)" } else { "OFF (Hidden)" }
+                if dev.show_debug_hud {
+                    "ON (Visible)"
+                } else {
+                    "OFF (Hidden)"
+                }
             ));
         }
     }
@@ -852,7 +1228,9 @@ pub fn update_dev_settings_system(
     mut last_greedy: Local<Option<bool>>,
     mut last_lod: Local<Option<(bool, i32)>>,
 ) {
-    let Some(dev) = dev_settings else { return; };
+    let Some(dev) = dev_settings else {
+        return;
+    };
     if dev.is_changed() {
         // 1. If greedy meshing or LOD settings changed, re-queue all loaded chunks for re-meshing
         let lod_config = (dev.distance_lod, dev.lod_threshold);
@@ -900,16 +1278,13 @@ pub fn update_dev_settings_system(
     }
 }
 
-pub fn fps_limiter_system(
-    settings: Res<GraphicsSettings>,
-    mut limiter: ResMut<FpsLimiter>,
-) {
+pub fn fps_limiter_system(settings: Res<GraphicsSettings>, mut limiter: ResMut<FpsLimiter>) {
     if let Some(cap) = settings.fps_cap {
         let target_frame_duration = std::time::Duration::from_secs_f64(1.0 / cap as f64);
         if let Some(last) = limiter.last_frame_instant {
             let elapsed = last.elapsed();
-            if elapsed < target_frame_duration {
-                std::thread::sleep(target_frame_duration - elapsed);
+            if let Some(remaining) = target_frame_duration.checked_sub(elapsed) {
+                std::thread::sleep(remaining);
             }
         }
         limiter.last_frame_instant = Some(std::time::Instant::now());

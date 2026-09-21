@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 
 use crate::block::{BlockFace, BlockType};
-use crate::chunk::{Chunk, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
+use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
 use crate::texture::{block_texture, get_tile_uvs};
 
 #[inline(always)]
@@ -154,7 +154,11 @@ fn build_chunk_mesh_standard(
                 } else if let Some(n) = north {
                     n.get_fast(lx, ly, 0)
                 } else {
-                    if block.is_water() { BlockType::Water } else { BlockType::Air }
+                    if block.is_water() {
+                        BlockType::Water
+                    } else {
+                        BlockType::Air
+                    }
                 };
                 if should_render_face(block, north_neighbor, BlockFace::North) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::North));
@@ -182,7 +186,11 @@ fn build_chunk_mesh_standard(
                 } else if let Some(s) = south {
                     s.get_fast(lx, ly, CHUNK_DEPTH - 1)
                 } else {
-                    if block.is_water() { BlockType::Water } else { BlockType::Air }
+                    if block.is_water() {
+                        BlockType::Water
+                    } else {
+                        BlockType::Air
+                    }
                 };
                 if should_render_face(block, south_neighbor, BlockFace::South) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::South));
@@ -210,7 +218,11 @@ fn build_chunk_mesh_standard(
                 } else if let Some(e) = east {
                     e.get_fast(0, ly, lz)
                 } else {
-                    if block.is_water() { BlockType::Water } else { BlockType::Air }
+                    if block.is_water() {
+                        BlockType::Water
+                    } else {
+                        BlockType::Air
+                    }
                 };
                 if should_render_face(block, east_neighbor, BlockFace::East) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::East));
@@ -238,7 +250,11 @@ fn build_chunk_mesh_standard(
                 } else if let Some(w) = west {
                     w.get_fast(CHUNK_WIDTH - 1, ly, lz)
                 } else {
-                    if block.is_water() { BlockType::Water } else { BlockType::Air }
+                    if block.is_water() {
+                        BlockType::Water
+                    } else {
+                        BlockType::Air
+                    }
                 };
                 if should_render_face(block, west_neighbor, BlockFace::West) {
                     let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::West));
@@ -267,7 +283,10 @@ fn build_chunk_mesh_standard(
         return None;
     }
 
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
@@ -491,7 +510,11 @@ fn build_chunk_mesh_greedy(
                     } else if let Some(n) = north {
                         n.get_fast(lx, ly, 0)
                     } else {
-                        if block.is_water() { BlockType::Water } else { BlockType::Air }
+                        if block.is_water() {
+                            BlockType::Water
+                        } else {
+                            BlockType::Air
+                        }
                     };
                     if should_render_face(block, north_neighbor, BlockFace::North) {
                         side_mask[ly * CHUNK_WIDTH + lx] = Some(block);
@@ -573,7 +596,11 @@ fn build_chunk_mesh_greedy(
                     } else if let Some(s) = south {
                         s.get_fast(lx, ly, CHUNK_DEPTH - 1)
                     } else {
-                        if block.is_water() { BlockType::Water } else { BlockType::Air }
+                        if block.is_water() {
+                            BlockType::Water
+                        } else {
+                            BlockType::Air
+                        }
                     };
                     if should_render_face(block, south_neighbor, BlockFace::South) {
                         side_mask[ly * CHUNK_WIDTH + lx] = Some(block);
@@ -655,7 +682,11 @@ fn build_chunk_mesh_greedy(
                     } else if let Some(e) = east {
                         e.get_fast(0, ly, lz)
                     } else {
-                        if block.is_water() { BlockType::Water } else { BlockType::Air }
+                        if block.is_water() {
+                            BlockType::Water
+                        } else {
+                            BlockType::Air
+                        }
                     };
                     if should_render_face(block, east_neighbor, BlockFace::East) {
                         side_mask[ly * CHUNK_DEPTH + lz] = Some(block);
@@ -737,7 +768,11 @@ fn build_chunk_mesh_greedy(
                     } else if let Some(w) = west {
                         w.get_fast(CHUNK_WIDTH - 1, ly, lz)
                     } else {
-                        if block.is_water() { BlockType::Water } else { BlockType::Air }
+                        if block.is_water() {
+                            BlockType::Water
+                        } else {
+                            BlockType::Air
+                        }
                     };
                     if should_render_face(block, west_neighbor, BlockFace::West) {
                         side_mask[ly * CHUNK_DEPTH + lz] = Some(block);
@@ -810,7 +845,10 @@ fn build_chunk_mesh_greedy(
         return None;
     }
 
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
@@ -957,4 +995,3 @@ mod tests {
         assert_eq!(mesh.count_vertices(), 40);
     }
 }
-

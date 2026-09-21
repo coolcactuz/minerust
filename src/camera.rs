@@ -29,15 +29,11 @@ pub fn camera_look_system(
     menu: Option<Res<MenuState>>,
     mut query: Query<(&mut FpsCamera, &mut Transform)>,
 ) {
-    if let Some(menu) = menu {
-        if menu.is_open() {
-            return;
-        }
+    if menu.is_some_and(|m| m.is_open()) {
+        return;
     }
-    if let Some(inv) = inventory {
-        if inv.is_open {
-            return;
-        }
+    if inventory.is_some_and(|inv| inv.is_open) {
+        return;
     }
 
     let Ok(cursor) = cursor_options.single() else {
@@ -61,11 +57,9 @@ pub fn camera_look_system(
         let max_pitch = 89.0_f32.to_radians();
         fps.pitch = fps.pitch.clamp(-max_pitch, max_pitch);
 
-        transform.rotation =
-            Quat::from_rotation_y(fps.yaw) * Quat::from_rotation_x(fps.pitch);
+        transform.rotation = Quat::from_rotation_y(fps.yaw) * Quat::from_rotation_x(fps.pitch);
     }
 }
-
 
 pub fn cursor_grab_system(
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
@@ -74,24 +68,18 @@ pub fn cursor_grab_system(
     inventory: Option<Res<Inventory>>,
     menu: Option<Res<MenuState>>,
 ) {
-    if let Some(menu) = menu {
-        if menu.is_open() {
-            return;
-        }
+    if menu.is_some_and(|m| m.is_open()) {
+        return;
     }
-    if let Some(inv) = inventory {
-        if inv.is_open {
-            return;
-        }
+    if inventory.is_some_and(|inv| inv.is_open) {
+        return;
     }
 
     let Ok(mut cursor) = cursor_options.single_mut() else {
         return;
     };
 
-    if mouse_buttons.just_pressed(MouseButton::Left)
-        && cursor.grab_mode != CursorGrabMode::Locked
-    {
+    if mouse_buttons.just_pressed(MouseButton::Left) && cursor.grab_mode != CursorGrabMode::Locked {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
     }

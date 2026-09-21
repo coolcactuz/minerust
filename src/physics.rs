@@ -5,7 +5,7 @@ use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
 use crate::menu::MenuState;
-use crate::world::{calculate_biome_and_height, WorldGrid};
+use crate::world::{WorldGrid, calculate_biome_and_height};
 
 pub const PLAYER_HALF_WIDTH: f32 = 0.3;
 pub const PLAYER_HEIGHT: f32 = 1.8;
@@ -83,7 +83,11 @@ pub fn check_collision(feet_pos: Vec3, world: &WorldGrid) -> bool {
 /// Checks if the player is currently immersed in water
 pub fn is_in_water(feet_pos: Vec3, world: &WorldGrid) -> bool {
     let check_at = |pos: Vec3| -> bool {
-        let bpos = IVec3::new(pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32);
+        let bpos = IVec3::new(
+            pos.x.floor() as i32,
+            pos.y.floor() as i32,
+            pos.z.floor() as i32,
+        );
         world.get_block(bpos) == BlockType::Water
     };
     check_at(feet_pos + Vec3::new(0.0, 0.2, 0.0))
@@ -134,12 +138,24 @@ pub fn player_physics_system(
         right = right.normalize_or_zero();
 
         let mut move_dir = Vec3::ZERO;
-        if keys.pressed(KeyCode::KeyW) { move_dir += forward; }
-        if keys.pressed(KeyCode::KeyS) { move_dir -= forward; }
-        if keys.pressed(KeyCode::KeyA) { move_dir -= right; }
-        if keys.pressed(KeyCode::KeyD) { move_dir += right; }
-        if keys.pressed(KeyCode::Space) { move_dir += Vec3::Y; }
-        if keys.pressed(KeyCode::ShiftLeft) { move_dir -= Vec3::Y; }
+        if keys.pressed(KeyCode::KeyW) {
+            move_dir += forward;
+        }
+        if keys.pressed(KeyCode::KeyS) {
+            move_dir -= forward;
+        }
+        if keys.pressed(KeyCode::KeyA) {
+            move_dir -= right;
+        }
+        if keys.pressed(KeyCode::KeyD) {
+            move_dir += right;
+        }
+        if keys.pressed(KeyCode::Space) {
+            move_dir += Vec3::Y;
+        }
+        if keys.pressed(KeyCode::ShiftLeft) {
+            move_dir -= Vec3::Y;
+        }
 
         if move_dir.length_squared() > 0.0 {
             move_dir = move_dir.normalize();
@@ -172,10 +188,18 @@ pub fn player_physics_system(
     right = right.normalize_or_zero();
 
     let mut wish_dir = Vec3::ZERO;
-    if keys.pressed(KeyCode::KeyW) { wish_dir += forward; }
-    if keys.pressed(KeyCode::KeyS) { wish_dir -= forward; }
-    if keys.pressed(KeyCode::KeyA) { wish_dir -= right; }
-    if keys.pressed(KeyCode::KeyD) { wish_dir += right; }
+    if keys.pressed(KeyCode::KeyW) {
+        wish_dir += forward;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        wish_dir -= forward;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        wish_dir -= right;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        wish_dir += right;
+    }
     if wish_dir.length_squared() > 0.0 {
         wish_dir = wish_dir.normalize();
     }
@@ -198,7 +222,11 @@ pub fn player_physics_system(
     let accel = if in_water {
         15.0
     } else if physics.is_grounded {
-        if wish_dir.length_squared() > 0.0 { GROUND_ACCEL } else { GROUND_FRICTION }
+        if wish_dir.length_squared() > 0.0 {
+            GROUND_ACCEL
+        } else {
+            GROUND_FRICTION
+        }
     } else {
         AIR_ACCEL
     };
@@ -323,7 +351,8 @@ pub fn player_physics_system(
 
     // Void fall protection (Safe surface respawn)
     if feet.y < -20.0 {
-        let (_, spawn_y, _) = calculate_biome_and_height(feet.x as f64, feet.z as f64, &world.noise);
+        let (_, spawn_y, _) =
+            calculate_biome_and_height(feet.x as f64, feet.z as f64, &world.noise);
         feet.y = (spawn_y as f32 + 4.0).max(130.0);
         physics.velocity = Vec3::ZERO;
         physics.is_grounded = false;
@@ -381,7 +410,11 @@ pub fn update_physics_hud_system(
 ) {
     let show_hud = dev_settings.as_ref().map_or(true, |d| d.show_debug_hud);
     if let Ok(mut vis) = root_query.single_mut() {
-        let target = if show_hud { Visibility::Inherited } else { Visibility::Hidden };
+        let target = if show_hud {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
         if *vis != target {
             *vis = target;
         }
@@ -402,30 +435,47 @@ pub fn update_physics_hud_system(
         fps.frames = 0;
 
         if let Ok(mut text) = text_query.single_mut() {
-            let (chunks_loaded, meshes_active, gen_q, mesh_q, total_verts) = if let Some(ref w) = world {
-                (w.chunks.len(), w.chunk_entities.len(), w.generation_queue.len(), w.mesh_queue.len(), w.total_vertices)
-            } else {
-                (0, 0, 0, 0, 0)
-            };
+            let (chunks_loaded, meshes_active, gen_q, mesh_q, total_verts) =
+                if let Some(ref w) = world {
+                    (
+                        w.chunks.len(),
+                        w.chunk_entities.len(),
+                        w.generation_queue.len(),
+                        w.mesh_queue.len(),
+                        w.total_vertices,
+                    )
+                } else {
+                    (0, 0, 0, 0, 0)
+                };
 
-            let (cull, shadow, max_y, fog, budget, async_m, greedy, lod) = if let Some(ref dev) = dev_settings {
-                (
-                    if dev.backface_culling { "ON" } else { "OFF" },
-                    if dev.shadows_enabled { "ON" } else { "OFF" },
-                    if dev.max_y_skip { "ON" } else { "OFF" },
-                    if dev.distance_fog { "ON" } else { "OFF" },
-                    if dev.mesh_budget { "ON" } else { "OFF" },
-                    if dev.async_meshing { "ON" } else { "OFF" },
-                    if dev.greedy_meshing { "ON" } else { "OFF" },
-                    if dev.distance_lod {
-                        format!("ON ({}ch)", dev.lod_threshold)
-                    } else {
-                        "OFF".to_string()
-                    },
-                )
-            } else {
-                ("ON", "ON", "ON", "ON", "ON", "ON", "ON", "ON (4ch)".to_string())
-            };
+            let (cull, shadow, max_y, fog, budget, async_m, greedy, lod) =
+                if let Some(ref dev) = dev_settings {
+                    (
+                        if dev.backface_culling { "ON" } else { "OFF" },
+                        if dev.shadows_enabled { "ON" } else { "OFF" },
+                        if dev.max_y_skip { "ON" } else { "OFF" },
+                        if dev.distance_fog { "ON" } else { "OFF" },
+                        if dev.mesh_budget { "ON" } else { "OFF" },
+                        if dev.async_meshing { "ON" } else { "OFF" },
+                        if dev.greedy_meshing { "ON" } else { "OFF" },
+                        if dev.distance_lod {
+                            format!("ON ({}ch)", dev.lod_threshold)
+                        } else {
+                            "OFF".to_string()
+                        },
+                    )
+                } else {
+                    (
+                        "ON",
+                        "ON",
+                        "ON",
+                        "ON",
+                        "ON",
+                        "ON",
+                        "ON",
+                        "ON (4ch)".to_string(),
+                    )
+                };
 
             let verts_str = if total_verts >= 1_000_000 {
                 format!("{:.2}M", total_verts as f32 / 1_000_000.0)
@@ -440,9 +490,21 @@ pub fn update_physics_hud_system(
                  FPS: {:.0} ({:.1} ms) | Verts: {}\n\
                  Chunks: {} | Meshes: {} | GenQ: {} | MeshQ: {}\n\
                  [Cull: {}] [Shadows: {}] [max_y: {}] [Fog: {}] [Budget: {}] [Async: {}] [Greedy: {}] [LOD: {}]",
-                fps.fps, fps.frame_time_ms, verts_str,
-                chunks_loaded, meshes_active, gen_q, mesh_q,
-                cull, shadow, max_y, fog, budget, async_m, greedy, lod
+                fps.fps,
+                fps.frame_time_ms,
+                verts_str,
+                chunks_loaded,
+                meshes_active,
+                gen_q,
+                mesh_q,
+                cull,
+                shadow,
+                max_y,
+                fog,
+                budget,
+                async_m,
+                greedy,
+                lod
             ));
         }
     }

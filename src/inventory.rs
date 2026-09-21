@@ -315,7 +315,7 @@ pub fn inventory_input_system(
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     menu: Option<Res<MenuState>>,
 ) {
-    if menu.map_or(false, |m| m.is_open()) {
+    if menu.is_some_and(|m| m.is_open()) {
         return;
     }
 
@@ -407,7 +407,7 @@ pub fn update_inventory_ui_system(
     mut slots_query: Query<(&HotbarSlotUi, &mut Node, &mut BorderColor), Without<HotbarIconUi>>,
     mut icons_query: Query<(&HotbarIconUi, &mut BackgroundColor)>,
 ) {
-    let menu_open = menu.map_or(false, |m| m.is_open());
+    let menu_open = menu.is_some_and(|m| m.is_open());
 
     // 0. Show/Hide hotbar HUD based on menu state
     if let Ok(mut vis) = hotbar_query.single_mut() {
