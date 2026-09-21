@@ -109,7 +109,7 @@ pub struct InteractionAssets<'w> {
 #[derive(SystemParam)]
 pub struct InteractionContext<'w> {
     pub mouse_buttons: Res<'w, ButtonInput<MouseButton>>,
-    pub inventory: Res<'w, Inventory>,
+    pub inventory: ResMut<'w, Inventory>,
     pub menu: Option<Res<'w, MenuState>>,
     pub dev_settings: Option<Res<'w, crate::menu::DevSettings>>,
 }
@@ -118,7 +118,7 @@ pub fn block_interaction_system(
     mut commands: Commands,
     cursor_options: Query<&CursorOptions, With<PrimaryWindow>>,
     camera_query: Query<(&Transform, &FpsCamera)>,
-    context: InteractionContext,
+    mut context: InteractionContext,
     mut world: ResMut<WorldGrid>,
     mut fluid_sim: ResMut<crate::fluid::FluidSimulation>,
     mut assets: InteractionAssets,
@@ -157,49 +157,67 @@ pub fn block_interaction_system(
 
         let mut dirty_coords = Vec::new();
 
-        // Left click: Break block (except indestructible Bedrock)
+        // Left click: Break block (except indestructible Bedrock) and collect resource
         if context.mouse_buttons.just_pressed(MouseButton::Left) {
             if hit.hit_block.y > 0 && world.get_block(hit.hit_block) != BlockType::Bedrock {
-                let affected = world.set_block(hit.hit_block, BlockType::Air);
-                dirty_coords.extend(affected);
-                fluid_sim.sources.remove(&hit.hit_block);
-                fluid_sim.schedule_neighbors(hit.hit_block);
+                let target_block = world.get_block(hit.hit_block);
+                if target_block != BlockType::Air {
+                    let affected = world.set_block(hit.hit_block, BlockType::Air);
+                    dirty_coords.extend(affected);
+                    fluid_sim.sources.remove(&hit.hit_block);
+                    fluid_sim.schedule_neighbors(hit.hit_block);
+
+                    // Yield mined resource directly into player's inventory
+                    if let Some(drop) = target_block.drop_item() {
+                        let leftover = context.inventory.add_item(drop, 1);
+                        if leftover > 0 {
+                            tracing::info!("Inventory full! Could not store mined item {drop:?}");
+                        }
+                    }
+                }
             }
         }
-        // Right click: Place block (if not colliding with the player's body)
+        // Right click: Place block (if an item is equipped in the active hotbar slot)
         else if context.mouse_buttons.just_pressed(MouseButton::Right) {
-            let block_to_place = context.inventory.selected_block();
-            let mut can_place = true;
+            if let Some(selected_stack) = context.inventory.selected_item() {
+                let block_to_place = selected_stack.block_type;
+                if block_to_place != BlockType::Air {
+                    let mut can_place = true;
 
-            if block_to_place.is_solid() {
-                let feet = cam_transform.translation - Vec3::new(0.0, 1.62, 0.0);
-                let p_min = feet + Vec3::new(-0.3, 0.0, -0.3);
-                let p_max = feet + Vec3::new(0.3, 1.8, 0.3);
+                    if block_to_place.is_solid() {
+                        let feet = cam_transform.translation - Vec3::new(0.0, 1.62, 0.0);
+                        let p_min = feet + Vec3::new(-0.3, 0.0, -0.3);
+                        let p_max = feet + Vec3::new(0.3, 1.8, 0.3);
 
-                let b_min = hit.place_pos.as_vec3();
-                let b_max = b_min + Vec3::ONE;
+                        let b_min = hit.place_pos.as_vec3();
+                        let b_max = b_min + Vec3::ONE;
 
-                let overlaps = p_min.x < b_max.x
-                    && p_max.x > b_min.x
-                    && p_min.y < b_max.y
-                    && p_max.y > b_min.y
-                    && p_min.z < b_max.z
-                    && p_max.z > b_min.z;
+                        let overlaps = p_min.x < b_max.x
+                            && p_max.x > b_min.x
+                            && p_min.y < b_max.y
+                            && p_max.y > b_min.y
+                            && p_min.z < b_max.z
+                            && p_max.z > b_min.z;
 
-                if overlaps {
-                    can_place = false;
+                        if overlaps {
+                            can_place = false;
+                        }
+                    }
+
+                    if can_place {
+                        let affected = world.set_block(hit.place_pos, block_to_place);
+                        dirty_coords.extend(affected);
+                        if block_to_place == BlockType::Water {
+                            fluid_sim.sources.insert(hit.place_pos);
+                        } else {
+                            fluid_sim.sources.remove(&hit.place_pos);
+                        }
+                        fluid_sim.schedule_neighbors(hit.place_pos);
+
+                        // Consume 1 block from active hotbar slot
+                        context.inventory.consume_selected(1);
+                    }
                 }
-            }
-
-            if can_place {
-                let affected = world.set_block(hit.place_pos, block_to_place);
-                dirty_coords.extend(affected);
-                if block_to_place == BlockType::Water {
-                    fluid_sim.sources.insert(hit.place_pos);
-                } else {
-                    fluid_sim.sources.remove(&hit.place_pos);
-                }
-                fluid_sim.schedule_neighbors(hit.place_pos);
             }
         }
 

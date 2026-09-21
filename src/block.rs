@@ -51,6 +51,17 @@ impl BlockType {
         matches!(self, BlockType::Air | BlockType::Water | BlockType::Glass)
     }
 
+    #[inline]
+    pub fn drop_item(self) -> Option<BlockType> {
+        match self {
+            BlockType::Air | BlockType::Water | BlockType::Bedrock => None,
+            BlockType::Grass => Some(BlockType::Dirt),
+            BlockType::Stone => Some(BlockType::Cobblestone),
+            BlockType::Leaves => Some(BlockType::Leaves),
+            other => Some(other),
+        }
+    }
+
     pub fn from_u8(val: u8) -> Self {
         match val {
             1 => BlockType::Grass,
