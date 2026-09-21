@@ -10,30 +10,24 @@ mod menu;
 mod mesher;
 mod noise;
 mod physics;
+pub mod stage;
 mod texture;
 mod world;
 
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 
-use camera::{FpsCamera, camera_look_system, cursor_grab_system};
+use camera::{CameraPlugin, FpsCamera};
 use chunk::Chunk;
-use fluid::{FluidSimulation, fluid_simulation_system};
-use interaction::block_interaction_system;
-use inventory::{
-    Inventory, inventory_input_system, inventory_interaction_system, setup_inventory_ui,
-    update_inventory_ui_system,
-};
-use menu::{
-    DevSettings, FpsLimiter, GraphicsSettings, MenuState, fps_limiter_system,
-    menu_button_click_system, menu_button_hover_system, menu_input_system, setup_menu_ui,
-    update_dev_button_text_system, update_dev_settings_system, update_menu_visibility_system,
-    update_settings_button_text_system,
-};
-use physics::{PlayerPhysics, player_physics_system, setup_physics_ui, update_physics_hud_system};
+use fluid::FluidPlugin;
+use interaction::InteractionPlugin;
+use inventory::InventoryPlugin;
+use menu::MenuPlugin;
+use physics::{PhysicsPlugin, PlayerPhysics};
+use stage::VoxelStage;
 use world::{
-    ChunkGeneratorPool, ChunkMesherPool, SEA_LEVEL, WorldGrid, WorldSeed,
-    calculate_biome_and_height, generate_chunk, update_chunk_mesh, world_streaming_system,
+    SEA_LEVEL, WorldGrid, WorldPlugin, WorldSeed, calculate_biome_and_height, generate_chunk,
+    update_chunk_mesh,
 };
 
 fn main() {
@@ -58,46 +52,27 @@ fn main() {
         }))
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
-        .init_resource::<Inventory>()
-        .init_resource::<MenuState>()
-        .init_resource::<GraphicsSettings>()
-        .init_resource::<DevSettings>()
-        .init_resource::<FpsLimiter>()
-        .init_resource::<ChunkGeneratorPool>()
-        .init_resource::<ChunkMesherPool>()
-        .init_resource::<FluidSimulation>()
-        .add_systems(
-            Startup,
-            (setup, setup_inventory_ui, setup_physics_ui, setup_menu_ui),
-        )
-        .add_systems(
+        .configure_sets(
             Update,
             (
-                menu_input_system,
-                update_menu_visibility_system,
-                menu_button_hover_system,
-                menu_button_click_system,
-                update_settings_button_text_system,
-                update_dev_button_text_system,
-                update_dev_settings_system,
-                fps_limiter_system,
-            ),
+                VoxelStage::InputHandling,
+                VoxelStage::PlayerPhysics,
+                VoxelStage::FluidSimulation,
+                VoxelStage::WorldStreaming,
+                VoxelStage::MeshBuilding,
+            )
+                .chain(),
         )
-        .add_systems(
-            Update,
-            (
-                cursor_grab_system,
-                camera_look_system,
-                player_physics_system,
-                update_physics_hud_system,
-                inventory_input_system,
-                inventory_interaction_system,
-                update_inventory_ui_system,
-                block_interaction_system,
-                fluid_simulation_system,
-                world_streaming_system,
-            ),
-        )
+        .add_plugins((
+            CameraPlugin,
+            PhysicsPlugin,
+            FluidPlugin,
+            WorldPlugin,
+            InteractionPlugin,
+            InventoryPlugin,
+            MenuPlugin,
+        ))
+        .add_systems(Startup, setup)
         .run();
 }
 

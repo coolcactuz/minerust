@@ -453,3 +453,20 @@ pub fn update_inventory_ui_system(
         }
     }
 }
+
+pub struct InventoryPlugin;
+
+impl Plugin for InventoryPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Inventory>()
+            .add_systems(Startup, setup_inventory_ui)
+            .add_systems(
+                Update,
+                (
+                    inventory_input_system.in_set(crate::stage::VoxelStage::InputHandling),
+                    inventory_interaction_system,
+                    update_inventory_ui_system,
+                ),
+            );
+    }
+}

@@ -509,3 +509,17 @@ pub fn update_physics_hud_system(
         }
     }
 }
+
+pub struct PhysicsPlugin;
+
+impl Plugin for PhysicsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, setup_physics_ui).add_systems(
+            Update,
+            (
+                player_physics_system.in_set(crate::stage::VoxelStage::PlayerPhysics),
+                update_physics_hud_system,
+            ),
+        );
+    }
+}

@@ -1292,3 +1292,28 @@ pub fn fps_limiter_system(settings: Res<GraphicsSettings>, mut limiter: ResMut<F
         limiter.last_frame_instant = None;
     }
 }
+
+pub struct MenuPlugin;
+
+impl Plugin for MenuPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<MenuState>()
+            .init_resource::<GraphicsSettings>()
+            .init_resource::<DevSettings>()
+            .init_resource::<FpsLimiter>()
+            .add_systems(Startup, setup_menu_ui)
+            .add_systems(
+                Update,
+                (
+                    menu_input_system.in_set(crate::stage::VoxelStage::InputHandling),
+                    update_menu_visibility_system,
+                    menu_button_hover_system,
+                    menu_button_click_system,
+                    update_settings_button_text_system,
+                    update_dev_button_text_system,
+                    update_dev_settings_system,
+                    fps_limiter_system,
+                ),
+            );
+    }
+}

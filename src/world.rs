@@ -1,3 +1,4 @@
+use bevy::ecs::system::SystemParam;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy::tasks::AsyncComputeTaskPool;
@@ -737,6 +738,24 @@ pub fn update_chunk_mesh(
     apply_chunk_mesh(*coord, new_mesh, lod, commands, world, meshes, materials);
 }
 
+#[derive(SystemParam)]
+pub struct WorldSettingsParams<'w> {
+    pub graphics: Option<Res<'w, GraphicsSettings>>,
+    pub dev: Option<Res<'w, crate::menu::DevSettings>>,
+}
+
+#[derive(SystemParam)]
+pub struct WorldWorkerPools<'w> {
+    pub generator: Res<'w, ChunkGeneratorPool>,
+    pub mesher: Res<'w, ChunkMesherPool>,
+}
+
+#[derive(SystemParam)]
+pub struct WorldMeshAssets<'w> {
+    pub meshes: ResMut<'w, Assets<Mesh>>,
+    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+}
+
 /// Continuous chunk streaming system based on player camera position with multithreaded generation
 pub fn world_streaming_system(
     mut commands: Commands,
@@ -745,12 +764,9 @@ pub fn world_streaming_system(
         With<FpsCamera>,
     >,
     mut world: ResMut<WorldGrid>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    settings: Option<Res<GraphicsSettings>>,
-    dev_settings: Option<Res<crate::menu::DevSettings>>,
-    pool: Res<ChunkGeneratorPool>,
-    mesher_pool: Res<ChunkMesherPool>,
+    mut assets: WorldMeshAssets,
+    settings: WorldSettingsParams,
+    pools: WorldWorkerPools,
 ) {
     let Ok((cam_transform, mut projection, mut fog)) = camera_query.single_mut() else {
         return;
@@ -760,8 +776,11 @@ pub fn world_streaming_system(
     let pz = cam_transform.translation.z as i32;
     let (player_chunk, _, _) = WorldGrid::world_to_chunk_coord(px, pz);
 
-    let view_dist = settings.as_ref().map_or(VIEW_DISTANCE, |s| s.view_distance);
-    let settings_changed = settings.as_ref().is_some_and(|s| s.is_changed());
+    let view_dist = settings
+        .graphics
+        .as_ref()
+        .map_or(VIEW_DISTANCE, |s| s.view_distance);
+    let settings_changed = settings.graphics.as_ref().is_some_and(|s| s.is_changed());
 
     if settings_changed {
         if let Projection::Perspective(ref mut persp) = *projection {
@@ -846,7 +865,7 @@ pub fn world_streaming_system(
 
         world.in_progress_chunks.insert(coord);
 
-        let tx = pool.tx.clone();
+        let tx = pools.generator.tx.clone();
         let noise = world.noise.clone();
         let seed = world.seed.0;
         let save_dir = world.save_dir.clone();
@@ -879,7 +898,7 @@ pub fn world_streaming_system(
     // 2. Receive finished chunks from background threads and queue for meshing
     let max_dist = view_dist + 3;
 
-    if let Ok(rx) = pool.rx.lock() {
+    if let Ok(rx) = pools.generator.rx.lock() {
         while let Ok((coord, chunk, from_disk)) = rx.try_recv() {
             world.in_progress_chunks.remove(&coord);
 
@@ -909,7 +928,7 @@ pub fn world_streaming_system(
     }
 
     // 3. Receive finished asynchronous meshes from background threads
-    if let Ok(rx) = mesher_pool.rx.lock() {
+    if let Ok(rx) = pools.mesher.rx.lock() {
         while let Ok((coord, mesh, lod)) = rx.try_recv() {
             world.in_progress_meshes.remove(&coord);
 
@@ -924,15 +943,15 @@ pub fn world_streaming_system(
                 lod,
                 &mut commands,
                 &mut world,
-                &mut meshes,
-                &mut materials,
+                &mut assets.meshes,
+                &mut assets.materials,
             );
         }
     }
 
-    let distance_lod = dev_settings.as_ref().is_none_or(|d| d.distance_lod);
-    let lod_threshold = dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
-    let global_greedy = dev_settings.as_ref().is_none_or(|d| d.greedy_meshing);
+    let distance_lod = settings.dev.as_ref().is_none_or(|d| d.distance_lod);
+    let lod_threshold = settings.dev.as_ref().map_or(4, |d| d.lod_threshold);
+    let global_greedy = settings.dev.as_ref().is_none_or(|d| d.greedy_meshing);
 
     let player_pos = cam_transform.translation;
     let threshold_world = (lod_threshold as f32) * 16.0;
@@ -974,9 +993,9 @@ pub fn world_streaming_system(
             -(d_sq as i64)
         });
 
-        let max_y_skip = dev_settings.as_ref().is_none_or(|d| d.max_y_skip);
-        let budget_enabled = dev_settings.as_ref().is_none_or(|d| d.mesh_budget);
-        let async_meshing = dev_settings.as_ref().is_none_or(|d| d.async_meshing);
+        let max_y_skip = settings.dev.as_ref().is_none_or(|d| d.max_y_skip);
+        let budget_enabled = settings.dev.as_ref().is_none_or(|d| d.mesh_budget);
+        let async_meshing = settings.dev.as_ref().is_none_or(|d| d.async_meshing);
         let max_meshes_per_frame = if budget_enabled {
             MAX_MESHES_PER_FRAME
         } else {
@@ -1013,7 +1032,7 @@ pub fn world_streaming_system(
                         let east = world.chunks.get(&(coord + IVec2::new(1, 0))).cloned();
                         let west = world.chunks.get(&(coord + IVec2::new(-1, 0))).cloned();
 
-                        let tx = mesher_pool.tx.clone();
+                        let tx = pools.mesher.tx.clone();
                         AsyncComputeTaskPool::get()
                             .spawn(async move {
                                 let mesh = build_chunk_mesh(
@@ -1033,8 +1052,8 @@ pub fn world_streaming_system(
                             &coord,
                             &mut commands,
                             &mut world,
-                            &mut meshes,
-                            &mut materials,
+                            &mut assets.meshes,
+                            &mut assets.materials,
                             max_y_skip,
                             use_greedy,
                         );
@@ -1043,6 +1062,19 @@ pub fn world_streaming_system(
                 }
             }
         }
+    }
+}
+
+pub struct WorldPlugin;
+
+impl Plugin for WorldPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<ChunkGeneratorPool>()
+            .init_resource::<ChunkMesherPool>()
+            .add_systems(
+                Update,
+                world_streaming_system.in_set(crate::stage::VoxelStage::WorldStreaming),
+            );
     }
 }
 

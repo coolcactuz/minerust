@@ -89,3 +89,15 @@ pub fn cursor_grab_system(
         cursor.visible = true;
     }
 }
+
+pub struct CameraPlugin;
+
+impl Plugin for CameraPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            (cursor_grab_system, camera_look_system)
+                .in_set(crate::stage::VoxelStage::InputHandling),
+        );
+    }
+}

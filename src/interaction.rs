@@ -1,3 +1,4 @@
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
@@ -99,26 +100,36 @@ pub fn voxel_raycast(
     None
 }
 
+#[derive(SystemParam)]
+pub struct InteractionAssets<'w> {
+    pub meshes: ResMut<'w, Assets<Mesh>>,
+    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+}
+
+#[derive(SystemParam)]
+pub struct InteractionContext<'w> {
+    pub mouse_buttons: Res<'w, ButtonInput<MouseButton>>,
+    pub inventory: Res<'w, Inventory>,
+    pub menu: Option<Res<'w, MenuState>>,
+    pub dev_settings: Option<Res<'w, crate::menu::DevSettings>>,
+}
+
 pub fn block_interaction_system(
     mut commands: Commands,
     cursor_options: Query<&CursorOptions, With<PrimaryWindow>>,
     camera_query: Query<(&Transform, &FpsCamera)>,
-    mouse_buttons: Res<ButtonInput<MouseButton>>,
-    inventory: Res<Inventory>,
-    menu: Option<Res<MenuState>>,
-    dev_settings: Option<Res<crate::menu::DevSettings>>,
+    context: InteractionContext,
     mut world: ResMut<WorldGrid>,
     mut fluid_sim: ResMut<crate::fluid::FluidSimulation>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut assets: InteractionAssets,
     mut gizmos: Gizmos,
 ) {
-    if let Some(menu) = menu {
+    if let Some(menu) = context.menu.as_ref() {
         if menu.is_open() {
             return;
         }
     }
-    if inventory.is_open {
+    if context.inventory.is_open {
         return;
     }
 
@@ -147,7 +158,7 @@ pub fn block_interaction_system(
         let mut dirty_coords = Vec::new();
 
         // Left click: Break block (except indestructible Bedrock)
-        if mouse_buttons.just_pressed(MouseButton::Left) {
+        if context.mouse_buttons.just_pressed(MouseButton::Left) {
             if hit.hit_block.y > 0 && world.get_block(hit.hit_block) != BlockType::Bedrock {
                 let affected = world.set_block(hit.hit_block, BlockType::Air);
                 dirty_coords.extend(affected);
@@ -156,8 +167,8 @@ pub fn block_interaction_system(
             }
         }
         // Right click: Place block (if not colliding with the player's body)
-        else if mouse_buttons.just_pressed(MouseButton::Right) {
-            let block_to_place = inventory.selected_block();
+        else if context.mouse_buttons.just_pressed(MouseButton::Right) {
+            let block_to_place = context.inventory.selected_block();
             let mut can_place = true;
 
             if block_to_place.is_solid() {
@@ -198,12 +209,18 @@ pub fn block_interaction_system(
             dirty_coords.dedup();
 
             let player_pos = cam_transform.translation;
-            let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
-            let distance_lod = dev_settings.as_ref().map_or(true, |d| d.distance_lod);
-            let lod_threshold = dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
+            let max_y_skip = context.dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
+            let distance_lod = context
+                .dev_settings
+                .as_ref()
+                .map_or(true, |d| d.distance_lod);
+            let lod_threshold = context.dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
             let threshold_world = (lod_threshold as f32) * 16.0;
             let threshold_sq = threshold_world * threshold_world;
-            let global_greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
+            let global_greedy = context
+                .dev_settings
+                .as_ref()
+                .map_or(true, |d| d.greedy_meshing);
 
             for coord in dirty_coords {
                 let chunk_opt = world.chunks.get(&coord);
@@ -217,12 +234,23 @@ pub fn block_interaction_system(
                     &coord,
                     &mut commands,
                     &mut world,
-                    &mut meshes,
-                    &mut materials,
+                    &mut assets.meshes,
+                    &mut assets.materials,
                     max_y_skip,
                     greedy,
                 );
             }
         }
+    }
+}
+
+pub struct InteractionPlugin;
+
+impl Plugin for InteractionPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            block_interaction_system.in_set(crate::stage::VoxelStage::InputHandling),
+        );
     }
 }

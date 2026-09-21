@@ -227,6 +227,17 @@ pub fn fluid_simulation_system(
     }
 }
 
+pub struct FluidPlugin;
+
+impl Plugin for FluidPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<FluidSimulation>().add_systems(
+            Update,
+            fluid_simulation_system.in_set(crate::stage::VoxelStage::FluidSimulation),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
