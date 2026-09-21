@@ -2,6 +2,9 @@
 name = "minerust"
 version = "0.1.0"
 edition = "2024"
+description = "A high-performance, multi-threaded Minecraft-like voxel sandbox game built in Rust powered by Bevy."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/coolcactuz/minerust"
 
 [dependencies]
 anyhow = "1.0.104"

@@ -7,7 +7,7 @@
 [![Safety](https://img.shields.io/badge/Safety-%23!%5Bforbid(unsafe__code)%5D-brightgreen)](https://doc.rust-lang.org/nomicon/safe-unsafe-meaning.html)
 [![Tests](https://img.shields.io/badge/Tests-44%20Passing-success?logo=github-actions&logoColor=white)](https://github.com/)
 [![Performance](https://img.shields.io/badge/Framerate-60%2B%20FPS-purple)](https://github.com/)
-[![License](https://img.shields.io/badge/License-MIT%2FApache-blue)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT%2FApache_2.0-blue)](#-license)
 
 **A high-performance, multi-threaded Minecraft-like voxel sandbox game built in pure Rust powered by the Bevy engine.**
 
