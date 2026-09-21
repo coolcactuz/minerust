@@ -60,7 +60,7 @@ pub fn block_name(block: BlockType) -> &'static str {
 }
 
 /// Represents a stack of blocks of a specific type with a quantity count.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ItemStack {
     pub block_type: BlockType,
     pub count: u32,

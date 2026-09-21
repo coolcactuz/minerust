@@ -8,9 +8,10 @@ use minerust::camera::{CameraPlugin, FpsCamera};
 use minerust::chunk::Chunk;
 use minerust::fluid::FluidPlugin;
 use minerust::interaction::InteractionPlugin;
-use minerust::inventory::InventoryPlugin;
+use minerust::inventory::{Inventory, InventoryPlugin};
 use minerust::menu::MenuPlugin;
 use minerust::physics::{PhysicsPlugin, PlayerPhysics};
+use minerust::save::{SavePlugin, load_player_from_disk};
 use minerust::stage::VoxelStage;
 use minerust::texture;
 use minerust::world::{
@@ -59,6 +60,7 @@ fn main() {
             InteractionPlugin,
             InventoryPlugin,
             MenuPlugin,
+            SavePlugin,
         ))
         .add_systems(Startup, setup)
         .run();
@@ -67,6 +69,7 @@ fn main() {
 fn setup(
     mut commands: Commands,
     mut world: ResMut<WorldGrid>,
+    mut inventory: ResMut<Inventory>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
@@ -88,30 +91,79 @@ fn setup(
     let seed = world.seed.0;
     let noise = world.noise.clone();
 
-    // 1. Pre-generate initial 9x9 chunk grid around spawn (0, 0) in parallel across all CPU cores
+    // 1. Check for persisted player state (position, camera orientation, and inventory)
+    let player_save_file = world.player_save_path();
+    let maybe_player_data = if player_save_file.exists() {
+        match load_player_from_disk(&player_save_file) {
+            Ok(data) => {
+                info!(
+                    "Loaded saved player data from {}",
+                    player_save_file.display()
+                );
+                Some(data)
+            }
+            Err(e) => {
+                warn!("Failed to load player save file: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let default_fps = FpsCamera::default();
+    let (player_pos, player_yaw, player_pitch) = if let Some(ref data) = maybe_player_data {
+        inventory.hotbar = data.hotbar;
+        inventory.main = data.main;
+        inventory.selected_slot = data.selected_slot;
+        (Vec3::from_array(data.position), data.yaw, data.pitch)
+    } else {
+        let (_, spawn_y, _) = calculate_biome_and_height(0.0, 0.0, &noise);
+        let player_y = (spawn_y as f32 + 4.0).max((SEA_LEVEL + 4) as f32);
+        (
+            Vec3::new(0.0, player_y, 0.0),
+            default_fps.yaw,
+            default_fps.pitch,
+        )
+    };
+
+    let center_chunk =
+        WorldGrid::world_to_chunk_coord(player_pos.x.floor() as i32, player_pos.z.floor() as i32).0;
+
+    // 2. Pre-generate initial 9x9 chunk grid around center_chunk in parallel across all CPU cores,
+    // checking disk first to restore player modifications.
+    let save_dir = world.save_dir.clone();
     let initial_coords: Vec<IVec2> = (-4..=4)
-        .flat_map(|cx| (-4..=4).map(move |cz| IVec2::new(cx, cz)))
+        .flat_map(|cx| (-4..=4).map(move |cz| center_chunk + IVec2::new(cx, cz)))
         .collect();
 
-    let mut generated_chunks: Vec<(IVec2, Chunk)> = Vec::with_capacity(initial_coords.len());
+    let mut loaded_chunks: Vec<(IVec2, Chunk, bool)> = Vec::with_capacity(initial_coords.len());
 
     std::thread::scope(|s| {
         let mut handles = Vec::with_capacity(initial_coords.len());
         for coord in &initial_coords {
             let noise_ref = &noise;
+            let save_dir_ref = &save_dir;
             handles.push(s.spawn(move || {
-                let chunk = generate_chunk(coord.x, coord.y, noise_ref, seed);
-                (*coord, chunk)
+                if let Ok(chunk) = WorldGrid::load_chunk_from_disk_path(save_dir_ref, *coord) {
+                    (*coord, chunk, true)
+                } else {
+                    let chunk = generate_chunk(coord.x, coord.y, noise_ref, seed);
+                    (*coord, chunk, false)
+                }
             }));
         }
         for handle in handles {
             if let Ok(res) = handle.join() {
-                generated_chunks.push(res);
+                loaded_chunks.push(res);
             }
         }
     });
 
-    for (coord, chunk) in generated_chunks {
+    for (coord, chunk, from_disk) in loaded_chunks {
+        if from_disk {
+            world.modified_chunks.insert(coord);
+        }
         world.chunks.insert(coord, chunk);
     }
 
@@ -127,11 +179,15 @@ fn setup(
         );
     }
 
-    // 2. Calculate terrain height at spawn to position the player naturally
-    let (spawn_biome, spawn_y, _) = calculate_biome_and_height(0.0, 0.0, &noise);
-    let player_y = (spawn_y as f32 + 4.0).max((SEA_LEVEL + 4) as f32);
-
     // 3. Spawn FPS camera with integrated AmbientLight, DistanceFog, and PlayerPhysics component
+    let fps_camera = FpsCamera {
+        yaw: player_yaw,
+        pitch: player_pitch,
+        ..default()
+    };
+
+    let rot = Quat::from_rotation_y(player_yaw) * Quat::from_rotation_x(player_pitch);
+
     commands.spawn((
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
@@ -151,9 +207,12 @@ fn setup(
             },
             ..default()
         },
-        Transform::from_xyz(0.0, player_y, 0.0)
-            .looking_at(Vec3::new(20.0, player_y - 2.0, 20.0), Vec3::Y),
-        FpsCamera::default(),
+        Transform {
+            translation: player_pos,
+            rotation: rot,
+            ..default()
+        },
+        fps_camera,
         PlayerPhysics::default(),
     ));
 
@@ -174,11 +233,14 @@ fn setup(
         Transform::from_xyz(200.0, 450.0, 150.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
+    let (current_biome, _, _) =
+        calculate_biome_and_height(player_pos.x as f64, player_pos.z as f64, &noise);
+
     println!("\n=======================================================");
     println!("⛏️  MINERUST: FULL VOXEL ENGINE ACTIVE");
     println!("=======================================================");
     println!("* WORLD SEED: {seed}");
-    println!("* SPAWN BIOME: {spawn_biome:?}");
+    println!("* CURRENT BIOME: {current_biome:?}");
     println!("* CONTROLS:");
     println!("  - WASD: Horizontal movement with inertia and friction");
     println!("  - Mouse: Free-look FPS (Left-click to lock / ESC to unlock)");

@@ -83,6 +83,7 @@ pub struct WorldGrid {
     pub generation_queue: Vec<IVec2>,
     pub mesh_queue: Vec<IVec2>,
     pub queued_for_mesh: HashSet<IVec2>,
+    pub dirty_chunks: HashSet<IVec2>,
     pub save_dir: PathBuf,
     pub seed: WorldSeed,
     pub noise: NoiseGenerator,
@@ -101,13 +102,14 @@ impl Default for WorldGrid {
             chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
             chunk_entities: HashMap::default(),
             modified_chunks: HashSet::default(),
+            dirty_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
             in_progress_meshes: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
             generation_queue: Vec::new(),
             mesh_queue: Vec::new(),
             queued_for_mesh: HashSet::default(),
-            save_dir: PathBuf::from("saves/world/chunks"),
+            save_dir: PathBuf::from(format!("saves/world_{}/chunks", seed.0)),
             seed,
             noise,
             block_material: None,
@@ -158,6 +160,7 @@ impl WorldGrid {
             chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
             chunk_entities: HashMap::default(),
             modified_chunks: HashSet::default(),
+            dirty_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
             in_progress_meshes: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
@@ -221,6 +224,7 @@ impl WorldGrid {
             chunk.set_local(local, block);
             dirty_chunks.push(c_coord.0);
             self.modified_chunks.insert(c_coord.0);
+            self.dirty_chunks.insert(c_coord.0);
 
             if local.x == 0 {
                 dirty_chunks.push(c_coord.0 + IVec2::new(-1, 0));
@@ -236,6 +240,58 @@ impl WorldGrid {
         }
 
         dirty_chunks
+    }
+
+    #[inline]
+    pub fn world_dir(&self) -> PathBuf {
+        PathBuf::from(format!("saves/world_{}", self.seed.0))
+    }
+
+    #[inline]
+    pub fn player_save_path(&self) -> PathBuf {
+        self.world_dir().join("player.json")
+    }
+
+    /// Saves all chunks that have been modified in memory and not yet flushed to disk.
+    pub fn save_all_dirty_chunks(&mut self) -> Result<usize, WorldError> {
+        if self.dirty_chunks.is_empty() {
+            return Ok(0);
+        }
+        std::fs::create_dir_all(&self.save_dir)?;
+        let mut saved = 0;
+        let coords: Vec<IVec2> = self.dirty_chunks.drain().collect();
+        for coord in coords {
+            if let Some(chunk) = self.chunks.get(&coord) {
+                let path = self
+                    .save_dir
+                    .join(format!("chunk_{}_{}.bin", coord.x, coord.y));
+                let compressed = chunk.to_compressed_bytes();
+                std::fs::write(&path, compressed)?;
+                saved += 1;
+            }
+        }
+        Ok(saved)
+    }
+
+    /// Saves all modified chunks currently in memory to disk.
+    pub fn save_all_modified(&mut self) -> Result<usize, WorldError> {
+        if self.modified_chunks.is_empty() {
+            return Ok(0);
+        }
+        std::fs::create_dir_all(&self.save_dir)?;
+        let mut saved = 0;
+        for &coord in &self.modified_chunks {
+            if let Some(chunk) = self.chunks.get(&coord) {
+                let path = self
+                    .save_dir
+                    .join(format!("chunk_{}_{}.bin", coord.x, coord.y));
+                let compressed = chunk.to_compressed_bytes();
+                std::fs::write(&path, compressed)?;
+                saved += 1;
+            }
+        }
+        self.dirty_chunks.clear();
+        Ok(saved)
     }
 
     pub fn save_chunk_to_disk(&self, coord: impl Into<ChunkPos>) -> Result<(), WorldError> {
@@ -861,12 +917,13 @@ pub fn world_streaming_system(
                 commands.entity(entity).despawn();
             }
 
-            // If the chunk was modified by the player, persist it to disk and keep it tracked
-            if world.modified_chunks.contains(&coord) {
+            // If the chunk was modified by the player, persist it to disk
+            if world.dirty_chunks.remove(&coord) || world.modified_chunks.contains(&coord) {
                 if let Err(e) = world.save_chunk_to_disk(coord) {
                     tracing::warn!("Failed to save chunk at {coord:?}: {e}");
                 }
-            } else if let Some(removed_chunk) = world.chunks.remove(&coord) {
+            }
+            if let Some(removed_chunk) = world.chunks.remove(&coord) {
                 // Keep recently unloaded chunks in RAM LRU cache to prevent thrashing
                 world.chunk_cache.insert(coord, removed_chunk);
             }

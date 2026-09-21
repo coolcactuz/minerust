@@ -12,6 +12,7 @@ pub mod menu;
 pub mod mesher;
 pub mod noise;
 pub mod physics;
+pub mod save;
 pub mod stage;
 pub mod texture;
 pub mod world;
