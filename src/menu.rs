@@ -46,6 +46,7 @@ impl MenuState {
 #[derive(Resource, Clone, Debug)]
 pub struct DevSettings {
     pub dev_mode: bool,
+    pub profile_mode: bool,
     pub backface_culling: bool,
     pub shadows_enabled: bool,
     pub max_y_skip: bool,
@@ -63,6 +64,7 @@ impl Default for DevSettings {
     fn default() -> Self {
         Self {
             dev_mode: false,
+            profile_mode: false,
             backface_culling: true,
             shadows_enabled: true,
             max_y_skip: true,
@@ -1131,9 +1133,7 @@ pub fn menu_input_system(
 
     if keys.just_pressed(KeyCode::F3) {
         if let Some(ref mut dev) = dev_settings {
-            if dev.dev_mode {
-                dev.show_debug_hud = !dev.show_debug_hud;
-            }
+            dev.show_debug_hud = !dev.show_debug_hud;
         }
     }
 

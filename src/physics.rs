@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bevy::text::FontSize;
 
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
@@ -50,9 +49,6 @@ impl Default for PlayerPhysics {
         }
     }
 }
-
-#[derive(Component)]
-pub struct PhysicsDebugText;
 
 /// Checks if the player's bounding box (AABB) intersects solid blocks in the world
 pub fn check_collision(feet_pos: Vec3, world: &WorldGrid) -> bool {
@@ -361,167 +357,13 @@ pub fn player_physics_system(
     transform.translation = feet + Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0);
 }
 
-#[derive(Default)]
-pub struct FpsTracker {
-    pub fps: f32,
-    pub frame_time_ms: f32,
-    timer: f32,
-    frames: u32,
-}
-
-#[derive(Component)]
-pub struct PhysicsDebugRoot;
-
-pub fn setup_physics_ui(mut commands: Commands) {
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Px(12.0),
-                left: Val::Px(12.0),
-                padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
-                border: UiRect::all(Val::Px(1.5)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.82)),
-            BorderColor::all(Color::srgba(0.3, 0.5, 0.7, 0.8)),
-            PhysicsDebugRoot,
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                Text::new("MINERUST BENCHMARK [F3]\nFPS: --\nLoading stats..."),
-                TextFont {
-                    font_size: FontSize::Px(13.0),
-                    ..default()
-                },
-                TextColor(Color::srgb(0.3, 1.0, 0.5)),
-                PhysicsDebugText,
-            ));
-        });
-}
-
-pub fn update_physics_hud_system(
-    time: Res<Time>,
-    mut fps: Local<FpsTracker>,
-    world: Option<Res<WorldGrid>>,
-    dev_settings: Option<Res<crate::menu::DevSettings>>,
-    mut text_query: Query<&mut Text, With<PhysicsDebugText>>,
-    mut root_query: Query<&mut Visibility, With<PhysicsDebugRoot>>,
-) {
-    let show_hud = dev_settings
-        .as_ref()
-        .is_some_and(|d| d.dev_mode && d.show_debug_hud);
-    if let Ok(mut vis) = root_query.single_mut() {
-        let target = if show_hud {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        if *vis != target {
-            *vis = target;
-        }
-    }
-
-    if !show_hud {
-        return;
-    }
-
-    let dt = time.delta_secs();
-    fps.timer += dt;
-    fps.frames += 1;
-
-    if fps.timer >= 0.25 {
-        fps.fps = fps.frames as f32 / fps.timer;
-        fps.frame_time_ms = (fps.timer / fps.frames as f32) * 1000.0;
-        fps.timer = 0.0;
-        fps.frames = 0;
-
-        if let Ok(mut text) = text_query.single_mut() {
-            let (chunks_loaded, meshes_active, gen_q, mesh_q, total_verts) =
-                if let Some(ref w) = world {
-                    (
-                        w.chunks.len(),
-                        w.chunk_entities.len(),
-                        w.generation_queue.len(),
-                        w.mesh_queue.len(),
-                        w.total_vertices,
-                    )
-                } else {
-                    (0, 0, 0, 0, 0)
-                };
-
-            let (cull, shadow, max_y, fog, budget, async_m, greedy, lod) =
-                if let Some(ref dev) = dev_settings {
-                    (
-                        if dev.backface_culling { "ON" } else { "OFF" },
-                        if dev.shadows_enabled { "ON" } else { "OFF" },
-                        if dev.max_y_skip { "ON" } else { "OFF" },
-                        if dev.distance_fog { "ON" } else { "OFF" },
-                        if dev.mesh_budget { "ON" } else { "OFF" },
-                        if dev.async_meshing { "ON" } else { "OFF" },
-                        if dev.greedy_meshing { "ON" } else { "OFF" },
-                        if dev.distance_lod {
-                            format!("ON ({}ch)", dev.lod_threshold)
-                        } else {
-                            "OFF".to_string()
-                        },
-                    )
-                } else {
-                    (
-                        "ON",
-                        "ON",
-                        "ON",
-                        "ON",
-                        "ON",
-                        "ON",
-                        "ON",
-                        "ON (4ch)".to_string(),
-                    )
-                };
-
-            let verts_str = if total_verts >= 1_000_000 {
-                format!("{:.2}M", total_verts as f32 / 1_000_000.0)
-            } else if total_verts >= 1_000 {
-                format!("{:.0}k", total_verts as f32 / 1_000.0)
-            } else {
-                format!("{}", total_verts)
-            };
-
-            *text = Text::new(format!(
-                "MINERUST BENCHMARK [F3: Toggle]\n\
-                 FPS: {:.0} ({:.1} ms) | Verts: {}\n\
-                 Chunks: {} | Meshes: {} | GenQ: {} | MeshQ: {}\n\
-                 [Cull: {}] [Shadows: {}] [max_y: {}] [Fog: {}] [Budget: {}] [Async: {}] [Greedy: {}] [LOD: {}]",
-                fps.fps,
-                fps.frame_time_ms,
-                verts_str,
-                chunks_loaded,
-                meshes_active,
-                gen_q,
-                mesh_q,
-                cull,
-                shadow,
-                max_y,
-                fog,
-                budget,
-                async_m,
-                greedy,
-                lod
-            ));
-        }
-    }
-}
-
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_physics_ui).add_systems(
+        app.add_systems(
             Update,
-            (
-                player_physics_system.in_set(crate::stage::VoxelStage::PlayerPhysics),
-                update_physics_hud_system,
-            ),
+            player_physics_system.in_set(crate::stage::VoxelStage::PlayerPhysics),
         );
     }
 }

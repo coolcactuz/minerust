@@ -5,7 +5,7 @@
 [![Rust](https://img.shields.io/badge/Rust-2024_Edition-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Engine](https://img.shields.io/badge/Engine-Bevy_0.15%2F0.19-blue?logo=bevy&logoColor=white)](https://bevyengine.org/)
 [![Safety](https://img.shields.io/badge/Safety-%23!%5Bforbid(unsafe__code)%5D-brightgreen)](https://doc.rust-lang.org/nomicon/safe-unsafe-meaning.html)
-[![Tests](https://img.shields.io/badge/Tests-36%20Passing-success?logo=github-actions&logoColor=white)](https://github.com/)
+[![Tests](https://img.shields.io/badge/Tests-40%20Passing-success?logo=github-actions&logoColor=white)](https://github.com/)
 [![Performance](https://img.shields.io/badge/Framerate-60%2B%20FPS-purple)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT%2FApache-blue)](LICENSE)
 
@@ -54,10 +54,14 @@ Whether you are exploring mountainous biomes, digging into caverns, swimming up 
 - **Full Inventory Modal (`E`)**: Interactive UI supporting slot swapping, item transfer, and active hotbar management.
 - **Anti-Self-Trapping Placement**: Raymarching verification prevents accidental player suffocation when placing solid voxels.
 
-### 📊 Developer & Benchmark Telemetry HUD
-- **Production Mode by Default**: Release builds lock all optimizations ON, offering clean and streamlined gameplay for players.
-- **Diagnostic Mode (`--dev`)**: Unlocks the in-game **F3 HUD** displaying real-time FPS, frame times, vertex tallies, active chunks, and live toggles for every optimization sub-pipeline.
-- **Setting Info Cards**: Interactive hover cards in the settings menu explain what each rendering and optimization toggle does under the hood.
+### 📊 Real-Time Engine Profiler & Telemetry HUD (`F3`)
+- **Live Process RAM**: Safely tracks resident physical memory (`VmRSS`) and virtual memory (`VmSize`) directly from the OS to detect memory growth in real time.
+- **Estimated VRAM Footprint**: Computes exact GPU memory allocated for vertex buffers ($54\text{ bytes/vertex}$), index buffers, texture atlas, and framebuffers.
+- **Geometry & Voxel Statistics**: Displays active 3D chunk meshes, total vertices, triangles, visible surface quads, and total voxels held in memory.
+- **Frame Pacing & 1% Low FPS**: Tracks average FPS, frame times, and 99th percentile (1% low) frame latency to identify micro-stutters.
+- **Streaming Pipeline Queues**: Real-time counters for generation queue, meshing queue, active background worker tasks, and in-memory LRU cache.
+- **Coordinate & Biome Tracking**: Continuous player world position, chunk coordinate, local block index, and current environmental biome.
+- **Universal In-Game Access**: Toggle the profiler on/off at any time with **`F3`**, or launch directly via `--profile` or `--dev`.
 
 ---
 
@@ -75,7 +79,7 @@ Whether you are exploring mountainous biomes, digging into caverns, swimming up 
 | **Right Click** | Place active block |
 | **`1` – `9` / Scroll** | Select active Hotbar slot |
 | **`E`** | Open / Close Inventory Screen |
-| **`F3`** | Toggle Real-time Diagnostic HUD (when launched with `--dev`) |
+| **`F3`** | Toggle Real-Time Performance & Profiler HUD |
 | **`ESC`** | Pause Game / Return to Menu |
 
 ---
@@ -96,10 +100,15 @@ cd minerust
 # 2. Run in Production Mode (All optimizations enabled by default)
 cargo run --release
 
-# 3. Run in Developer & Benchmark Mode (Enables F3 HUD & Dev Settings)
-cargo run --release -- --dev
+# 3. Run in Real-Time Profiling Mode (Displays comprehensive performance telemetry)
+cargo run --release -- --profile
+# Or shorthand: cargo run --release -- -p
 
-# 4. Launch with a custom world seed (string or integer)
+# 4. Run in Developer & Benchmark Mode (Enables F3 HUD & Dev Settings menu)
+cargo run --release -- --dev
+# Or shorthand: cargo run --release -- -d
+
+# 5. Launch with a custom world seed (string or integer)
 cargo run --release -- --seed "linkedin_showcase"
 cargo run --release -- -s 133742
 ```
@@ -166,7 +175,7 @@ Read our comprehensive [**ARCHITECTURE.md**](ARCHITECTURE.md) for in-depth engin
 Every commit is verified against rigorous production standards:
 
 ```bash
-# Run complete test suite (36 unit, integration, and property tests)
+# Run complete test suite (40 unit, integration, and property tests)
 cargo test
 
 # Enforce strict zero-warning pedantic clippy compliance

@@ -10,6 +10,7 @@ use minerust::interaction::InteractionPlugin;
 use minerust::inventory::{Inventory, InventoryPlugin};
 use minerust::menu::{DevSettings, MenuPlugin, SeedInputState};
 use minerust::physics::{PhysicsPlugin, PlayerPhysics};
+use minerust::profile::ProfilePlugin;
 use minerust::save::{SavePlugin, load_player_from_disk};
 use minerust::stage::VoxelStage;
 use minerust::texture;
@@ -20,6 +21,7 @@ fn main() {
     let mut seed = WorldSeed::default();
     let mut seed_specified = false;
     let mut dev_mode = false;
+    let mut profile_mode = false;
     let args: Vec<String> = std::env::args().collect();
     for i in 0..args.len() {
         if (args[i] == "--seed" || args[i] == "-s") && i + 1 < args.len() {
@@ -29,12 +31,18 @@ fn main() {
         if args[i] == "--dev" || args[i] == "--debug" || args[i] == "-d" {
             dev_mode = true;
         }
+        if args[i] == "--profile" || args[i] == "-p" {
+            profile_mode = true;
+        }
         if args[i] == "--help" || args[i] == "-h" {
             println!("MineRust - A High-Performance Voxel Sandbox in Rust");
             println!("Usage: minerust [OPTIONS]");
             println!("\nOptions:");
             println!("  -s, --seed <SEED>       Set world generation seed (string or integer)");
-            println!("  -d, --dev, --debug      Enable Developer Mode (benchmarks & debug HUD)");
+            println!(
+                "  -d, --dev, --debug      Enable Developer Mode (benchmarks & debug settings)"
+            );
+            println!("  -p, --profile           Enable Real-time Performance Profiler HUD");
             println!("  -h, --help              Print help information");
             return;
         }
@@ -52,7 +60,8 @@ fn main() {
 
     let dev_settings = DevSettings {
         dev_mode,
-        show_debug_hud: dev_mode,
+        profile_mode,
+        show_debug_hud: dev_mode || profile_mode,
         ..default()
     };
 
@@ -61,6 +70,8 @@ fn main() {
             primary_window: Some(Window {
                 title: if dev_mode {
                     format!("MineRust [DEV MODE] - Seed: {}", seed.0)
+                } else if profile_mode {
+                    format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
                 } else {
                     format!("MineRust - Seed: {}", seed.0)
                 },
@@ -94,6 +105,7 @@ fn main() {
             InventoryPlugin,
             MenuPlugin,
             SavePlugin,
+            ProfilePlugin,
         ))
         .add_systems(Startup, setup)
         .run();
