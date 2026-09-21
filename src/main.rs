@@ -68,21 +68,25 @@ fn main() {
     };
 
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: if dev_mode {
-                    format!("MineRust [DEV MODE] - Seed: {}", seed.0)
-                } else if profile_mode {
-                    format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
-                } else {
-                    format!("MineRust - Seed: {}", seed.0)
-                },
-                resolution: WindowResolution::new(1280, 720),
-                present_mode: bevy::window::PresentMode::AutoVsync,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: if dev_mode {
+                            format!("MineRust [DEV MODE] - Seed: {}", seed.0)
+                        } else if profile_mode {
+                            format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
+                        } else {
+                            format!("MineRust - Seed: {}", seed.0)
+                        },
+                        resolution: WindowResolution::new(1280, 720),
+                        present_mode: bevy::window::PresentMode::AutoVsync,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .disable::<bevy::audio::AudioPlugin>(),
+        )
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .insert_resource(dev_settings)
