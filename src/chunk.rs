@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use crate::block::BlockType;
+use crate::coords::LocalBlockPos;
+use crate::error::WorldError;
 
 pub const CHUNK_WIDTH: usize = 16;
 pub const CHUNK_HEIGHT: usize = 128;
 pub const CHUNK_DEPTH: usize = 16;
 pub const CHUNK_BLOCKS: usize = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Chunk {
     pub blocks: Arc<[BlockType; CHUNK_BLOCKS]>,
     pub max_y: usize,
@@ -21,10 +23,13 @@ impl Default for Chunk {
 
 impl Chunk {
     pub fn new() -> Self {
-        let boxed: Box<[BlockType; CHUNK_BLOCKS]> = vec![BlockType::Air; CHUNK_BLOCKS]
+        let boxed: Box<[BlockType; CHUNK_BLOCKS]> = match vec![BlockType::Air; CHUNK_BLOCKS]
             .into_boxed_slice()
             .try_into()
-            .unwrap_or_else(|_| panic!("Failed to allocate chunk"));
+        {
+            Ok(b) => b,
+            Err(_) => unreachable!("vec length exactly matches CHUNK_BLOCKS"),
+        };
         Self {
             blocks: Arc::from(boxed),
             max_y: 0,
@@ -80,6 +85,20 @@ impl Chunk {
         }
     }
 
+    #[inline(always)]
+    pub fn get_local(&self, pos: LocalBlockPos) -> BlockType {
+        self.blocks[pos.to_index()]
+    }
+
+    #[inline(always)]
+    pub fn set_local(&mut self, pos: LocalBlockPos, block: BlockType) {
+        let idx = pos.to_index();
+        Arc::make_mut(&mut self.blocks)[idx] = block;
+        if block != BlockType::Air && usize::from(pos.y) > self.max_y {
+            self.max_y = usize::from(pos.y);
+        }
+    }
+
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(CHUNK_BLOCKS);
         for b in self.blocks.iter() {
@@ -88,9 +107,13 @@ impl Chunk {
         bytes
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, WorldError> {
         if bytes.len() != CHUNK_BLOCKS {
-            return None;
+            return Err(WorldError::Corruption(format!(
+                "Invalid chunk byte length: expected {}, got {}",
+                CHUNK_BLOCKS,
+                bytes.len()
+            )));
         }
         let mut chunk = Self::new();
         let mut max_y = 0;
@@ -106,6 +129,58 @@ impl Chunk {
             }
         }
         chunk.max_y = max_y;
-        Some(chunk)
+        Ok(chunk)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_chunk_new_is_air() {
+        let chunk = Chunk::new();
+        assert_eq!(chunk.max_y, 0);
+        assert_eq!(chunk.get_fast(0, 0, 0), BlockType::Air);
+        assert_eq!(
+            chunk.get_local(LocalBlockPos::new(15, 64, 15)),
+            BlockType::Air
+        );
+    }
+
+    #[test]
+    fn test_chunk_get_set_local() {
+        let mut chunk = Chunk::new();
+        let pos = LocalBlockPos::new(3, 42, 7);
+        chunk.set_local(pos, BlockType::Stone);
+        assert_eq!(chunk.get_local(pos), BlockType::Stone);
+        assert_eq!(chunk.max_y, 42);
+    }
+
+    #[test]
+    fn test_chunk_serialization_roundtrip() {
+        let mut chunk = Chunk::new();
+        chunk.set_local(LocalBlockPos::new(0, 0, 0), BlockType::Bedrock);
+        chunk.set_local(LocalBlockPos::new(5, 50, 5), BlockType::GoldOre);
+        let bytes = chunk.to_bytes();
+        assert_eq!(bytes.len(), CHUNK_BLOCKS);
+
+        let loaded = Chunk::from_bytes(&bytes).expect("roundtrip should succeed");
+        assert_eq!(
+            loaded.get_local(LocalBlockPos::new(0, 0, 0)),
+            BlockType::Bedrock
+        );
+        assert_eq!(
+            loaded.get_local(LocalBlockPos::new(5, 50, 5)),
+            BlockType::GoldOre
+        );
+        assert_eq!(loaded.max_y, 50);
+    }
+
+    #[test]
+    fn test_chunk_deserialization_corruption_error() {
+        let corrupted_bytes = vec![0_u8; 100];
+        let result = Chunk::from_bytes(&corrupted_bytes);
+        assert!(matches!(result, Err(WorldError::Corruption(_))));
     }
 }

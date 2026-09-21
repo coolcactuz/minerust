@@ -1,6 +1,8 @@
 mod block;
 mod camera;
 mod chunk;
+pub mod coords;
+pub mod error;
 mod fluid;
 mod interaction;
 mod inventory;

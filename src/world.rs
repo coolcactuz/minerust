@@ -8,6 +8,8 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
+use crate::coords::{BlockPos, ChunkPos};
+use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
 use crate::mesher::build_chunk_mesh;
 use crate::noise::NoiseGenerator;
@@ -157,9 +159,10 @@ impl WorldGrid {
     }
 
     #[inline]
-    pub fn queue_mesh(&mut self, coord: IVec2) {
-        if self.queued_for_mesh.insert(coord) {
-            self.mesh_queue.push(coord);
+    pub fn queue_mesh(&mut self, coord: impl Into<ChunkPos>) {
+        let c = coord.into().0;
+        if self.queued_for_mesh.insert(c) {
+            self.mesh_queue.push(c);
         }
     }
 
@@ -172,71 +175,78 @@ impl WorldGrid {
         (IVec2::new(cx, cz), lx, lz)
     }
 
-    pub fn get_block(&self, pos: IVec3) -> BlockType {
-        if pos.y < 0 || pos.y >= CHUNK_HEIGHT as i32 {
+    pub fn get_block(&self, pos: impl Into<BlockPos>) -> BlockType {
+        let pos = pos.into();
+        if pos.y() < 0 || pos.y() >= CHUNK_HEIGHT as i32 {
             return BlockType::Air;
         }
-        let (c_coord, lx, lz) = Self::world_to_chunk_coord(pos.x, pos.z);
-        if let Some(chunk) = self.chunks.get(&c_coord) {
-            chunk.get(lx as i32, pos.y, lz as i32)
+        let (c_coord, local) = pos.to_chunk_and_local();
+        if let Some(chunk) = self.chunks.get(&c_coord.0) {
+            chunk.get_local(local)
         } else {
             BlockType::Air
         }
     }
 
-    pub fn is_solid_at(&self, pos: IVec3) -> bool {
+    pub fn is_solid_at(&self, pos: impl Into<BlockPos>) -> bool {
         self.get_block(pos).is_solid()
     }
 
-    pub fn set_block(&mut self, pos: IVec3, block: BlockType) -> Vec<IVec2> {
-        if pos.y < 0 || pos.y >= CHUNK_HEIGHT as i32 {
+    pub fn set_block(&mut self, pos: impl Into<BlockPos>, block: BlockType) -> Vec<IVec2> {
+        let pos = pos.into();
+        if pos.y() < 0 || pos.y() >= CHUNK_HEIGHT as i32 {
             return Vec::new();
         }
 
-        let (c_coord, lx, lz) = Self::world_to_chunk_coord(pos.x, pos.z);
+        let (c_coord, local) = pos.to_chunk_and_local();
         let mut dirty_chunks = Vec::new();
 
-        if let Some(chunk) = self.chunks.get_mut(&c_coord) {
-            chunk.set(lx as i32, pos.y, lz as i32, block);
-            dirty_chunks.push(c_coord);
-            self.modified_chunks.insert(c_coord);
+        if let Some(chunk) = self.chunks.get_mut(&c_coord.0) {
+            chunk.set_local(local, block);
+            dirty_chunks.push(c_coord.0);
+            self.modified_chunks.insert(c_coord.0);
 
-            if lx == 0 {
-                dirty_chunks.push(c_coord + IVec2::new(-1, 0));
-            } else if lx == CHUNK_WIDTH - 1 {
-                dirty_chunks.push(c_coord + IVec2::new(1, 0));
+            if local.x == 0 {
+                dirty_chunks.push(c_coord.0 + IVec2::new(-1, 0));
+            } else if usize::from(local.x) == CHUNK_WIDTH - 1 {
+                dirty_chunks.push(c_coord.0 + IVec2::new(1, 0));
             }
 
-            if lz == 0 {
-                dirty_chunks.push(c_coord + IVec2::new(0, -1));
-            } else if lz == CHUNK_DEPTH - 1 {
-                dirty_chunks.push(c_coord + IVec2::new(0, 1));
+            if local.z == 0 {
+                dirty_chunks.push(c_coord.0 + IVec2::new(0, -1));
+            } else if usize::from(local.z) == CHUNK_DEPTH - 1 {
+                dirty_chunks.push(c_coord.0 + IVec2::new(0, 1));
             }
         }
 
         dirty_chunks
     }
 
-    pub fn save_chunk_to_disk(&self, coord: IVec2) -> std::io::Result<()> {
-        let Some(chunk) = self.chunks.get(&coord) else {
+    pub fn save_chunk_to_disk(&self, coord: impl Into<ChunkPos>) -> Result<(), WorldError> {
+        let coord = coord.into();
+        let Some(chunk) = self.chunks.get(&coord.0) else {
             return Ok(());
         };
         std::fs::create_dir_all(&self.save_dir)?;
         let path = self
             .save_dir
-            .join(format!("chunk_{}_{}.bin", coord.x, coord.y));
+            .join(format!("chunk_{}_{}.bin", coord.x(), coord.z()));
         std::fs::write(path, chunk.to_bytes())?;
         Ok(())
     }
 
-    pub fn load_chunk_from_disk_path(save_dir: &std::path::Path, coord: IVec2) -> Option<Chunk> {
-        let path = save_dir.join(format!("chunk_{}_{}.bin", coord.x, coord.y));
-        let bytes = std::fs::read(path).ok()?;
+    pub fn load_chunk_from_disk_path(
+        save_dir: &std::path::Path,
+        coord: impl Into<ChunkPos>,
+    ) -> Result<Chunk, WorldError> {
+        let coord = coord.into();
+        let path = save_dir.join(format!("chunk_{}_{}.bin", coord.x(), coord.z()));
+        let bytes = std::fs::read(path)?;
         Chunk::from_bytes(&bytes)
     }
 
     #[allow(dead_code)]
-    pub fn load_chunk_from_disk(&self, coord: IVec2) -> Option<Chunk> {
+    pub fn load_chunk_from_disk(&self, coord: impl Into<ChunkPos>) -> Result<Chunk, WorldError> {
         Self::load_chunk_from_disk_path(&self.save_dir, coord)
     }
 }
@@ -814,7 +824,9 @@ pub fn world_streaming_system(
 
             // If the chunk was modified by the player, persist it to disk and keep it tracked
             if world.modified_chunks.contains(&coord) {
-                let _ = world.save_chunk_to_disk(coord);
+                if let Err(e) = world.save_chunk_to_disk(coord) {
+                    tracing::warn!("Failed to save chunk at {coord:?}: {e}");
+                }
             } else {
                 // Unmodified chunks can be unloaded from RAM to conserve memory
                 world.chunks.remove(&coord);
@@ -825,7 +837,9 @@ pub fn world_streaming_system(
     // 1. Dispatch background chunk generation tasks across all CPU cores
     let mut dispatched = 0;
     while dispatched < MAX_CHUNK_DISPATCH_PER_FRAME && !world.generation_queue.is_empty() {
-        let coord = world.generation_queue.pop().unwrap();
+        let Some(coord) = world.generation_queue.pop() else {
+            break;
+        };
         if world.chunks.contains_key(&coord) || world.in_progress_chunks.contains(&coord) {
             continue;
         }
@@ -840,9 +854,17 @@ pub fn world_streaming_system(
         AsyncComputeTaskPool::get()
             .spawn(async move {
                 // Check disk cache first
-                if let Some(loaded_chunk) = WorldGrid::load_chunk_from_disk_path(&save_dir, coord) {
-                    let _ = tx.send((coord, loaded_chunk, true));
-                    return;
+                match WorldGrid::load_chunk_from_disk_path(&save_dir, coord) {
+                    Ok(loaded_chunk) => {
+                        let _ = tx.send((coord, loaded_chunk, true));
+                        return;
+                    }
+                    Err(WorldError::Io(ref e)) if e.kind() == std::io::ErrorKind::NotFound => {
+                        // Expected: chunk not saved yet, proceed to procedural generation
+                    }
+                    Err(e) => {
+                        tracing::warn!("Disk cache error for chunk {coord:?}: {e}");
+                    }
                 }
 
                 // Procedural generation in parallel on thread pool
@@ -963,7 +985,9 @@ pub fn world_streaming_system(
 
         let mut meshed = 0;
         while meshed < max_meshes_per_frame && !world.mesh_queue.is_empty() {
-            let coord = world.mesh_queue.pop().unwrap();
+            let Some(coord) = world.mesh_queue.pop() else {
+                break;
+            };
             world.queued_for_mesh.remove(&coord);
 
             if let Some(chunk) = world.chunks.get(&coord) {
@@ -982,9 +1006,8 @@ pub fn world_streaming_system(
                         if world.in_progress_meshes.contains(&coord) {
                             continue;
                         }
+                        let chunk = chunk.clone();
                         world.in_progress_meshes.insert(coord);
-
-                        let chunk = world.chunks.get(&coord).cloned().unwrap();
                         let north = world.chunks.get(&(coord + IVec2::new(0, 1))).cloned();
                         let south = world.chunks.get(&(coord + IVec2::new(0, -1))).cloned();
                         let east = world.chunks.get(&(coord + IVec2::new(1, 0))).cloned();
