@@ -982,6 +982,16 @@ pub fn world_streaming_system(
             world.in_progress_meshes.remove(&coord);
         }
 
+        // Prune stale mesh queue entries that are outside the current visual distance
+        world.mesh_queue.retain(|c| {
+            let diff = *c - player_chunk;
+            diff.x.abs() <= view_dist && diff.y.abs() <= view_dist
+        });
+        world.queued_for_mesh.retain(|c| {
+            let diff = *c - player_chunk;
+            diff.x.abs() <= view_dist && diff.y.abs() <= view_dist
+        });
+
         let mut chunks_to_remove = Vec::new();
         for coord in world.chunks.keys() {
             let diff = *coord - player_chunk;
@@ -1003,9 +1013,12 @@ pub fn world_streaming_system(
             }
 
             // If the chunk was modified by the player, persist it to disk
-            if world.dirty_chunks.remove(&coord) || world.modified_chunks.contains(&coord) {
+            let was_modified =
+                world.dirty_chunks.remove(&coord) || world.modified_chunks.remove(&coord);
+            if was_modified {
                 if let Err(e) = world.save_chunk_to_disk(coord) {
                     tracing::warn!("Failed to save chunk at {coord:?}: {e}");
+                    world.modified_chunks.insert(coord);
                 }
             }
             if let Some(removed_chunk) = world.chunks.remove(&coord) {
@@ -1021,6 +1034,10 @@ pub fn world_streaming_system(
         let Some(coord) = world.generation_queue.pop() else {
             break;
         };
+        let diff = coord - player_chunk;
+        if diff.x.abs() > gen_dist || diff.y.abs() > gen_dist {
+            continue;
+        }
         if world.chunks.contains_key(&coord) || world.in_progress_chunks.contains(&coord) {
             continue;
         }
@@ -1028,7 +1045,6 @@ pub fn world_streaming_system(
         // Fast path: recover from in-memory LRU cache if player turned back into this chunk
         if let Some(cached_chunk) = world.chunk_cache.get(&coord) {
             world.chunks.insert(coord, cached_chunk);
-            let diff = coord - player_chunk;
             if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
                 world.queue_mesh(coord);
             }
@@ -1112,6 +1128,21 @@ pub fn world_streaming_system(
 
             // If chunk was unloaded while meshing, ignore
             if !world.chunks.contains_key(&coord) {
+                continue;
+            }
+
+            // Guard against race conditions / zombie entities:
+            // If the player moved away and this chunk is now outside visual view distance,
+            // discard the completed mesh immediately rather than spawning an off-screen entity.
+            let diff = coord - player_chunk;
+            if diff.x.abs() > view_dist || diff.y.abs() > view_dist {
+                if let Some(entity) = world.chunk_entities.remove(&coord) {
+                    commands.entity(entity).despawn();
+                }
+                if let Some(old_v) = world.chunk_vertices.remove(&coord) {
+                    world.total_vertices = world.total_vertices.saturating_sub(old_v);
+                }
+                world.chunk_lod.remove(&coord);
                 continue;
             }
 
@@ -1386,5 +1417,138 @@ mod tests {
         assert_eq!(alpha1, alpha2);
         assert_ne!(alpha1, alpha3);
         assert_ne!(alpha1.0, 0);
+    }
+
+    #[test]
+    fn test_assets_mesh_lifecycle() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_asset::<Mesh>();
+        app.update();
+
+        let mut meshes = app.world_mut().resource_mut::<Assets<Mesh>>();
+        let handle = meshes.add(Mesh::new(
+            bevy::render::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        ));
+        let id = handle.id();
+        assert!(meshes.contains(id));
+        assert_eq!(meshes.len(), 1);
+
+        // Spawn entity with Mesh3d(handle)
+        let entity = app.world_mut().spawn(Mesh3d(handle)).id();
+        app.update();
+
+        // Overwrite entity's Mesh3d with new handle
+        let handle2 = app
+            .world_mut()
+            .resource_mut::<Assets<Mesh>>()
+            .add(Mesh::new(
+                bevy::render::mesh::PrimitiveTopology::TriangleList,
+                bevy::asset::RenderAssetUsages::default(),
+            ));
+        let id2 = handle2.id();
+        app.world_mut().entity_mut(entity).insert(Mesh3d(handle2));
+        for _ in 0..10 {
+            app.update();
+        }
+
+        let meshes = app.world().resource::<Assets<Mesh>>();
+        assert!(
+            !meshes.contains(id),
+            "Overwritten mesh must be removed from Assets<Mesh>"
+        );
+        assert!(
+            meshes.contains(id2),
+            "New mesh must be present in Assets<Mesh>"
+        );
+        assert_eq!(meshes.len(), 1);
+
+        // Despawn entity
+        app.world_mut().entity_mut(entity).despawn();
+        for _ in 0..10 {
+            app.update();
+        }
+
+        let meshes = app.world().resource::<Assets<Mesh>>();
+        assert!(
+            !meshes.contains(id2),
+            "Despawned mesh must be removed from Assets<Mesh>"
+        );
+        assert_eq!(
+            meshes.len(),
+            0,
+            "Assets<Mesh> must be completely empty after despawn"
+        );
+    }
+
+    #[test]
+    fn test_zombie_mesh_prevention_and_streaming_cleanup() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_asset::<Mesh>();
+        app.init_asset::<StandardMaterial>();
+
+        let mut world_grid = WorldGrid::default();
+        // Insert a distant chunk that is in Tier 2 (outside view_dist = 2, inside unload_dist)
+        let distant_coord = IVec2::new(5, 5);
+        world_grid.chunks.insert(distant_coord, Chunk::new());
+        app.insert_resource(world_grid);
+
+        app.insert_resource(ChunkGeneratorPool::default());
+        let mesher_pool = ChunkMesherPool::default();
+        let tx = mesher_pool.tx.clone();
+        app.insert_resource(mesher_pool);
+
+        app.insert_resource(GraphicsSettings {
+            view_distance: 2,
+            ..default()
+        });
+
+        // Spawn camera at (0, 0)
+        app.world_mut().spawn((
+            FpsCamera::default(),
+            Transform::from_xyz(0.0, 50.0, 0.0),
+            Projection::Perspective(PerspectiveProjection::default()),
+        ));
+
+        app.add_systems(Update, world_streaming_system);
+        app.update();
+
+        // Simulate a background mesher thread completing a mesh for distant_coord (5, 5)
+        // which is outside the view_distance of 2
+        let dummy_mesh = Mesh::new(
+            bevy::render::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::RENDER_WORLD,
+        );
+        tx.send((distant_coord, Some(dummy_mesh), 0)).unwrap();
+
+        // Run streaming update
+        app.update();
+
+        let world = app.world().resource::<WorldGrid>();
+        // Distant chunk must NOT have an entity spawned or mesh active!
+        assert!(
+            !world.chunk_entities.contains_key(&distant_coord),
+            "Distant chunk outside view_dist must not spawn zombie entity"
+        );
+        assert_eq!(
+            world
+                .chunk_vertices
+                .get(&distant_coord)
+                .copied()
+                .unwrap_or(0),
+            0
+        );
+
+        // Assets<Mesh> must not leak the discarded mesh
+        let meshes = app.world().resource::<Assets<Mesh>>();
+        assert_eq!(
+            meshes.len(),
+            0,
+            "Discarded mesh must not be added to Assets<Mesh>"
+        );
     }
 }
