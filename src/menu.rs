@@ -108,7 +108,7 @@ pub struct SeedInputState {
     pub is_editing: bool,
 }
 
-#[derive(Component)]
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MenuButtonAction {
     Play,
     ResumeGame,
@@ -199,6 +199,181 @@ pub struct DebugHudBtnText;
 
 #[derive(Component)]
 pub struct PregenMarginBtnText;
+
+#[derive(Component)]
+pub struct OptionTooltipCard;
+
+#[derive(Component)]
+pub struct OptionTooltipHeader;
+
+#[derive(Component)]
+pub struct OptionTooltipTitle;
+
+#[derive(Component)]
+pub struct OptionTooltipDesc;
+
+#[derive(Component)]
+pub struct OptionTooltipImpact;
+
+#[derive(Clone, Copy, Debug)]
+pub struct OptionDescription {
+    pub header: &'static str,
+    pub title: &'static str,
+    pub description: &'static str,
+    pub impact: &'static str,
+}
+
+#[must_use]
+pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionDescription> {
+    match action {
+        MenuButtonAction::ToggleVsync => Some(OptionDescription {
+            header: "DISPLAY & SYNC",
+            title: "Vertical Synchronization (VSync)",
+            description: "Synchronizes the game's rendered frame rate with your monitor's physical refresh rate to prevent screen tearing.",
+            impact: "• ON: Smooth frame pacing, zero screen tearing.\n• OFF: Lowest input latency, uncapped frame rate.",
+        }),
+        MenuButtonAction::ToggleFullscreen => Some(OptionDescription {
+            header: "DISPLAY MODE",
+            title: "Display Mode (Fullscreen / Windowed)",
+            description: "Switches between Borderless Fullscreen (native monitor resolution) and Windowed mode (1280x720).",
+            impact: "• Fullscreen: Immersive edge-to-edge display.\n• Windowed: Convenient multitasking and window positioning.",
+        }),
+        MenuButtonAction::CycleFpsCap => Some(OptionDescription {
+            header: "PERFORMANCE & THERMALS",
+            title: "Frame Rate Limiter",
+            description: "Limits maximum frames rendered per second (Uncapped, 60, 120, 144 FPS) using microsecond sleep pacing.",
+            impact: "• Capping FPS significantly lowers GPU temperature, power consumption, and fan noise.",
+        }),
+        MenuButtonAction::CycleViewDistance => Some(OptionDescription {
+            header: "WORLD GENERATION & RENDER RADIUS",
+            title: "Render Distance",
+            description: "Sets the horizontal radius of chunks loaded and rendered around the player (8 to 64 chunks = 128m to 1024m).",
+            impact: "• 16 Chunks (256m): Recommended balance of horizon view and performance.\n• 32-64 Chunks: Sweeping vistas; higher RAM/VRAM load.",
+        }),
+        MenuButtonAction::ToggleBackfaceCulling => Some(OptionDescription {
+            header: "GPU PIPELINE BENCHMARK",
+            title: "Backface Culling",
+            description: "Discards triangles facing away from the camera in the GPU rasterizer. Solid voxel blocks never expose interior faces.",
+            impact: "• ON: Cuts rasterizer fragment load and fill-rate by ~50%.\n• OFF: Forces GPU to rasterize front and back faces of every quad.",
+        }),
+        MenuButtonAction::ToggleShadows => Some(OptionDescription {
+            header: "LIGHTING & SHADOWS",
+            title: "Dynamic Cascaded Shadows",
+            description: "Toggles real-time directional sunlight shadow cascades spanning up to 120 meters from the camera.",
+            impact: "• ON: Realistic depth, tree canopy shadows, and terrain self-shadowing.\n• OFF: Skips shadow passes, yielding a large FPS boost on iGPUs.",
+        }),
+        MenuButtonAction::ToggleMaxYSkip => Some(OptionDescription {
+            header: "MESHING BENCHMARK",
+            title: "Mesher max_y Air Skipping",
+            description: "Tracks the highest solid block per chunk during generation, allowing the mesher to skip empty sky layers up to Y=384.",
+            impact: "• ON: ~2x faster chunk meshing, preventing CPU stutters.\n• OFF: Scans all 384 vertical Y layers even if 250 are empty sky.",
+        }),
+        MenuButtonAction::ToggleDistanceFog => Some(OptionDescription {
+            header: "ATMOSPHERE & BLENDING",
+            title: "Distance Fog",
+            description: "Applies linear atmospheric distance fog that gracefully blends distant terrain into the sky before chunk boundaries.",
+            impact: "• ON: Smooth, immersive horizon that hides chunk loading boundaries.\n• OFF: Sharp cutoff edge at the boundary of loaded chunks.",
+        }),
+        MenuButtonAction::ToggleMeshBudget => Some(OptionDescription {
+            header: "FRAME PACING BENCHMARK",
+            title: "Frame Mesh Upload Budget",
+            description: "Limits GPU buffer uploads of newly meshed chunks to a maximum of 6 chunks per frame.",
+            impact: "• ON: Smooth, consistent frame times when flying rapidly.\n• OFF: Uploads all meshes simultaneously, causing micro-stutters.",
+        }),
+        MenuButtonAction::ToggleAsyncMeshing => Some(OptionDescription {
+            header: "MULTITHREADING BENCHMARK",
+            title: "Async Multi-Threaded Meshing",
+            description: "Dispatches chunk greedy meshing computations to background worker threads across all available CPU cores.",
+            impact: "• ON: Zero main-thread lag (0ms) during terrain meshing.\n• OFF: Synchronous meshing on the render thread, causing frame drops.",
+        }),
+        MenuButtonAction::ToggleGreedyMeshing => Some(OptionDescription {
+            header: "GEOMETRY OPTIMIZATION BENCHMARK",
+            title: "Greedy Meshing Algorithm",
+            description: "Iteratively merges adjacent coplanar block faces sharing the same voxel type into large single rectangular quads.",
+            impact: "• ON: Reduces chunk vertex and triangle counts by ~75%.\n• OFF: Emits separate 1x1 quads for every exposed block face.",
+        }),
+        MenuButtonAction::ToggleDistanceLod => Some(OptionDescription {
+            header: "LOD BENCHMARK",
+            title: "Distance Level of Detail (LOD)",
+            description: "Dynamically switches chunk meshing to a 2x2 simplified voxel grid for chunks located beyond the LOD threshold distance.",
+            impact: "• ON: Reduces distant geometry complexity by another 50-75%.\n• OFF: Renders distant chunks with uniform 1:1 full-resolution geometry.",
+        }),
+        MenuButtonAction::CycleLodThreshold => Some(OptionDescription {
+            header: "LOD DISTANCE TUNING",
+            title: "LOD Distance Threshold",
+            description: "Distance in chunks (2, 4, 6, 8 chunks = 32m to 128m) at which chunk geometry transitions to simplified Level 2 LOD.",
+            impact: "• Shorter distance = higher frame rates at the cost of closer visual simplification.\n• Longer distance = full detail preserved further out.",
+        }),
+        MenuButtonAction::CyclePregenMargin => Some(OptionDescription {
+            header: "MEMORY & STREAMING BENCHMARK",
+            title: "Lookahead Pregen Buffer",
+            description: "Pre-calculates chunk voxel data in RAM just outside the camera's visual view distance (0 to 4 chunks = 0m to 64m margin).",
+            impact: "• Eliminates pop-in stutter when walking forward.\n• 0 Chunks: Disabled (benchmark raw generation latency).\n• 2-4 Chunks: Seamless walking buffer.",
+        }),
+        MenuButtonAction::ToggleDebugHud => Some(OptionDescription {
+            header: "DIAGNOSTICS",
+            title: "Debug Diagnostics Overlay (F3)",
+            description: "Displays in-game real-time FPS, frame timing, player coordinates, active chunk count, triangle counts, and biome data.",
+            impact: "• Essential for profiling performance impacts while playing.\n• Can also be toggled anytime in-game with the F3 key.",
+        }),
+        MenuButtonAction::BackFromSettings | MenuButtonAction::BackFromDevSettings => {
+            Some(OptionDescription {
+                header: "NAVIGATION",
+                title: "◀ Return / Done",
+                description: "Save configuration changes and return to the previous menu screen.",
+                impact: "• All graphical and benchmark adjustments apply immediately in real-time.",
+            })
+        }
+        MenuButtonAction::Play => Some(OptionDescription {
+            header: "GAMEPLAY",
+            title: "▶ Play Game",
+            description: "Generate or load the voxel world and enter gameplay.",
+            impact: "• Uses the current world seed and graphics settings.",
+        }),
+        MenuButtonAction::ResumeGame => Some(OptionDescription {
+            header: "GAMEPLAY",
+            title: "▶ Resume Game",
+            description: "Unpause and return to the active game world.",
+            impact: "• Restores mouse capture and camera controls.",
+        }),
+        MenuButtonAction::OpenSettings => Some(OptionDescription {
+            header: "CONFIGURATION",
+            title: "⚙ Graphics Settings",
+            description: "Configure display mode, VSync, frame rate limit, and view distance.",
+            impact: "• Adjust visuals and performance for your hardware.",
+        }),
+        MenuButtonAction::OpenDevSettings => Some(OptionDescription {
+            header: "BENCHMARK TOOLS",
+            title: "🛠 Dev & Benchmark Settings",
+            description: "Toggle internal engine optimizations to measure performance impacts.",
+            impact: "• Available only in Developer mode.",
+        }),
+        MenuButtonAction::BackToMain => Some(OptionDescription {
+            header: "NAVIGATION",
+            title: "⌂ Return to Main Menu",
+            description: "Save player data and chunk modifications to disk, then return to the main title screen.",
+            impact: "• World progress is safely saved.",
+        }),
+        MenuButtonAction::QuitGame => Some(OptionDescription {
+            header: "NAVIGATION",
+            title: "✕ Quit Game",
+            description: "Close MineRust and return to desktop.",
+            impact: "• All world modifications and player inventory are saved.",
+        }),
+        MenuButtonAction::ToggleEditSeed => Some(OptionDescription {
+            header: "WORLD GENERATION",
+            title: "Custom World Seed Input",
+            description: "Type any alphanumeric string or number to generate a unique procedural world.",
+            impact: "• Supports full alphanumeric seed strings.",
+        }),
+        MenuButtonAction::RandomizeSeed => Some(OptionDescription {
+            header: "WORLD GENERATION",
+            title: "🎲 Randomize World Seed",
+            description: "Generates a fresh random 64-bit seed using high-resolution entropy.",
+            impact: "• Each click generates a brand new terrain layout.",
+        }),
+    }
+}
 
 pub fn setup_menu_ui(
     mut commands: Commands,
@@ -457,66 +632,112 @@ pub fn setup_menu_ui(
             SettingsMenuRoot,
         ))
         .with_children(|parent| {
-            parent.spawn((
-                Text::new("GRAPHICS SETTINGS"),
-                TextFont {
-                    font_size: FontSize::Px(34.0),
-                    ..default()
-                },
-                TextColor(Color::srgb(1.0, 0.85, 0.2)),
-                Node {
-                    margin: UiRect::bottom(Val::Px(24.0)),
-                    ..default()
-                },
-            ));
-
             parent
                 .spawn(Node {
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    row_gap: Val::Px(12.0),
+                    margin: UiRect::bottom(Val::Px(24.0)),
                     ..default()
                 })
-                .with_children(|btn_col| {
-                    // VSync Button
-                    spawn_settings_button(
-                        btn_col,
-                        "VSync: ON (Smooth)",
-                        MenuButtonAction::ToggleVsync,
-                        VsyncBtnText,
-                    );
+                .with_children(|header| {
+                    header.spawn((
+                        Text::new("GRAPHICS SETTINGS"),
+                        TextFont {
+                            font_size: FontSize::Px(34.0),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(1.0, 0.85, 0.2)),
+                    ));
+                    header.spawn((
+                        Text::new(
+                            "Configure display preferences, frame rate limits, and visual distance",
+                        ),
+                        TextFont {
+                            font_size: FontSize::Px(14.0),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.7, 0.75, 0.85)),
+                        Node {
+                            margin: UiRect::top(Val::Px(4.0)),
+                            ..default()
+                        },
+                    ));
+                });
 
-                    // Fullscreen Button
-                    spawn_settings_button(
-                        btn_col,
-                        "Display: Windowed (1280x720)",
-                        MenuButtonAction::ToggleFullscreen,
-                        FullscreenBtnText,
-                    );
+            parent
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::FlexStart,
+                    column_gap: Val::Px(28.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    // Buttons Column
+                    row.spawn(Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        row_gap: Val::Px(12.0),
+                        ..default()
+                    })
+                    .with_children(|btn_col| {
+                        // VSync Button
+                        spawn_settings_button(
+                            btn_col,
+                            "VSync: ON (Smooth)",
+                            MenuButtonAction::ToggleVsync,
+                            VsyncBtnText,
+                            320.0,
+                            48.0,
+                            15.0,
+                        );
 
-                    // FPS Cap Button
-                    spawn_settings_button(
-                        btn_col,
-                        "FPS Limit: Uncapped",
-                        MenuButtonAction::CycleFpsCap,
-                        FpsCapBtnText,
-                    );
+                        // Fullscreen Button
+                        spawn_settings_button(
+                            btn_col,
+                            "Display: Windowed (1280x720)",
+                            MenuButtonAction::ToggleFullscreen,
+                            FullscreenBtnText,
+                            320.0,
+                            48.0,
+                            15.0,
+                        );
 
-                    // Render Distance Button
-                    spawn_settings_button(
-                        btn_col,
-                        "Render Distance: 16 Chunks",
-                        MenuButtonAction::CycleViewDistance,
-                        ViewDistanceBtnText,
-                    );
+                        // FPS Cap Button
+                        spawn_settings_button(
+                            btn_col,
+                            "FPS Limit: Uncapped",
+                            MenuButtonAction::CycleFpsCap,
+                            FpsCapBtnText,
+                            320.0,
+                            48.0,
+                            15.0,
+                        );
 
-                    // Back Button
-                    spawn_menu_button(
-                        btn_col,
-                        "◀ Back / Done",
-                        MenuButtonAction::BackFromSettings,
-                        true,
-                    );
+                        // Render Distance Button
+                        spawn_settings_button(
+                            btn_col,
+                            "Render Distance: 16 Chunks",
+                            MenuButtonAction::CycleViewDistance,
+                            ViewDistanceBtnText,
+                            320.0,
+                            48.0,
+                            15.0,
+                        );
+
+                        // Back Button
+                        spawn_menu_button_sized(
+                            btn_col,
+                            "◀ Back / Done",
+                            MenuButtonAction::BackFromSettings,
+                            true,
+                            320.0,
+                            48.0,
+                            16.0,
+                        );
+                    });
+
+                    // Right Info Popup Card
+                    spawn_option_tooltip_card(row, 380.0, 288.0);
                 });
         });
 
@@ -539,112 +760,272 @@ pub fn setup_menu_ui(
             DevSettingsMenuRoot,
         ))
         .with_children(|parent| {
-            parent.spawn((
-                Text::new("🛠 DEV & BENCHMARK SETTINGS"),
-                TextFont {
-                    font_size: FontSize::Px(32.0),
-                    ..default()
-                },
-                TextColor(Color::srgb(0.3, 0.9, 1.0)),
-                Node {
-                    margin: UiRect::bottom(Val::Px(4.0)),
-                    ..default()
-                },
-            ));
-            parent.spawn((
-                Text::new("Benchmark real-time performance impacts of each optimization technique"),
-                TextFont {
-                    font_size: FontSize::Px(14.0),
-                    ..default()
-                },
-                TextColor(Color::srgb(0.7, 0.75, 0.85)),
-                Node {
-                    margin: UiRect::bottom(Val::Px(18.0)),
-                    ..default()
-                },
-            ));
-
             parent
                 .spawn(Node {
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    row_gap: Val::Px(10.0),
+                    margin: UiRect::bottom(Val::Px(16.0)),
                     ..default()
                 })
-                .with_children(|btn_col| {
-                    spawn_settings_button(
-                        btn_col,
-                        "Backface Culling: ON",
-                        MenuButtonAction::ToggleBackfaceCulling,
-                        BackfaceCullingBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "Dynamic Shadows: ON",
-                        MenuButtonAction::ToggleShadows,
-                        ShadowsBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "Mesher max_y Skip: ON",
-                        MenuButtonAction::ToggleMaxYSkip,
-                        MaxYSkipBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "Distance Fog: ON",
-                        MenuButtonAction::ToggleDistanceFog,
-                        DistanceFogBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "Mesh Budget: ON (6/frame)",
-                        MenuButtonAction::ToggleMeshBudget,
-                        MeshBudgetBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "Async Meshing: ON (0ms main thread)",
-                        MenuButtonAction::ToggleAsyncMeshing,
-                        AsyncMeshingBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "Greedy Meshing: ON (-75% verts)",
-                        MenuButtonAction::ToggleGreedyMeshing,
-                        GreedyMeshingBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "Distance LOD: ON (Dynamic detail)",
-                        MenuButtonAction::ToggleDistanceLod,
-                        DistanceLodBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "LOD Distance: 4 Chunks (64m)",
-                        MenuButtonAction::CycleLodThreshold,
-                        LodThresholdBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "Lookahead Buffer: 2 Chunks (+32m)",
-                        MenuButtonAction::CyclePregenMargin,
-                        PregenMarginBtnText,
-                    );
-                    spawn_settings_button(
-                        btn_col,
-                        "Dev HUD (F3): ON",
-                        MenuButtonAction::ToggleDebugHud,
-                        DebugHudBtnText,
-                    );
-                    spawn_menu_button(
-                        btn_col,
-                        "◀ Back / Done",
-                        MenuButtonAction::BackFromDevSettings,
-                        true,
-                    );
+                .with_children(|header| {
+                    header.spawn((
+                        Text::new("🛠 DEV & BENCHMARK SETTINGS"),
+                        TextFont {
+                            font_size: FontSize::Px(30.0),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.3, 0.9, 1.0)),
+                    ));
+                    header.spawn((
+                        Text::new(
+                            "Benchmark real-time performance impacts of each optimization technique",
+                        ),
+                        TextFont {
+                            font_size: FontSize::Px(13.5),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.7, 0.75, 0.85)),
+                        Node {
+                            margin: UiRect::top(Val::Px(4.0)),
+                            ..default()
+                        },
+                    ));
                 });
+
+            parent
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::FlexStart,
+                    column_gap: Val::Px(18.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    // Column 1 (6 buttons)
+                    row.spawn(Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        row_gap: Val::Px(8.0),
+                        ..default()
+                    })
+                    .with_children(|col1| {
+                        spawn_settings_button(
+                            col1,
+                            "Backface Culling: ON",
+                            MenuButtonAction::ToggleBackfaceCulling,
+                            BackfaceCullingBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_settings_button(
+                            col1,
+                            "Dynamic Shadows: ON",
+                            MenuButtonAction::ToggleShadows,
+                            ShadowsBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_settings_button(
+                            col1,
+                            "Mesher max_y Skip: ON",
+                            MenuButtonAction::ToggleMaxYSkip,
+                            MaxYSkipBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_settings_button(
+                            col1,
+                            "Distance Fog: ON",
+                            MenuButtonAction::ToggleDistanceFog,
+                            DistanceFogBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_settings_button(
+                            col1,
+                            "Mesh Budget: ON (6/frame)",
+                            MenuButtonAction::ToggleMeshBudget,
+                            MeshBudgetBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_settings_button(
+                            col1,
+                            "Async Meshing: ON (0ms main thread)",
+                            MenuButtonAction::ToggleAsyncMeshing,
+                            AsyncMeshingBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                    });
+
+                    // Column 2 (6 buttons)
+                    row.spawn(Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        row_gap: Val::Px(8.0),
+                        ..default()
+                    })
+                    .with_children(|col2| {
+                        spawn_settings_button(
+                            col2,
+                            "Greedy Meshing: ON (-75% verts)",
+                            MenuButtonAction::ToggleGreedyMeshing,
+                            GreedyMeshingBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_settings_button(
+                            col2,
+                            "Distance LOD: ON (Dynamic detail)",
+                            MenuButtonAction::ToggleDistanceLod,
+                            DistanceLodBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_settings_button(
+                            col2,
+                            "LOD Distance: 4 Chunks (64m)",
+                            MenuButtonAction::CycleLodThreshold,
+                            LodThresholdBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_settings_button(
+                            col2,
+                            "Lookahead Buffer: 2 Chunks (+32m)",
+                            MenuButtonAction::CyclePregenMargin,
+                            PregenMarginBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_settings_button(
+                            col2,
+                            "Dev HUD (F3): ON",
+                            MenuButtonAction::ToggleDebugHud,
+                            DebugHudBtnText,
+                            280.0,
+                            44.0,
+                            13.5,
+                        );
+                        spawn_menu_button_sized(
+                            col2,
+                            "◀ Back / Done",
+                            MenuButtonAction::BackFromDevSettings,
+                            true,
+                            280.0,
+                            44.0,
+                            14.5,
+                        );
+                    });
+
+                    // Right Info Popup Card
+                    spawn_option_tooltip_card(row, 370.0, 304.0);
+                });
+        });
+}
+
+fn spawn_option_tooltip_card(parent: &mut ChildSpawnerCommands, width_px: f32, height_px: f32) {
+    parent
+        .spawn((
+            Node {
+                width: Val::Px(width_px),
+                height: Val::Px(height_px),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(16.0)),
+                border: UiRect::all(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
+                row_gap: Val::Px(8.0),
+                justify_content: JustifyContent::SpaceBetween,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.07, 0.09, 0.15, 0.95)),
+            BorderColor::all(Color::srgba(0.35, 0.55, 0.85, 0.8)),
+            OptionTooltipCard,
+        ))
+        .with_children(|card| {
+            card.spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(6.0),
+                ..default()
+            })
+            .with_children(|top| {
+                top.spawn((
+                    Text::new("[ ℹ️ SETTING INFO POPUP ]"),
+                    TextFont {
+                        font_size: FontSize::Px(11.5),
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.35, 0.8, 1.0)),
+                    OptionTooltipHeader,
+                ));
+
+                top.spawn((
+                    Text::new("Hover over any setting"),
+                    TextFont {
+                        font_size: FontSize::Px(16.5),
+                        ..default()
+                    },
+                    TextColor(Color::srgb(1.0, 0.85, 0.2)),
+                    OptionTooltipTitle,
+                ));
+
+                top.spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Px(1.5),
+                        margin: UiRect::axes(Val::Px(0.0), Val::Px(4.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.4, 0.5, 0.7, 0.35)),
+                ));
+
+                top.spawn((
+                    Text::new(
+                        "Move your mouse over any graphic or performance setting on the left to inspect its technical details, rendering behavior, and performance impact.",
+                    ),
+                    TextFont {
+                        font_size: FontSize::Px(12.5),
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.85, 0.88, 0.93)),
+                    OptionTooltipDesc,
+                ));
+            });
+
+            card.spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(8.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(6.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.12, 0.16, 0.25, 0.85)),
+                BorderColor::all(Color::srgba(0.3, 0.5, 0.7, 0.5)),
+            ))
+            .with_children(|impact_box| {
+                impact_box.spawn((
+                    Text::new("• All MineRust optimizations are tuned for maximum 60+ FPS stability."),
+                    TextFont {
+                        font_size: FontSize::Px(11.5),
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.45, 0.95, 0.65)),
+                    OptionTooltipImpact,
+                ));
+            });
         });
 }
 
@@ -654,12 +1035,24 @@ fn spawn_menu_button(
     action: MenuButtonAction,
     highlight: bool,
 ) {
+    spawn_menu_button_sized(parent, label, action, highlight, 320.0, 50.0, 16.0);
+}
+
+fn spawn_menu_button_sized(
+    parent: &mut ChildSpawnerCommands,
+    label: &str,
+    action: MenuButtonAction,
+    highlight: bool,
+    width_px: f32,
+    height_px: f32,
+    font_size: f32,
+) {
     parent
         .spawn((
             Button,
             Node {
-                width: Val::Px(320.0),
-                height: Val::Px(50.0),
+                width: Val::Px(width_px),
+                height: Val::Px(height_px),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 border: UiRect::all(Val::Px(if highlight { 2.5 } else { 1.5 })),
@@ -678,7 +1071,7 @@ fn spawn_menu_button(
             btn.spawn((
                 Text::new(label),
                 TextFont {
-                    font_size: FontSize::Px(16.0),
+                    font_size: FontSize::Px(font_size),
                     ..default()
                 },
                 TextColor(Color::WHITE),
@@ -691,13 +1084,16 @@ fn spawn_settings_button<T: Component>(
     label: &str,
     action: MenuButtonAction,
     text_marker: T,
+    width_px: f32,
+    height_px: f32,
+    font_size: f32,
 ) {
     parent
         .spawn((
             Button,
             Node {
-                width: Val::Px(320.0),
-                height: Val::Px(50.0),
+                width: Val::Px(width_px),
+                height: Val::Px(height_px),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 border: UiRect::all(Val::Px(1.5)),
@@ -712,7 +1108,7 @@ fn spawn_settings_button<T: Component>(
             btn.spawn((
                 Text::new(label),
                 TextFont {
-                    font_size: FontSize::Px(15.0),
+                    font_size: FontSize::Px(font_size),
                     ..default()
                 },
                 TextColor(Color::srgb(0.9, 0.95, 1.0)),
@@ -1723,6 +2119,99 @@ pub fn update_dev_settings_system(
     }
 }
 
+pub fn update_option_tooltip_system(
+    interaction_query: Query<(&Interaction, &MenuButtonAction), With<Button>>,
+    mut last_hovered: Local<Option<MenuButtonAction>>,
+    mut header_query: Query<
+        &mut Text,
+        (
+            With<OptionTooltipHeader>,
+            Without<OptionTooltipTitle>,
+            Without<OptionTooltipDesc>,
+            Without<OptionTooltipImpact>,
+        ),
+    >,
+    mut title_query: Query<
+        &mut Text,
+        (
+            With<OptionTooltipTitle>,
+            Without<OptionTooltipHeader>,
+            Without<OptionTooltipDesc>,
+            Without<OptionTooltipImpact>,
+        ),
+    >,
+    mut desc_query: Query<
+        &mut Text,
+        (
+            With<OptionTooltipDesc>,
+            Without<OptionTooltipHeader>,
+            Without<OptionTooltipTitle>,
+            Without<OptionTooltipImpact>,
+        ),
+    >,
+    mut impact_query: Query<
+        &mut Text,
+        (
+            With<OptionTooltipImpact>,
+            Without<OptionTooltipHeader>,
+            Without<OptionTooltipTitle>,
+            Without<OptionTooltipDesc>,
+        ),
+    >,
+    mut card_query: Query<&mut BorderColor, With<OptionTooltipCard>>,
+) {
+    let currently_hovered = interaction_query
+        .iter()
+        .find(|(interaction, _)| {
+            **interaction == Interaction::Hovered || **interaction == Interaction::Pressed
+        })
+        .map(|(_, action)| *action);
+
+    if *last_hovered != currently_hovered {
+        *last_hovered = currently_hovered;
+
+        if let Some(action) = currently_hovered {
+            if let Some(desc) = get_option_description(&action) {
+                for mut text in &mut header_query {
+                    *text = Text::new(format!("[ ℹ️ {} ]", desc.header));
+                }
+                for mut text in &mut title_query {
+                    *text = Text::new(desc.title);
+                }
+                for mut text in &mut desc_query {
+                    *text = Text::new(desc.description);
+                }
+                for mut text in &mut impact_query {
+                    *text = Text::new(desc.impact);
+                }
+                for mut border in &mut card_query {
+                    *border = BorderColor::all(Color::srgb(1.0, 0.85, 0.2));
+                }
+            }
+        } else {
+            for mut text in &mut header_query {
+                *text = Text::new("[ ℹ️ SETTING INFO POPUP ]");
+            }
+            for mut text in &mut title_query {
+                *text = Text::new("Hover over any setting");
+            }
+            for mut text in &mut desc_query {
+                *text = Text::new(
+                    "Move your mouse over any graphic or performance setting on the left to inspect its technical details, rendering behavior, and performance impact.",
+                );
+            }
+            for mut text in &mut impact_query {
+                *text = Text::new(
+                    "• All MineRust optimizations are tuned for maximum 60+ FPS stability.",
+                );
+            }
+            for mut border in &mut card_query {
+                *border = BorderColor::all(Color::srgba(0.35, 0.55, 0.85, 0.8));
+            }
+        }
+    }
+}
+
 pub fn fps_limiter_system(settings: Res<GraphicsSettings>, mut limiter: ResMut<FpsLimiter>) {
     if let Some(cap) = settings.fps_cap {
         let target_frame_duration = std::time::Duration::from_secs_f64(1.0 / cap as f64);
@@ -1759,6 +2248,7 @@ impl Plugin for MenuPlugin {
                     update_settings_button_text_system,
                     update_dev_button_text_system,
                     update_dev_settings_system,
+                    update_option_tooltip_system,
                     fps_limiter_system,
                 ),
             );
@@ -1827,5 +2317,46 @@ mod tests {
         assert_eq!(keycode_to_char(KeyCode::Digit7, false), Some('7'));
         assert_eq!(keycode_to_char(KeyCode::Minus, false), Some('-'));
         assert_eq!(keycode_to_char(KeyCode::Minus, true), Some('_'));
+    }
+
+    #[test]
+    fn test_get_option_description_all_actions() {
+        let actions = [
+            MenuButtonAction::ToggleVsync,
+            MenuButtonAction::ToggleFullscreen,
+            MenuButtonAction::CycleFpsCap,
+            MenuButtonAction::CycleViewDistance,
+            MenuButtonAction::ToggleBackfaceCulling,
+            MenuButtonAction::ToggleShadows,
+            MenuButtonAction::ToggleMaxYSkip,
+            MenuButtonAction::ToggleDistanceFog,
+            MenuButtonAction::ToggleMeshBudget,
+            MenuButtonAction::ToggleAsyncMeshing,
+            MenuButtonAction::ToggleGreedyMeshing,
+            MenuButtonAction::ToggleDistanceLod,
+            MenuButtonAction::CycleLodThreshold,
+            MenuButtonAction::CyclePregenMargin,
+            MenuButtonAction::ToggleDebugHud,
+            MenuButtonAction::BackFromSettings,
+            MenuButtonAction::BackFromDevSettings,
+            MenuButtonAction::Play,
+            MenuButtonAction::ResumeGame,
+            MenuButtonAction::OpenSettings,
+            MenuButtonAction::OpenDevSettings,
+            MenuButtonAction::BackToMain,
+            MenuButtonAction::QuitGame,
+            MenuButtonAction::ToggleEditSeed,
+            MenuButtonAction::RandomizeSeed,
+        ];
+
+        for action in actions {
+            let desc = get_option_description(&action);
+            assert!(desc.is_some(), "Every action must have a valid description");
+            let d = desc.unwrap();
+            assert!(!d.header.is_empty(), "Header must not be empty");
+            assert!(!d.title.is_empty(), "Title must not be empty");
+            assert!(!d.description.is_empty(), "Description must not be empty");
+            assert!(!d.impact.is_empty(), "Impact must not be empty");
+        }
     }
 }
