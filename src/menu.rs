@@ -230,147 +230,147 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             header: "DISPLAY & SYNC",
             title: "Vertical Synchronization (VSync)",
             description: "Synchronizes the game's rendered frame rate with your monitor's physical refresh rate to prevent screen tearing.",
-            impact: "• ON: Smooth frame pacing, zero screen tearing.\n• OFF: Lowest input latency, uncapped frame rate.",
+            impact: "- ON: Smooth frame pacing, zero screen tearing.\n- OFF: Lowest input latency, uncapped frame rate.",
         }),
         MenuButtonAction::ToggleFullscreen => Some(OptionDescription {
             header: "DISPLAY MODE",
             title: "Display Mode (Fullscreen / Windowed)",
             description: "Switches between Borderless Fullscreen (native monitor resolution) and Windowed mode (1280x720).",
-            impact: "• Fullscreen: Immersive edge-to-edge display.\n• Windowed: Convenient multitasking and window positioning.",
+            impact: "- Fullscreen: Immersive edge-to-edge display.\n- Windowed: Convenient multitasking and window positioning.",
         }),
         MenuButtonAction::CycleFpsCap => Some(OptionDescription {
             header: "PERFORMANCE & THERMALS",
             title: "Frame Rate Limiter",
             description: "Limits maximum frames rendered per second (Uncapped, 60, 120, 144 FPS) using microsecond sleep pacing.",
-            impact: "• Capping FPS significantly lowers GPU temperature, power consumption, and fan noise.",
+            impact: "- Capping FPS significantly lowers GPU temperature, power consumption, and fan noise.",
         }),
         MenuButtonAction::CycleViewDistance => Some(OptionDescription {
             header: "WORLD GENERATION & RENDER RADIUS",
             title: "Render Distance",
             description: "Sets the horizontal radius of chunks loaded and rendered around the player (8 to 64 chunks = 128m to 1024m).",
-            impact: "• 16 Chunks (256m): Recommended balance of horizon view and performance.\n• 32-64 Chunks: Sweeping vistas; higher RAM/VRAM load.",
+            impact: "- 16 Chunks (256m): Recommended balance of horizon view and performance.\n- 32-64 Chunks: Sweeping vistas; higher RAM/VRAM load.",
         }),
         MenuButtonAction::ToggleBackfaceCulling => Some(OptionDescription {
             header: "GPU PIPELINE BENCHMARK",
             title: "Backface Culling",
             description: "Discards triangles facing away from the camera in the GPU rasterizer. Solid voxel blocks never expose interior faces.",
-            impact: "• ON: Cuts rasterizer fragment load and fill-rate by ~50%.\n• OFF: Forces GPU to rasterize front and back faces of every quad.",
+            impact: "- ON: Cuts rasterizer fragment load and fill-rate by ~50%.\n- OFF: Forces GPU to rasterize front and back faces of every quad.",
         }),
         MenuButtonAction::ToggleShadows => Some(OptionDescription {
             header: "LIGHTING & SHADOWS",
             title: "Dynamic Cascaded Shadows",
             description: "Toggles real-time directional sunlight shadow cascades spanning up to 120 meters from the camera.",
-            impact: "• ON: Realistic depth, tree canopy shadows, and terrain self-shadowing.\n• OFF: Skips shadow passes, yielding a large FPS boost on iGPUs.",
+            impact: "- ON: Realistic depth, tree canopy shadows, and terrain self-shadowing.\n- OFF: Skips shadow passes, yielding a large FPS boost on iGPUs.",
         }),
         MenuButtonAction::ToggleMaxYSkip => Some(OptionDescription {
             header: "MESHING BENCHMARK",
             title: "Mesher max_y Air Skipping",
             description: "Tracks the highest solid block per chunk during generation, allowing the mesher to skip empty sky layers up to Y=384.",
-            impact: "• ON: ~2x faster chunk meshing, preventing CPU stutters.\n• OFF: Scans all 384 vertical Y layers even if 250 are empty sky.",
+            impact: "- ON: ~2x faster chunk meshing, preventing CPU stutters.\n- OFF: Scans all 384 vertical Y layers even if 250 are empty sky.",
         }),
         MenuButtonAction::ToggleDistanceFog => Some(OptionDescription {
             header: "ATMOSPHERE & BLENDING",
             title: "Distance Fog",
             description: "Applies linear atmospheric distance fog that gracefully blends distant terrain into the sky before chunk boundaries.",
-            impact: "• ON: Smooth, immersive horizon that hides chunk loading boundaries.\n• OFF: Sharp cutoff edge at the boundary of loaded chunks.",
+            impact: "- ON: Smooth, immersive horizon that hides chunk loading boundaries.\n- OFF: Sharp cutoff edge at the boundary of loaded chunks.",
         }),
         MenuButtonAction::ToggleMeshBudget => Some(OptionDescription {
             header: "FRAME PACING BENCHMARK",
             title: "Frame Mesh Upload Budget",
             description: "Limits GPU buffer uploads of newly meshed chunks to a maximum of 6 chunks per frame.",
-            impact: "• ON: Smooth, consistent frame times when flying rapidly.\n• OFF: Uploads all meshes simultaneously, causing micro-stutters.",
+            impact: "- ON: Smooth, consistent frame times when flying rapidly.\n- OFF: Uploads all meshes simultaneously, causing micro-stutters.",
         }),
         MenuButtonAction::ToggleAsyncMeshing => Some(OptionDescription {
             header: "MULTITHREADING BENCHMARK",
             title: "Async Multi-Threaded Meshing",
             description: "Dispatches chunk greedy meshing computations to background worker threads across all available CPU cores.",
-            impact: "• ON: Zero main-thread lag (0ms) during terrain meshing.\n• OFF: Synchronous meshing on the render thread, causing frame drops.",
+            impact: "- ON: Zero main-thread lag (0ms) during terrain meshing.\n- OFF: Synchronous meshing on the render thread, causing frame drops.",
         }),
         MenuButtonAction::ToggleGreedyMeshing => Some(OptionDescription {
             header: "GEOMETRY OPTIMIZATION BENCHMARK",
             title: "Greedy Meshing Algorithm",
             description: "Iteratively merges adjacent coplanar block faces sharing the same voxel type into large single rectangular quads.",
-            impact: "• ON: Reduces chunk vertex and triangle counts by ~75%.\n• OFF: Emits separate 1x1 quads for every exposed block face.",
+            impact: "- ON: Reduces chunk vertex and triangle counts by ~75%.\n- OFF: Emits separate 1x1 quads for every exposed block face.",
         }),
         MenuButtonAction::ToggleDistanceLod => Some(OptionDescription {
             header: "LOD BENCHMARK",
             title: "Distance Level of Detail (LOD)",
             description: "Dynamically switches chunk meshing to a 2x2 simplified voxel grid for chunks located beyond the LOD threshold distance.",
-            impact: "• ON: Reduces distant geometry complexity by another 50-75%.\n• OFF: Renders distant chunks with uniform 1:1 full-resolution geometry.",
+            impact: "- ON: Reduces distant geometry complexity by another 50-75%.\n- OFF: Renders distant chunks with uniform 1:1 full-resolution geometry.",
         }),
         MenuButtonAction::CycleLodThreshold => Some(OptionDescription {
             header: "LOD DISTANCE TUNING",
             title: "LOD Distance Threshold",
             description: "Distance in chunks (2, 4, 6, 8 chunks = 32m to 128m) at which chunk geometry transitions to simplified Level 2 LOD.",
-            impact: "• Shorter distance = higher frame rates at the cost of closer visual simplification.\n• Longer distance = full detail preserved further out.",
+            impact: "- Shorter distance = higher frame rates at the cost of closer visual simplification.\n- Longer distance = full detail preserved further out.",
         }),
         MenuButtonAction::CyclePregenMargin => Some(OptionDescription {
             header: "MEMORY & STREAMING BENCHMARK",
             title: "Lookahead Pregen Buffer",
             description: "Pre-calculates chunk voxel data in RAM just outside the camera's visual view distance (0 to 4 chunks = 0m to 64m margin).",
-            impact: "• Eliminates pop-in stutter when walking forward.\n• 0 Chunks: Disabled (benchmark raw generation latency).\n• 2-4 Chunks: Seamless walking buffer.",
+            impact: "- Eliminates pop-in stutter when walking forward.\n- 0 Chunks: Disabled (benchmark raw generation latency).\n- 2-4 Chunks: Seamless walking buffer.",
         }),
         MenuButtonAction::ToggleDebugHud => Some(OptionDescription {
             header: "DIAGNOSTICS",
             title: "Debug Diagnostics Overlay (F3)",
             description: "Displays in-game real-time FPS, frame timing, player coordinates, active chunk count, triangle counts, and biome data.",
-            impact: "• Essential for profiling performance impacts while playing.\n• Can also be toggled anytime in-game with the F3 key.",
+            impact: "- Essential for profiling performance impacts while playing.\n- Can also be toggled anytime in-game with the F3 key.",
         }),
         MenuButtonAction::BackFromSettings | MenuButtonAction::BackFromDevSettings => {
             Some(OptionDescription {
                 header: "NAVIGATION",
-                title: "◀ Return / Done",
+                title: "Back / Done",
                 description: "Save configuration changes and return to the previous menu screen.",
-                impact: "• All graphical and benchmark adjustments apply immediately in real-time.",
+                impact: "- All graphical and benchmark adjustments apply immediately in real-time.",
             })
         }
         MenuButtonAction::Play => Some(OptionDescription {
             header: "GAMEPLAY",
-            title: "▶ Play Game",
+            title: "Play Game",
             description: "Generate or load the voxel world and enter gameplay.",
-            impact: "• Uses the current world seed and graphics settings.",
+            impact: "- Uses the current world seed and graphics settings.",
         }),
         MenuButtonAction::ResumeGame => Some(OptionDescription {
             header: "GAMEPLAY",
-            title: "▶ Resume Game",
+            title: "Resume Game",
             description: "Unpause and return to the active game world.",
-            impact: "• Restores mouse capture and camera controls.",
+            impact: "- Restores mouse capture and camera controls.",
         }),
         MenuButtonAction::OpenSettings => Some(OptionDescription {
             header: "CONFIGURATION",
-            title: "⚙ Graphics Settings",
+            title: "Graphics Settings",
             description: "Configure display mode, VSync, frame rate limit, and view distance.",
-            impact: "• Adjust visuals and performance for your hardware.",
+            impact: "- Adjust visuals and performance for your hardware.",
         }),
         MenuButtonAction::OpenDevSettings => Some(OptionDescription {
             header: "BENCHMARK TOOLS",
-            title: "🛠 Dev & Benchmark Settings",
+            title: "Dev & Benchmark Settings",
             description: "Toggle internal engine optimizations to measure performance impacts.",
-            impact: "• Available only in Developer mode.",
+            impact: "- Available only in Developer mode.",
         }),
         MenuButtonAction::BackToMain => Some(OptionDescription {
             header: "NAVIGATION",
-            title: "⌂ Return to Main Menu",
+            title: "Return to Main Menu",
             description: "Save player data and chunk modifications to disk, then return to the main title screen.",
-            impact: "• World progress is safely saved.",
+            impact: "- World progress is safely saved.",
         }),
         MenuButtonAction::QuitGame => Some(OptionDescription {
             header: "NAVIGATION",
-            title: "✕ Quit Game",
+            title: "Quit Game",
             description: "Close MineRust and return to desktop.",
-            impact: "• All world modifications and player inventory are saved.",
+            impact: "- All world modifications and player inventory are saved.",
         }),
         MenuButtonAction::ToggleEditSeed => Some(OptionDescription {
             header: "WORLD GENERATION",
             title: "Custom World Seed Input",
             description: "Type any alphanumeric string or number to generate a unique procedural world.",
-            impact: "• Supports full alphanumeric seed strings.",
+            impact: "- Supports full alphanumeric seed strings.",
         }),
         MenuButtonAction::RandomizeSeed => Some(OptionDescription {
             header: "WORLD GENERATION",
-            title: "🎲 Randomize World Seed",
+            title: "Randomize World Seed",
             description: "Generates a fresh random 64-bit seed using high-resolution entropy.",
-            impact: "• Each click generates a brand new terrain layout.",
+            impact: "- Each click generates a brand new terrain layout.",
         }),
     }
 }
@@ -414,7 +414,7 @@ pub fn setup_menu_ui(
                 })
                 .with_children(|header| {
                     header.spawn((
-                        Text::new("MINERUST ⛏️🦀"),
+                        Text::new("MINERUST"),
                         TextFont {
                             font_size: FontSize::Px(44.0),
                             ..default()
@@ -510,9 +510,9 @@ pub fn setup_menu_ui(
                             ))
                             .with_children(|rand_parent| {
                                 rand_parent.spawn((
-                                    Text::new("🎲 Random"),
+                                    Text::new("Random Seed"),
                                     TextFont {
-                                        font_size: FontSize::Px(14.0),
+                                        font_size: FontSize::Px(13.5),
                                         ..default()
                                     },
                                     TextColor(Color::srgb(0.9, 0.95, 1.0)),
@@ -530,22 +530,22 @@ pub fn setup_menu_ui(
                     ..default()
                 })
                 .with_children(|btn_col| {
-                    spawn_menu_button(btn_col, "▶ Play Game", MenuButtonAction::Play, true);
+                    spawn_menu_button(btn_col, "Play Game", MenuButtonAction::Play, true);
                     spawn_menu_button(
                         btn_col,
-                        "⚙ Graphics Settings",
+                        "Graphics Settings",
                         MenuButtonAction::OpenSettings,
                         false,
                     );
                     if is_dev {
                         spawn_menu_button(
                             btn_col,
-                            "🛠 Dev & Benchmarks",
+                            "Dev & Benchmarks",
                             MenuButtonAction::OpenDevSettings,
                             false,
                         );
                     }
-                    spawn_menu_button(btn_col, "✕ Quit Game", MenuButtonAction::QuitGame, false);
+                    spawn_menu_button(btn_col, "Quit Game", MenuButtonAction::QuitGame, false);
                 });
         });
 
@@ -589,24 +589,24 @@ pub fn setup_menu_ui(
                     ..default()
                 })
                 .with_children(|btn_col| {
-                    spawn_menu_button(btn_col, "▶ Resume Game", MenuButtonAction::ResumeGame, true);
+                    spawn_menu_button(btn_col, "Resume Game", MenuButtonAction::ResumeGame, true);
                     spawn_menu_button(
                         btn_col,
-                        "⚙ Graphics Settings",
+                        "Graphics Settings",
                         MenuButtonAction::OpenSettings,
                         false,
                     );
                     if is_dev {
                         spawn_menu_button(
                             btn_col,
-                            "🛠 Dev & Benchmarks",
+                            "Dev & Benchmarks",
                             MenuButtonAction::OpenDevSettings,
                             false,
                         );
                     }
                     spawn_menu_button(
                         btn_col,
-                        "⌂ Return to Main Menu",
+                        "Return to Main Menu",
                         MenuButtonAction::BackToMain,
                         false,
                     );
@@ -727,7 +727,7 @@ pub fn setup_menu_ui(
                         // Back Button
                         spawn_menu_button_sized(
                             btn_col,
-                            "◀ Back / Done",
+                            "Back / Done",
                             MenuButtonAction::BackFromSettings,
                             true,
                             320.0,
@@ -769,7 +769,7 @@ pub fn setup_menu_ui(
                 })
                 .with_children(|header| {
                     header.spawn((
-                        Text::new("🛠 DEV & BENCHMARK SETTINGS"),
+                        Text::new("DEV & BENCHMARK SETTINGS"),
                         TextFont {
                             font_size: FontSize::Px(30.0),
                             ..default()
@@ -919,7 +919,7 @@ pub fn setup_menu_ui(
                         );
                         spawn_menu_button_sized(
                             col2,
-                            "◀ Back / Done",
+                            "Back / Done",
                             MenuButtonAction::BackFromDevSettings,
                             true,
                             280.0,
@@ -961,7 +961,7 @@ fn spawn_option_tooltip_card(parent: &mut ChildSpawnerCommands, width_px: f32, h
             })
             .with_children(|top| {
                 top.spawn((
-                    Text::new("[ ℹ️ SETTING INFO POPUP ]"),
+                    Text::new("[ SETTING INFO ]"),
                     TextFont {
                         font_size: FontSize::Px(11.5),
                         ..default()
@@ -1017,7 +1017,7 @@ fn spawn_option_tooltip_card(parent: &mut ChildSpawnerCommands, width_px: f32, h
             ))
             .with_children(|impact_box| {
                 impact_box.spawn((
-                    Text::new("• All MineRust optimizations are tuned for maximum 60+ FPS stability."),
+                    Text::new("- All MineRust optimizations are tuned for maximum 60+ FPS stability."),
                     TextFont {
                         font_size: FontSize::Px(11.5),
                         ..default()
@@ -1384,9 +1384,9 @@ pub fn update_seed_input_system(
         if let Ok(mut text) = text_query.single_mut() {
             *text = Text::new(if state.is_editing {
                 if state.seed_text.is_empty() {
-                    "Seed: ▌".to_string()
+                    "Seed: |".to_string()
                 } else {
-                    format!("Seed: {}▌", state.seed_text)
+                    format!("Seed: {}|", state.seed_text)
                 }
             } else if state.seed_text.is_empty() {
                 "Seed: [Random Seed]".to_string()
@@ -1524,9 +1524,9 @@ pub fn menu_button_click_system(
 
                                 window.title = if dev_settings.as_ref().is_some_and(|d| d.dev_mode)
                                 {
-                                    format!("MineRust ⛏️🦀 [DEV MODE] - Seed: {}", target_seed.0)
+                                    format!("MineRust [DEV MODE] - Seed: {}", target_seed.0)
                                 } else {
-                                    format!("MineRust ⛏️🦀 - Seed: {}", target_seed.0)
+                                    format!("MineRust - Seed: {}", target_seed.0)
                                 };
                             }
                         }
@@ -2173,7 +2173,7 @@ pub fn update_option_tooltip_system(
         if let Some(action) = currently_hovered {
             if let Some(desc) = get_option_description(&action) {
                 for mut text in &mut header_query {
-                    *text = Text::new(format!("[ ℹ️ {} ]", desc.header));
+                    *text = Text::new(format!("[ {} ]", desc.header));
                 }
                 for mut text in &mut title_query {
                     *text = Text::new(desc.title);
@@ -2190,7 +2190,7 @@ pub fn update_option_tooltip_system(
             }
         } else {
             for mut text in &mut header_query {
-                *text = Text::new("[ ℹ️ SETTING INFO POPUP ]");
+                *text = Text::new("[ SETTING INFO ]");
             }
             for mut text in &mut title_query {
                 *text = Text::new("Hover over any setting");
@@ -2202,7 +2202,7 @@ pub fn update_option_tooltip_system(
             }
             for mut text in &mut impact_query {
                 *text = Text::new(
-                    "• All MineRust optimizations are tuned for maximum 60+ FPS stability.",
+                    "- All MineRust optimizations are tuned for maximum 60+ FPS stability.",
                 );
             }
             for mut border in &mut card_query {

@@ -389,7 +389,7 @@ pub fn setup_physics_ui(mut commands: Commands) {
         ))
         .with_children(|parent| {
             parent.spawn((
-                Text::new("⚡ MINERUST BENCHMARK [F3]\nFPS: --\nLoading stats..."),
+                Text::new("MINERUST BENCHMARK [F3]\nFPS: --\nLoading stats..."),
                 TextFont {
                     font_size: FontSize::Px(13.0),
                     ..default()
@@ -488,7 +488,7 @@ pub fn update_physics_hud_system(
             };
 
             *text = Text::new(format!(
-                "⚡ MINERUST BENCHMARK [F3: Toggle]\n\
+                "MINERUST BENCHMARK [F3: Toggle]\n\
                  FPS: {:.0} ({:.1} ms) | Verts: {}\n\
                  Chunks: {} | Meshes: {} | GenQ: {} | MeshQ: {}\n\
                  [Cull: {}] [Shadows: {}] [max_y: {}] [Fog: {}] [Budget: {}] [Async: {}] [Greedy: {}] [LOD: {}]",

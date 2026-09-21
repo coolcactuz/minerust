@@ -30,7 +30,7 @@ fn main() {
             dev_mode = true;
         }
         if args[i] == "--help" || args[i] == "-h" {
-            println!("MineRust ⛏️🦀 - A High-Performance Voxel Sandbox in Rust");
+            println!("MineRust - A High-Performance Voxel Sandbox in Rust");
             println!("Usage: minerust [OPTIONS]");
             println!("\nOptions:");
             println!("  -s, --seed <SEED>       Set world generation seed (string or integer)");
@@ -60,9 +60,9 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: if dev_mode {
-                    format!("MineRust ⛏️🦀 [DEV MODE] - Seed: {}", seed.0)
+                    format!("MineRust [DEV MODE] - Seed: {}", seed.0)
                 } else {
-                    format!("MineRust ⛏️🦀 - Seed: {}", seed.0)
+                    format!("MineRust - Seed: {}", seed.0)
                 },
                 resolution: WindowResolution::new(1280, 720),
                 present_mode: bevy::window::PresentMode::AutoVsync,
@@ -227,7 +227,7 @@ fn setup(
     let is_dev = dev_settings.as_ref().is_some_and(|d| d.dev_mode);
 
     println!("\n=======================================================");
-    println!("⛏️  MINERUST: FULL VOXEL ENGINE ACTIVE");
+    println!("MINERUST: FULL VOXEL ENGINE ACTIVE");
     println!("=======================================================");
     println!("* WORLD SEED: {seed}");
     println!("* CURRENT BIOME: {current_biome:?}");
