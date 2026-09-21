@@ -1,6 +1,6 @@
 # MineRust: Technical Architecture & Systems Engineering Deep Dive
 
-Welcome to the technical architecture guide of **MineRust**. This document details the algorithmic foundations, concurrency models, memory layouts, and rendering optimizations underpinning the voxel engine.
+Welcome to the technical architecture guide of **MineRust**. This document details the algorithmic foundations, concurrency models, memory layouts, and voxel optimizations underpinning the sandbox game built with the Bevy engine.
 
 ---
 

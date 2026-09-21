@@ -5,11 +5,11 @@
 [![Rust](https://img.shields.io/badge/Rust-2024_Edition-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Engine](https://img.shields.io/badge/Engine-Bevy_0.15%2F0.19-blue?logo=bevy&logoColor=white)](https://bevyengine.org/)
 [![Safety](https://img.shields.io/badge/Safety-%23!%5Bforbid(unsafe__code)%5D-brightgreen)](https://doc.rust-lang.org/nomicon/safe-unsafe-meaning.html)
-[![Tests](https://img.shields.io/badge/Tests-40%20Passing-success?logo=github-actions&logoColor=white)](https://github.com/)
+[![Tests](https://img.shields.io/badge/Tests-44%20Passing-success?logo=github-actions&logoColor=white)](https://github.com/)
 [![Performance](https://img.shields.io/badge/Framerate-60%2B%20FPS-purple)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT%2FApache-blue)](LICENSE)
 
-**An ultra-fast, multi-threaded voxel sandbox engine built from scratch in pure Rust using Bevy ECS.**
+**A high-performance, multi-threaded Minecraft-like voxel sandbox game built in pure Rust powered by the Bevy engine.**
 
 [Quick Start](#-quick-start) • [Features](#-features-at-a-glance) • [Controls](#-controls) • [Architecture Deep Dive](ARCHITECTURE.md) • [Benchmarks](#-performance--benchmarks)
 
@@ -19,11 +19,11 @@
 
 ## 🌟 Overview
 
-**MineRust** is a modern, high-performance voxel engine and sandbox game created to explore the frontiers of data-oriented systems programming, procedural generation, and real-time computer graphics. 
+**MineRust** is a modern, high-performance Minecraft-like voxel sandbox game built in pure Rust and powered by the **Bevy** game engine. It was created to explore the frontiers of data-oriented systems programming, procedural world generation, and real-time voxel graphics.
 
-Engineered with an uncompromising commitment to **zero unsafe code** (`#![forbid(unsafe_code)]`), MineRust achieves smooth, uncompromised 60+ FPS gameplay with multi-threaded terrain generation, asymptotic greedy meshing quad reduction, GPU-direct memory streaming, and real-time cellular automaton fluid dynamics.
+Engineered with an uncompromising commitment to **zero unsafe code** (`#![forbid(unsafe_code)]`), MineRust achieves smooth 60+ FPS gameplay with multi-threaded terrain generation, asymptotic greedy meshing quad reduction, GPU-direct memory streaming, realistic continuous-slope terrain, and real-time cellular automaton fluid dynamics.
 
-Whether you are exploring mountainous biomes, digging into caverns, swimming up waterfalls, or benchmarking rendering performance with the in-engine telemetry HUD, MineRust showcases the raw power of modern Rust in game systems engineering.
+Whether you are exploring rolling foothills and soaring alpine peaks, digging into subterranean caverns, swimming up waterfalls, or benchmarking rendering performance with the in-game telemetry HUD, MineRust showcases the raw power and ergonomics of Rust and Bevy in voxel game development.
 
 ---
 
@@ -31,7 +31,9 @@ Whether you are exploring mountainous biomes, digging into caverns, swimming up 
 
 ### 🌍 Procedural Infinite World
 - **Deterministic 64-bit Seeds**: Driven by `SplitMix64` and a 512-permutation Fisher-Yates shuffle for reproducible world generation.
-- **Dynamic Biomes**: Distinct ecosystems including Plains, dense Forests, Deserts with cacti, Snowy Tundras with pine trees, steep Mountains with snow caps, sandy Beaches, and Oceans.
+- **Natural Continuous Slopes**: Hermite $C^1$-smooth terrain shaping with gentle rolling foothills, realistic mountain slopes, and snow-capped alpine peaks (no unnatural vertical cliff walls).
+- **Safe Dry-Land Surface Spawn**: Smart procedural spawn finder that places players safely on top of dry surface ground under the open sky (never stranded or submerged in water).
+- **Dynamic Biomes**: Distinct ecosystems including Plains, dense Forests, Deserts with cacti, Snowy Tundras with pine trees, steep Mountains with alpine trees, sandy Beaches, and Oceans.
 - **Subterranean 3D Caves**: Volumetric 3D noise networks carving out winding tunnels and cavernous underground halls.
 - **Geological Ore Strata**: Realistic vertical distributions for Coal, Iron, Gold, and Diamond veins down to indestructible Bedrock.
 - **Interactive Seed Picker**: New games roll a fresh random seed automatically, with an in-menu alphanumeric input box and seed randomizer.
@@ -54,7 +56,7 @@ Whether you are exploring mountainous biomes, digging into caverns, swimming up 
 - **Full Inventory Modal (`E`)**: Interactive UI supporting slot swapping, item transfer, and active hotbar management.
 - **Anti-Self-Trapping Placement**: Raymarching verification prevents accidental player suffocation when placing solid voxels.
 
-### 📊 Real-Time Engine Profiler & Telemetry HUD (`F3`)
+### 📊 Real-Time In-Game Profiler & Telemetry HUD (`F3`)
 - **Live Process RAM**: Safely tracks resident physical memory (`VmRSS`) and virtual memory (`VmSize`) directly from the OS to detect memory growth in real time.
 - **Estimated VRAM Footprint**: Computes exact GPU memory allocated for vertex buffers ($54\text{ bytes/vertex}$), index buffers, texture atlas, and framebuffers.
 - **Geometry & Voxel Statistics**: Displays active 3D chunk meshes, total vertices, triangles, visible surface quads, and total voxels held in memory.
@@ -158,7 +160,7 @@ Greedy Merged Quad (1 Quad / 2 Triangles):
 
 ## 🏛️ Architecture & Technical Deep Dive
 
-Curious about how the engine works under the hood?
+Curious about how MineRust works under the hood?
 
 Read our comprehensive [**ARCHITECTURE.md**](ARCHITECTURE.md) for in-depth engineering documentation, including:
 - **Semantic Coordinate Newtypes** (`BlockPos`, `ChunkPos`, `LocalBlockPos`)
@@ -175,7 +177,7 @@ Read our comprehensive [**ARCHITECTURE.md**](ARCHITECTURE.md) for in-depth engin
 Every commit is verified against rigorous production standards:
 
 ```bash
-# Run complete test suite (40 unit, integration, and property tests)
+# Run complete test suite (44 unit, integration, and property tests)
 cargo test
 
 # Enforce strict zero-warning pedantic clippy compliance
