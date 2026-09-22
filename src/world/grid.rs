@@ -36,28 +36,7 @@ pub struct WorldGrid {
 
 impl Default for WorldGrid {
     fn default() -> Self {
-        let seed = WorldSeed::default();
-        let noise = NoiseGenerator::new(seed.0);
-        Self {
-            chunks: HashMap::default(),
-            chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
-            chunk_entities: HashMap::default(),
-            modified_chunks: HashSet::default(),
-            dirty_chunks: HashSet::default(),
-            in_progress_chunks: HashSet::default(),
-            in_progress_meshes: HashSet::default(),
-            last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
-            generation_queue: Vec::new(),
-            mesh_queue: Vec::new(),
-            queued_for_mesh: HashSet::default(),
-            save_dir: PathBuf::from(format!("saves/world_{}/chunks", seed.0)),
-            seed,
-            noise,
-            block_material: None,
-            total_vertices: 0,
-            chunk_vertices: HashMap::default(),
-            chunk_lod: HashMap::default(),
-        }
+        Self::new(WorldSeed::default())
     }
 }
 

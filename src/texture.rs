@@ -40,12 +40,12 @@ pub enum TextureId {
 
 impl TextureId {
     #[inline(always)]
-    pub fn layer(self) -> f32 {
+    pub const fn layer(self) -> f32 {
         self as usize as f32
     }
 }
 
-pub fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
+pub const fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
     match block {
         BlockType::Grass => match face {
             BlockFace::Top => TextureId::GrassTop,
@@ -88,7 +88,7 @@ pub fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
 }
 
 #[inline(always)]
-pub fn quad_uvs(width: f32, height: f32) -> [[f32; 2]; 4] {
+pub const fn quad_uvs(width: f32, height: f32) -> [[f32; 2]; 4] {
     [
         [0.0, 0.0],
         [0.0, height],
@@ -98,7 +98,7 @@ pub fn quad_uvs(width: f32, height: f32) -> [[f32; 2]; 4] {
 }
 
 #[inline(always)]
-pub fn get_tile_uvs(_texture_id: TextureId) -> [[f32; 2]; 4] {
+pub const fn get_tile_uvs(_texture_id: TextureId) -> [[f32; 2]; 4] {
     quad_uvs(1.0, 1.0)
 }
 

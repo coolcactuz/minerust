@@ -56,7 +56,7 @@ pub fn build_chunk_mesh_greedy(
                     let mut w = 1;
                     while lx + w < CHUNK_WIDTH
                         && top_mask[lz * CHUNK_WIDTH + (lx + w)]
-                            .map_or(false, |b| can_merge_blocks(block, b))
+                            .is_some_and(|b| can_merge_blocks(block, b))
                     {
                         w += 1;
                     }
@@ -65,7 +65,7 @@ pub fn build_chunk_mesh_greedy(
                     'outer_top: while lz + h < CHUNK_DEPTH {
                         for k in 0..w {
                             if !top_mask[(lz + h) * CHUNK_WIDTH + (lx + k)]
-                                .map_or(false, |b| can_merge_blocks(block, b))
+                                .is_some_and(|b| can_merge_blocks(block, b))
                             {
                                 break 'outer_top;
                             }
@@ -160,7 +160,7 @@ pub fn build_chunk_mesh_greedy(
                     let mut w = 1;
                     while lx + w < CHUNK_WIDTH
                         && bot_mask[lz * CHUNK_WIDTH + (lx + w)]
-                            .map_or(false, |b| can_merge_blocks(block, b))
+                            .is_some_and(|b| can_merge_blocks(block, b))
                     {
                         w += 1;
                     }
@@ -168,7 +168,7 @@ pub fn build_chunk_mesh_greedy(
                     'outer_bot: while lz + h < CHUNK_DEPTH {
                         for k in 0..w {
                             if !bot_mask[(lz + h) * CHUNK_WIDTH + (lx + k)]
-                                .map_or(false, |b| can_merge_blocks(block, b))
+                                .is_some_and(|b| can_merge_blocks(block, b))
                             {
                                 break 'outer_bot;
                             }
@@ -253,7 +253,7 @@ pub fn build_chunk_mesh_greedy(
                     let mut w = 1;
                     while lx + w < CHUNK_WIDTH
                         && side_mask[ly * CHUNK_WIDTH + (lx + w)]
-                            .map_or(false, |b| can_merge_blocks(block, b))
+                            .is_some_and(|b| can_merge_blocks(block, b))
                     {
                         w += 1;
                     }
@@ -261,7 +261,7 @@ pub fn build_chunk_mesh_greedy(
                     'outer_north: while ly + h <= max_y {
                         for k in 0..w {
                             if !side_mask[(ly + h) * CHUNK_WIDTH + (lx + k)]
-                                .map_or(false, |b| can_merge_blocks(block, b))
+                                .is_some_and(|b| can_merge_blocks(block, b))
                             {
                                 break 'outer_north;
                             }
@@ -342,7 +342,7 @@ pub fn build_chunk_mesh_greedy(
                     let mut w = 1;
                     while lx + w < CHUNK_WIDTH
                         && side_mask[ly * CHUNK_WIDTH + (lx + w)]
-                            .map_or(false, |b| can_merge_blocks(block, b))
+                            .is_some_and(|b| can_merge_blocks(block, b))
                     {
                         w += 1;
                     }
@@ -350,7 +350,7 @@ pub fn build_chunk_mesh_greedy(
                     'outer_south: while ly + h <= max_y {
                         for k in 0..w {
                             if !side_mask[(ly + h) * CHUNK_WIDTH + (lx + k)]
-                                .map_or(false, |b| can_merge_blocks(block, b))
+                                .is_some_and(|b| can_merge_blocks(block, b))
                             {
                                 break 'outer_south;
                             }
@@ -431,7 +431,7 @@ pub fn build_chunk_mesh_greedy(
                     let mut w = 1;
                     while lz + w < CHUNK_DEPTH
                         && side_mask[ly * CHUNK_DEPTH + (lz + w)]
-                            .map_or(false, |b| can_merge_blocks(block, b))
+                            .is_some_and(|b| can_merge_blocks(block, b))
                     {
                         w += 1;
                     }
@@ -439,7 +439,7 @@ pub fn build_chunk_mesh_greedy(
                     'outer_east: while ly + h <= max_y {
                         for k in 0..w {
                             if !side_mask[(ly + h) * CHUNK_DEPTH + (lz + k)]
-                                .map_or(false, |b| can_merge_blocks(block, b))
+                                .is_some_and(|b| can_merge_blocks(block, b))
                             {
                                 break 'outer_east;
                             }
@@ -520,7 +520,7 @@ pub fn build_chunk_mesh_greedy(
                     let mut w = 1;
                     while lz + w < CHUNK_DEPTH
                         && side_mask[ly * CHUNK_DEPTH + (lz + w)]
-                            .map_or(false, |b| can_merge_blocks(block, b))
+                            .is_some_and(|b| can_merge_blocks(block, b))
                     {
                         w += 1;
                     }
@@ -528,7 +528,7 @@ pub fn build_chunk_mesh_greedy(
                     'outer_west: while ly + h <= max_y {
                         for k in 0..w {
                             if !side_mask[(ly + h) * CHUNK_DEPTH + (lz + k)]
-                                .map_or(false, |b| can_merge_blocks(block, b))
+                                .is_some_and(|b| can_merge_blocks(block, b))
                             {
                                 break 'outer_west;
                             }

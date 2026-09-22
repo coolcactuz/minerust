@@ -28,8 +28,8 @@ impl Default for MenuState {
 
 impl MenuState {
     #[inline]
-    pub fn is_open(&self) -> bool {
-        self.screen != MenuScreen::None
+    pub const fn is_open(&self) -> bool {
+        !matches!(self.screen, MenuScreen::None)
     }
 }
 

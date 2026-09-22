@@ -98,15 +98,8 @@ pub fn player_physics_system(
     world: Res<WorldGrid>,
     mut query: Query<(&FpsCamera, &mut Transform, &mut PlayerPhysics)>,
 ) {
-    if let Some(menu) = menu {
-        if menu.is_open() {
-            return;
-        }
-    }
-    if let Some(inv) = inventory {
-        if inv.is_open {
-            return;
-        }
+    if menu.is_some_and(|m| m.is_open()) || inventory.is_some_and(|inv| inv.is_open) {
+        return;
     }
 
     let Ok((fps, mut transform, mut physics)) = query.single_mut() else {

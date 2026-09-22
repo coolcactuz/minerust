@@ -44,14 +44,10 @@ run_scenario() {
     echo "----------------------------------------------------------------------"
 
     target/release/minerust \
-        --benchmark \
-        --benchmark-preset "$PRESET" \
-        --benchmark-distance "$DISTANCE" \
-        --benchmark-speed "$SPEED" \
-        --benchmark-warmup "$WARMUP" \
-        --benchmark-output "$OUTPUT_FILE" \
+        --benchmark "$PRESET" \
         --seed "$SEED" \
-        --view-distance "$VIEW_DIST"
+        --view-distance "$VIEW_DIST" \
+        -o "$OUTPUT_FILE"
 
     echo ""
 }

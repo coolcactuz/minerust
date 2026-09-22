@@ -37,7 +37,7 @@ impl Chunk {
     }
 
     #[inline]
-    pub fn in_bounds(x: i32, y: i32, z: i32) -> bool {
+    pub const fn in_bounds(x: i32, y: i32, z: i32) -> bool {
         x >= 0
             && x < CHUNK_WIDTH as i32
             && y >= 0
@@ -47,7 +47,7 @@ impl Chunk {
     }
 
     #[inline]
-    pub fn index(x: usize, y: usize, z: usize) -> usize {
+    pub const fn index(x: usize, y: usize, z: usize) -> usize {
         x + z * CHUNK_WIDTH + y * (CHUNK_WIDTH * CHUNK_DEPTH)
     }
 
@@ -100,11 +100,7 @@ impl Chunk {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(CHUNK_BLOCKS);
-        for b in self.blocks.iter() {
-            bytes.push(b.to_u8());
-        }
-        bytes
+        self.blocks.iter().map(|b| b.to_u8()).collect()
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, WorldError> {

@@ -37,6 +37,21 @@ impl PlayerSaveData {
             selected_slot,
         }
     }
+
+    pub fn from_player(
+        transform: &Transform,
+        fps: &FpsCamera,
+        inventory: &Inventory,
+    ) -> Self {
+        Self::new(
+            transform.translation,
+            fps.yaw,
+            fps.pitch,
+            inventory.hotbar,
+            inventory.main,
+            inventory.selected_slot,
+        )
+    }
 }
 
 /// Saves the player's position, camera orientation, and inventory to JSON on disk.
@@ -145,14 +160,7 @@ pub fn autosave_system(
 
         // 2. Auto-save player state (position, rotation, inventory)
         if let Ok((transform, fps)) = player_query.single() {
-            let data = PlayerSaveData::new(
-                transform.translation,
-                fps.yaw,
-                fps.pitch,
-                inventory.hotbar,
-                inventory.main,
-                inventory.selected_slot,
-            );
+            let data = PlayerSaveData::from_player(transform, fps, &inventory);
             let path = world.player_save_path();
             if let Err(e) = save_player_to_disk(&path, &data) {
                 tracing::warn!("Failed to auto-save player data to {path:?}: {e}");
@@ -177,14 +185,7 @@ pub fn save_on_exit_system(
         set_last_played_world(world.seed.0);
 
         if let Ok((transform, fps)) = player_query.single() {
-            let data = PlayerSaveData::new(
-                transform.translation,
-                fps.yaw,
-                fps.pitch,
-                inventory.hotbar,
-                inventory.main,
-                inventory.selected_slot,
-            );
+            let data = PlayerSaveData::from_player(transform, fps, &inventory);
             let path = world.player_save_path();
             if let Err(e) = save_player_to_disk(&path, &data) {
                 tracing::warn!("Failed to save player data on exit: {e}");

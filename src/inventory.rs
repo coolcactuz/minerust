@@ -33,7 +33,7 @@ pub const ALL_BLOCKS: &[BlockType] = &[
     BlockType::Bedrock,
 ];
 
-pub fn block_name(block: BlockType) -> &'static str {
+pub const fn block_name(block: BlockType) -> &'static str {
     match block {
         BlockType::Air => "Air",
         BlockType::Grass => "Grass",

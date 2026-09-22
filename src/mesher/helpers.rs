@@ -1,13 +1,13 @@
 use crate::block::{BlockFace, BlockType};
 
 #[inline(always)]
-pub fn should_render_face(block: BlockType, neighbor: BlockType, _face: BlockFace) -> bool {
-    if block == neighbor {
+pub const fn should_render_face(block: BlockType, neighbor: BlockType, _face: BlockFace) -> bool {
+    if block as u8 == neighbor as u8 {
         return false;
     }
 
     if block.is_water() {
-        neighbor == BlockType::Air || neighbor == BlockType::Glass
+        matches!(neighbor, BlockType::Air | BlockType::Glass)
     } else if block.is_solid() {
         neighbor.is_transparent()
     } else {
@@ -16,8 +16,8 @@ pub fn should_render_face(block: BlockType, neighbor: BlockType, _face: BlockFac
 }
 
 #[inline(always)]
-pub fn can_merge_blocks(b1: BlockType, b2: BlockType) -> bool {
-    b1 == b2
+pub const fn can_merge_blocks(b1: BlockType, b2: BlockType) -> bool {
+    b1 as u8 == b2 as u8
         || (matches!(b1, BlockType::Sand | BlockType::Gravel)
             && matches!(b2, BlockType::Sand | BlockType::Gravel))
 }
@@ -25,7 +25,7 @@ pub fn can_merge_blocks(b1: BlockType, b2: BlockType) -> bool {
 /// Simplifies ore and block types into base rock/sand for distant LOD rendering.
 /// At distance, ore veins (coal, iron, gold, diamond) merge into stone to reduce visual noise and quad fragmentation.
 #[inline(always)]
-pub fn simplify_block_for_lod(block: BlockType) -> BlockType {
+pub const fn simplify_block_for_lod(block: BlockType) -> BlockType {
     match block {
         BlockType::CoalOre
         | BlockType::IronOre
@@ -53,13 +53,10 @@ pub fn add_quad(
 ) {
     let start_idx = positions.len() as u32;
 
-    for v in &verts {
-        positions.push(*v);
-        normals.push(norm);
-        colors.push([shade, shade, shade, 1.0]);
-        uvs_1.push([layer, 0.0]);
-    }
-
+    positions.extend_from_slice(&verts);
+    normals.extend_from_slice(&[norm; 4]);
+    colors.extend_from_slice(&[[shade, shade, shade, 1.0]; 4]);
+    uvs_1.extend_from_slice(&[[layer, 0.0]; 4]);
     uvs.extend_from_slice(&quad_uvs);
 
     // Standard Bevy Cuboid CCW winding: 0, 1, 2, 2, 3, 0
@@ -89,13 +86,10 @@ pub fn add_triangle(
 ) {
     let start_idx = positions.len() as u32;
 
-    for v in &verts {
-        positions.push(*v);
-        normals.push(norm);
-        colors.push([shade, shade, shade, 1.0]);
-        uvs_1.push([layer, 0.0]);
-    }
-
+    positions.extend_from_slice(&verts);
+    normals.extend_from_slice(&[norm; 3]);
+    colors.extend_from_slice(&[[shade, shade, shade, 1.0]; 3]);
+    uvs_1.extend_from_slice(&[[layer, 0.0]; 3]);
     uvs.extend_from_slice(&tri_uvs);
 
     indices.extend_from_slice(&[start_idx, start_idx + 1, start_idx + 2]);

@@ -5,11 +5,14 @@ use bevy::window::WindowResolution;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+use minerust::benchmark::{BenchmarkConfig, BenchmarkScenario, BenchmarkSuite};
 use minerust::camera::{CameraPlugin, FpsCamera};
 use minerust::fluid::FluidPlugin;
 use minerust::interaction::InteractionPlugin;
 use minerust::inventory::InventoryPlugin;
-use minerust::menu::{DevSettings, GraphicsSettings, MenuPlugin, SeedInputState};
+use minerust::menu::{
+    DevSettings, GraphicsSettings, MenuPlugin, MenuScreen, MenuState, SeedInputState,
+};
 use minerust::physics::{PhysicsPlugin, PlayerPhysics};
 use minerust::profile::ProfilePlugin;
 use minerust::save::SavePlugin;
@@ -18,183 +21,165 @@ use minerust::texture;
 use minerust::voxel_material::{VoxelBlockMaterial, VoxelExtension};
 use minerust::world::{WorldGrid, WorldPlugin, WorldSeed};
 
-fn main() {
-    // 1. Parse World Seed and Dev flags from command line
-    let mut seed = WorldSeed::default();
-    let mut seed_specified = false;
-    let mut dev_mode = false;
-    let mut profile_mode = false;
-    let mut quickstart = false;
-    let mut benchmark_mode = false;
-    let mut selected_preset: Option<minerust::benchmark::BenchmarkPreset> = None;
-    let mut benchmark_distance = 1000.0f32; // Default 1 km (1000 blocks)
-    let mut benchmark_speed = 50.0f32; // Default 50 m/s (180 km/h) = 20s for 1km
-    let mut benchmark_warmup = 2.5f32;
-    let mut benchmark_output = Some("benchmark_results.json".to_string());
-    let mut view_dist_override: Option<i32> = None;
-    let mut override_greedy: Option<bool> = None;
-    let mut override_lod: Option<bool> = None;
-    let mut override_culling: Option<bool> = None;
-    let mut override_max_y: Option<bool> = None;
-    let mut override_fog: Option<bool> = None;
+/// Structured command-line options parsed cleanly at startup.
+#[derive(Default, Debug, PartialEq)]
+struct CliOptions {
+    seed: Option<WorldSeed>,
+    dev_mode: bool,
+    profile_mode: bool,
+    quickstart: bool,
+    is_benchmark: bool,
+    benchmark_preset: Option<String>,
+    view_distance: Option<i32>,
+    output_path: Option<String>,
+}
 
-    let args: Vec<String> = std::env::args().collect();
-    for i in 0..args.len() {
-        if (args[i] == "--seed" || args[i] == "-s") && i + 1 < args.len() {
-            seed = WorldSeed::from_seed_str(&args[i + 1]);
-            seed_specified = true;
-        }
-        if args[i] == "--dev" || args[i] == "--debug" || args[i] == "-d" {
-            dev_mode = true;
-        }
-        if args[i] == "--profile" || args[i] == "-p" {
-            profile_mode = true;
-        }
-        if args[i] == "--quickstart" || args[i] == "-q" {
-            quickstart = true;
-        }
-        if args[i] == "--benchmark" || args[i] == "-b" {
-            benchmark_mode = true;
-            quickstart = true;
-        }
-        if (args[i] == "--benchmark-preset" || args[i] == "-bp") && i + 1 < args.len() {
-            selected_preset = minerust::benchmark::BenchmarkPreset::from_str_name(&args[i + 1]);
-        }
-        if (args[i] == "--benchmark-distance" || args[i] == "-bd") && i + 1 < args.len() {
-            if let Ok(val) = args[i + 1].parse::<f32>() {
-                benchmark_distance = val;
+impl CliOptions {
+    fn parse_from_args<I: IntoIterator<Item = String>>(args: I) -> Result<Self, String> {
+        let mut opts = Self::default();
+        let args: Vec<String> = args.into_iter().collect();
+        let mut i = 1;
+
+        while i < args.len() {
+            match args[i].as_str() {
+                "-s" | "--seed" => {
+                    i += 1;
+                    if i < args.len() {
+                        opts.seed = Some(WorldSeed::from_seed_str(&args[i]));
+                    }
+                }
+                "-d" | "--dev" | "--debug" => {
+                    opts.dev_mode = true;
+                }
+                "-p" | "--profile" => {
+                    opts.profile_mode = true;
+                }
+                "-q" | "--quickstart" => {
+                    opts.quickstart = true;
+                }
+                "-b" | "--benchmark" => {
+                    opts.is_benchmark = true;
+                    opts.quickstart = true;
+                    if i + 1 < args.len() && !args[i + 1].starts_with('-') {
+                        i += 1;
+                        opts.benchmark_preset = Some(args[i].clone());
+                    }
+                }
+                "-bp" | "--benchmark-preset" => {
+                    opts.is_benchmark = true;
+                    opts.quickstart = true;
+                    i += 1;
+                    if i < args.len() {
+                        opts.benchmark_preset = Some(args[i].clone());
+                    }
+                }
+                "--view-distance" => {
+                    i += 1;
+                    if i < args.len() {
+                        if let Ok(vd) = args[i].parse::<i32>() {
+                            opts.view_distance = Some(vd.clamp(2, 64));
+                        }
+                    }
+                }
+                "-o" | "--output" => {
+                    i += 1;
+                    if i < args.len() {
+                        opts.output_path = Some(args[i].clone());
+                    }
+                }
+                "-h" | "--help" => {
+                    return Err(Self::help_message());
+                }
+                _ => {}
             }
+            i += 1;
         }
-        if (args[i] == "--benchmark-speed" || args[i] == "-bs") && i + 1 < args.len() {
-            if let Ok(val) = args[i + 1].parse::<f32>() {
-                benchmark_speed = val;
-            }
-        }
-        if args[i] == "--benchmark-warmup" && i + 1 < args.len() {
-            if let Ok(val) = args[i + 1].parse::<f32>() {
-                benchmark_warmup = val;
-            }
-        }
-        if args[i] == "--benchmark-output" && i + 1 < args.len() {
-            benchmark_output = Some(args[i + 1].clone());
-        }
-        if args[i] == "--view-distance" && i + 1 < args.len() {
-            if let Ok(val) = args[i + 1].parse::<i32>() {
-                view_dist_override = Some(val.clamp(2, 64));
-            }
-        }
-        if args[i] == "--no-greedy" {
-            override_greedy = Some(false);
-        } else if args[i] == "--enable-greedy" {
-            override_greedy = Some(true);
-        }
-        if args[i] == "--no-lod" {
-            override_lod = Some(false);
-        } else if args[i] == "--enable-lod" {
-            override_lod = Some(true);
-        }
-        if args[i] == "--no-culling" {
-            override_culling = Some(false);
-        } else if args[i] == "--enable-culling" {
-            override_culling = Some(true);
-        }
-        if args[i] == "--no-max-y-skip" {
-            override_max_y = Some(false);
-        } else if args[i] == "--enable-max-y-skip" {
-            override_max_y = Some(true);
-        }
-        if args[i] == "--no-fog" {
-            override_fog = Some(false);
-        } else if args[i] == "--enable-fog" {
-            override_fog = Some(true);
-        }
-        if args[i] == "--help" || args[i] == "-h" {
-            println!("MineRust - A High-Performance Voxel Sandbox in Rust");
-            println!("Usage: minerust [OPTIONS]");
-            println!("\nOptions:");
-            println!("  -s, --seed <SEED>              Set world generation seed (string or integer)");
-            println!(
-                "  -d, --dev, --debug             Enable Developer Mode (benchmarks & debug settings)"
-            );
-            println!("  -p, --profile                  Enable Real-time Performance Profiler HUD");
-            println!("  -q, --quickstart               Start directly in-game bypassing the main menu");
-            println!("  -b, --benchmark                Run automated reproducible benchmark (uncapped FPS)");
-            println!("  -bp, --benchmark-preset <name> Preset: baseline, culling, greedy, sloped_lod, production");
-            println!("  -bd, --benchmark-distance <m>  Target flight distance in meters (default: 1000m / 1km)");
-            println!("  -bs, --benchmark-speed <m/s>   Flight speed in m/s (default: 50 m/s = 180 km/h)");
-            println!("       --benchmark-warmup <s>    Warmup period before recording in seconds (default: 2.5)");
-            println!("       --benchmark-output <path> JSON file output path (default: benchmark_results.json)");
-            println!("       --view-distance <chunks>  Override render distance (4 to 64 chunks)");
-            println!("       --no-greedy               Disable greedy meshing (use naive meshing)");
-            println!("       --no-lod                  Disable distance-based sloped LOD");
-            println!("       --no-culling              Disable backface culling");
-            println!("       --no-max-y-skip           Disable empty atmosphere scanning skip");
-            println!("       --no-fog                  Disable atmospheric distance fog");
-            println!("  -h, --help                     Print help information");
+
+        Ok(opts)
+    }
+
+    fn help_message() -> String {
+        "MineRust - A High-Performance Voxel Sandbox in Rust\n\
+        Usage: minerust [OPTIONS]\n\n\
+        Options:\n  \
+          -s, --seed <SEED>              Set world generation seed (string or integer)\n  \
+          -d, --dev, --debug             Enable Developer Mode (benchmarks & debug settings)\n  \
+          -p, --profile                  Enable Real-time Performance Profiler HUD\n  \
+          -q, --quickstart               Start directly in-game bypassing the main menu\n  \
+          -b, --benchmark [PRESET]       Run automated benchmark (baseline, culling, greedy, sloped_lod, production)\n      \
+              --view-distance <chunks>   Render distance (4 to 64 chunks)\n  \
+          -o, --output <path>            JSON output file for benchmark results\n  \
+          -h, --help                     Print help information"
+            .to_string()
+    }
+}
+
+fn main() {
+    let opts = match CliOptions::parse_from_args(std::env::args()) {
+        Ok(opts) => opts,
+        Err(help) => {
+            println!("{help}");
             return;
         }
-    }
+    };
 
-    // Benchmark mode defaults to a deterministic fixed seed (133742) for reproducible tests
-    if benchmark_mode && !seed_specified {
-        seed = WorldSeed(133742);
-    } else if !seed_specified {
-        seed = WorldSeed::random();
-    }
+    let seed = opts.seed.unwrap_or_else(|| {
+        if opts.is_benchmark {
+            WorldSeed(BenchmarkSuite::DEFAULT_SEED)
+        } else {
+            WorldSeed::random()
+        }
+    });
 
     let seed_state = SeedInputState {
         seed_text: seed.0.to_string(),
         is_editing: false,
     };
 
-    let menu_state = if quickstart {
-        minerust::menu::MenuState {
-            screen: minerust::menu::MenuScreen::None,
-            previous_screen: minerust::menu::MenuScreen::None,
+    let menu_state = if opts.quickstart {
+        MenuState {
+            screen: MenuScreen::None,
+            previous_screen: MenuScreen::None,
             world_active: true,
         }
     } else {
-        minerust::menu::MenuState::default()
+        MenuState::default()
     };
 
     let mut dev_settings = DevSettings {
-        dev_mode,
-        profile_mode,
-        show_debug_hud: dev_mode || profile_mode,
+        dev_mode: opts.dev_mode,
+        profile_mode: opts.profile_mode,
+        show_debug_hud: opts.dev_mode || opts.profile_mode,
         ..default()
     };
 
     let mut graphics_settings = GraphicsSettings::load_or_default();
-
-    // Apply benchmark preset if selected
-    if let Some(preset) = selected_preset {
-        preset.apply(&mut dev_settings, &mut graphics_settings);
-    }
-
-    // Apply granular overrides if specified
-    if let Some(vd) = view_dist_override {
+    if let Some(vd) = opts.view_distance {
         graphics_settings.view_distance = vd;
     }
-    if let Some(g) = override_greedy {
-        graphics_settings.greedy_meshing = g;
-        dev_settings.greedy_meshing = g;
-    }
-    if let Some(lod) = override_lod {
-        graphics_settings.distance_lod = lod;
-        dev_settings.distance_lod = lod;
-    }
-    if let Some(cull) = override_culling {
-        dev_settings.backface_culling = cull;
-    }
-    if let Some(my) = override_max_y {
-        dev_settings.max_y_skip = my;
-    }
-    if let Some(fog) = override_fog {
-        graphics_settings.distance_fog = fog;
-        dev_settings.distance_fog = fog;
-    }
 
-    let present_mode = if benchmark_mode {
+    let scenario = if opts.is_benchmark {
+        let vd = graphics_settings.view_distance;
+        let mut s = if let Some(ref preset_name) = opts.benchmark_preset {
+            BenchmarkScenario::from_preset_name(preset_name, vd).unwrap_or_else(|| {
+                eprintln!(
+                    "[BENCHMARK] Warning: Unknown preset '{preset_name}', defaulting to 'production'"
+                );
+                BenchmarkScenario::production(vd)
+            })
+        } else {
+            BenchmarkScenario::production(vd)
+        };
+        if let Some(ref path) = opts.output_path {
+            s.output_path = Some(path.clone());
+        }
+        s.apply(&mut dev_settings, &mut graphics_settings);
+        s
+    } else {
+        BenchmarkScenario::production(graphics_settings.view_distance)
+    };
+
+    let present_mode = if opts.is_benchmark {
         bevy::window::PresentMode::AutoNoVsync // Force un-capped framerate during benchmarks
     } else if graphics_settings.vsync {
         bevy::window::PresentMode::AutoVsync
@@ -207,16 +192,10 @@ fn main() {
         bevy::window::WindowMode::Windowed
     };
 
-    let benchmark_config = minerust::benchmark::BenchmarkConfig {
-        enabled: benchmark_mode,
-        preset_name: selected_preset.map_or("Custom".to_string(), |p| p.name().to_string()),
+    let benchmark_config = BenchmarkConfig {
+        enabled: opts.is_benchmark,
         seed: seed.0,
-        view_distance: graphics_settings.view_distance,
-        warmup_duration_secs: benchmark_warmup,
-        target_distance_meters: benchmark_distance,
-        flight_speed: benchmark_speed,
-        output_path: benchmark_output,
-        ..default()
+        scenario,
     };
 
     App::new()
@@ -224,11 +203,11 @@ fn main() {
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: if benchmark_mode {
+                        title: if opts.is_benchmark {
                             format!("MineRust [BENCHMARK MODE] - Seed: {}", seed.0)
-                        } else if dev_mode {
+                        } else if opts.dev_mode {
                             format!("MineRust [DEV MODE] - Seed: {}", seed.0)
-                        } else if profile_mode {
+                        } else if opts.profile_mode {
                             format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
                         } else {
                             format!("MineRust - Seed: {}", seed.0)
@@ -377,4 +356,103 @@ fn setup(
         .build(),
         Transform::from_xyz(200.0, 450.0, 150.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_options_defaults() {
+        let opts = CliOptions::parse_from_args(vec!["minerust".to_string()]).unwrap();
+        assert_eq!(
+            opts,
+            CliOptions {
+                seed: None,
+                dev_mode: false,
+                profile_mode: false,
+                quickstart: false,
+                is_benchmark: false,
+                benchmark_preset: None,
+                view_distance: None,
+                output_path: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_cli_options_seed_and_flags() {
+        let opts = CliOptions::parse_from_args(vec![
+            "minerust".to_string(),
+            "-s".to_string(),
+            "42".to_string(),
+            "-d".to_string(),
+            "-p".to_string(),
+            "-q".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(opts.seed, Some(WorldSeed(42)));
+        assert!(opts.dev_mode);
+        assert!(opts.profile_mode);
+        assert!(opts.quickstart);
+        assert!(!opts.is_benchmark);
+    }
+
+    #[test]
+    fn test_cli_options_benchmark_with_and_without_preset() {
+        // Without preset
+        let opts = CliOptions::parse_from_args(vec![
+            "minerust".to_string(),
+            "--benchmark".to_string(),
+            "--view-distance".to_string(),
+            "32".to_string(),
+            "-o".to_string(),
+            "out.json".to_string(),
+        ])
+        .unwrap();
+
+        assert!(opts.is_benchmark);
+        assert!(opts.quickstart);
+        assert_eq!(opts.benchmark_preset, None);
+        assert_eq!(opts.view_distance, Some(32));
+        assert_eq!(opts.output_path, Some("out.json".to_string()));
+
+        // With preset
+        let opts2 = CliOptions::parse_from_args(vec![
+            "minerust".to_string(),
+            "-b".to_string(),
+            "greedy".to_string(),
+        ])
+        .unwrap();
+
+        assert!(opts2.is_benchmark);
+        assert_eq!(opts2.benchmark_preset, Some("greedy".to_string()));
+    }
+
+    #[test]
+    fn test_cli_options_view_distance_clamping() {
+        let opts = CliOptions::parse_from_args(vec![
+            "minerust".to_string(),
+            "--view-distance".to_string(),
+            "1".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(opts.view_distance, Some(2)); // Min clamp is 2
+
+        let opts2 = CliOptions::parse_from_args(vec![
+            "minerust".to_string(),
+            "--view-distance".to_string(),
+            "128".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(opts2.view_distance, Some(64)); // Max clamp is 64
+    }
+
+    #[test]
+    fn test_cli_options_help_returns_err_with_message() {
+        let res = CliOptions::parse_from_args(vec!["minerust".to_string(), "--help".to_string()]);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("Usage: minerust"));
+    }
 }

@@ -39,22 +39,22 @@ pub enum BlockFace {
 
 impl BlockType {
     #[inline]
-    pub fn is_solid(self) -> bool {
+    pub const fn is_solid(self) -> bool {
         !matches!(self, BlockType::Air | BlockType::Water)
     }
 
     #[inline]
-    pub fn is_water(self) -> bool {
-        self == BlockType::Water
+    pub const fn is_water(self) -> bool {
+        matches!(self, BlockType::Water)
     }
 
     #[inline]
-    pub fn is_transparent(self) -> bool {
+    pub const fn is_transparent(self) -> bool {
         matches!(self, BlockType::Air | BlockType::Water | BlockType::Glass)
     }
 
     #[inline]
-    pub fn drop_item(self) -> Option<BlockType> {
+    pub const fn drop_item(self) -> Option<BlockType> {
         match self {
             BlockType::Air | BlockType::Water | BlockType::Bedrock => None,
             BlockType::Grass => Some(BlockType::Dirt),
@@ -64,7 +64,7 @@ impl BlockType {
         }
     }
 
-    pub fn from_u8(val: u8) -> Self {
+    pub const fn from_u8(val: u8) -> Self {
         match val {
             1 => BlockType::Grass,
             2 => BlockType::Dirt,
@@ -91,7 +91,7 @@ impl BlockType {
     }
 
     #[inline]
-    pub fn to_u8(self) -> u8 {
+    pub const fn to_u8(self) -> u8 {
         self as u8
     }
 
@@ -139,7 +139,7 @@ impl BlockType {
     }
 }
 
-fn face_shade(face: BlockFace) -> f32 {
+const fn face_shade(face: BlockFace) -> f32 {
     match face {
         BlockFace::Top => 1.0,
         BlockFace::Bottom => 0.5,

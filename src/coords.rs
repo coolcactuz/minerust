@@ -103,9 +103,10 @@ impl ChunkPos {
     }
 
     #[inline]
-    pub fn distance_sq(self, other: Self) -> i32 {
-        let diff = self.0 - other.0;
-        diff.x * diff.x + diff.y * diff.y
+    pub const fn distance_sq(self, other: Self) -> i32 {
+        let dx = self.0.x - other.0.x;
+        let dy = self.0.y - other.0.y;
+        dx * dx + dy * dy
     }
 }
 
@@ -116,14 +117,14 @@ impl LocalBlockPos {
     }
 
     #[inline]
-    pub fn to_index(self) -> usize {
+    pub const fn to_index(self) -> usize {
         self.x as usize
             + (self.z as usize) * CHUNK_WIDTH
             + (self.y as usize) * (CHUNK_WIDTH * CHUNK_DEPTH)
     }
 
     #[inline]
-    pub fn from_index(index: usize) -> Self {
+    pub const fn from_index(index: usize) -> Self {
         let x = (index % CHUNK_WIDTH) as u8;
         let rem = index / CHUNK_WIDTH;
         let z = (rem % CHUNK_DEPTH) as u8;

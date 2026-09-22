@@ -177,17 +177,17 @@ impl NoiseGenerator {
 }
 
 #[inline(always)]
-fn fade(t: f64) -> f64 {
+const fn fade(t: f64) -> f64 {
     t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 }
 
 #[inline(always)]
-fn lerp(a: f64, b: f64, t: f64) -> f64 {
+const fn lerp(a: f64, b: f64, t: f64) -> f64 {
     a + t * (b - a)
 }
 
 #[inline(always)]
-fn grad2(hash: u8, x: f64, y: f64) -> f64 {
+const fn grad2(hash: u8, x: f64, y: f64) -> f64 {
     match hash & 7 {
         0 => x + y,
         1 => -x + y,
@@ -202,7 +202,7 @@ fn grad2(hash: u8, x: f64, y: f64) -> f64 {
 }
 
 #[inline(always)]
-fn grad3(hash: u8, x: f64, y: f64, z: f64) -> f64 {
+const fn grad3(hash: u8, x: f64, y: f64, z: f64) -> f64 {
     let h = hash & 15;
     let u = if h < 8 { x } else { y };
     let v = if h < 4 {
