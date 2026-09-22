@@ -48,61 +48,53 @@ impl BenchmarkPreset {
     }
 
     pub fn apply(self, dev: &mut DevSettings, graphics: &mut GraphicsSettings) {
+        // Universal graphics configuration for all benchmarks:
+        // - VSync: OFF
+        // - Distance Fog: OFF
+        // - FPS Limit: Uncapped
+        // - Render Distance: 64 chunks
+        graphics.vsync = false;
+        graphics.fps_cap = None;
+        graphics.distance_fog = false;
+        graphics.view_distance = 64;
+        dev.distance_fog = false;
+
         match self {
             Self::Baseline => {
                 graphics.greedy_meshing = false;
                 graphics.distance_lod = false;
-                graphics.distance_fog = false;
                 dev.greedy_meshing = false;
                 dev.distance_lod = false;
                 dev.backface_culling = false;
                 dev.max_y_skip = false;
-                dev.distance_fog = false;
             }
             Self::Culling => {
                 graphics.greedy_meshing = false;
                 graphics.distance_lod = false;
-                graphics.distance_fog = false;
                 dev.greedy_meshing = false;
                 dev.distance_lod = false;
                 dev.backface_culling = true;
                 dev.max_y_skip = true;
-                dev.distance_fog = false;
             }
             Self::Greedy => {
                 graphics.greedy_meshing = true;
-                graphics.greedy_threshold = 0; // Greedy everywhere
+                graphics.greedy_threshold = 24; // 24 chunks greedy distance
                 graphics.distance_lod = false;
-                graphics.distance_fog = false;
                 dev.greedy_meshing = true;
                 dev.distance_lod = false;
                 dev.backface_culling = true;
                 dev.max_y_skip = true;
-                dev.distance_fog = false;
             }
-            Self::SlopedLod => {
+            Self::SlopedLod | Self::Production => {
                 graphics.greedy_meshing = true;
-                graphics.greedy_threshold = 2;
+                graphics.greedy_threshold = 24; // 24 chunks greedy distance
                 graphics.distance_lod = true;
-                graphics.lod_threshold = 4;
-                graphics.distance_fog = false;
+                graphics.lod_threshold = 32; // 32 chunks distant sloped LOD
                 dev.greedy_meshing = true;
                 dev.distance_lod = true;
+                dev.lod_threshold = 32;
                 dev.backface_culling = true;
                 dev.max_y_skip = true;
-                dev.distance_fog = false;
-            }
-            Self::Production => {
-                graphics.greedy_meshing = true;
-                graphics.greedy_threshold = 2;
-                graphics.distance_lod = true;
-                graphics.lod_threshold = 4;
-                graphics.distance_fog = true;
-                dev.greedy_meshing = true;
-                dev.distance_lod = true;
-                dev.backface_culling = true;
-                dev.max_y_skip = true;
-                dev.distance_fog = true;
             }
         }
     }
@@ -128,7 +120,7 @@ impl Default for BenchmarkConfig {
             enabled: false,
             preset_name: "Default".to_string(),
             seed: 133742,
-            view_distance: 16,
+            view_distance: 64,
             warmup_duration_secs: 2.5,
             target_distance_meters: 1000.0, // 1 km standard run
             flight_speed: 50.0,             // 50 m/s (180 km/h) = 20s recording for 1km

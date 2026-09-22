@@ -346,13 +346,17 @@ pub fn world_streaming_system(
         .as_ref()
         .is_some_and(|b| b.phase == crate::benchmark::BenchmarkPhase::InitializingWorld);
     let max_dispatch = if is_bench_initializing {
-        256
+        64
     } else {
         MAX_CHUNK_DISPATCH_PER_FRAME
     };
+    let max_in_flight_chunks = if is_bench_initializing { 128 } else { 32 };
 
     let mut dispatched = 0;
-    while dispatched < max_dispatch && !world.generation_queue.is_empty() {
+    while dispatched < max_dispatch
+        && world.in_progress_chunks.len() < max_in_flight_chunks
+        && !world.generation_queue.is_empty()
+    {
         let Some(coord) = world.generation_queue.pop() else {
             break;
         };
@@ -548,15 +552,19 @@ pub fn world_streaming_system(
         let budget_enabled = settings.dev.as_ref().is_none_or(|d| d.mesh_budget);
         let async_meshing = settings.dev.as_ref().is_none_or(|d| d.async_meshing);
         let max_meshes_per_frame = if is_bench_initializing {
-            256
+            48
         } else if budget_enabled {
             MAX_MESHES_PER_FRAME
         } else {
             usize::MAX
         };
+        let max_in_flight_meshes = if is_bench_initializing { 64 } else { 24 };
 
         let mut meshed = 0;
-        while meshed < max_meshes_per_frame && !world.mesh_queue.is_empty() {
+        while meshed < max_meshes_per_frame
+            && world.in_progress_meshes.len() < max_in_flight_meshes
+            && !world.mesh_queue.is_empty()
+        {
             let Some(coord) = world.mesh_queue.pop() else {
                 break;
             };
