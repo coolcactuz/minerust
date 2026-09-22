@@ -98,6 +98,8 @@ fn test_get_option_description_all_actions() {
         MenuButtonAction::BackFromSettings,
         MenuButtonAction::BackFromDevSettings,
         MenuButtonAction::Play,
+        MenuButtonAction::ContinueGame,
+        MenuButtonAction::NewGame,
         MenuButtonAction::ResumeGame,
         MenuButtonAction::OpenSettings,
         MenuButtonAction::OpenDevSettings,
@@ -264,6 +266,26 @@ fn test_view_distance_slider_steps_and_ratios() {
 fn test_distance_fog_default() {
     let gs = super::types::GraphicsSettings::default();
     assert!(gs.distance_fog, "distance fog should default to true in graphics settings");
+}
+
+#[test]
+fn test_graphics_settings_serialization_roundtrip() {
+    let original = super::types::GraphicsSettings {
+        vsync: false,
+        fullscreen: true,
+        distance_fog: false,
+        fps_cap: Some(144),
+        view_distance: 32,
+        greedy_meshing: false,
+        greedy_threshold: 4,
+        distance_lod: false,
+        lod_threshold: 16,
+    };
+
+    let json = serde_json::to_string(&original).expect("Serialization failed");
+    let deserialized: super::types::GraphicsSettings =
+        serde_json::from_str(&json).expect("Deserialization failed");
+    assert_eq!(original, deserialized);
 }
 
 #[test]

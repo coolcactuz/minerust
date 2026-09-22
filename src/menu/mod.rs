@@ -26,7 +26,7 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuState>()
-            .init_resource::<GraphicsSettings>()
+            .insert_resource(GraphicsSettings::load_or_default())
             .init_resource::<DevSettings>()
             .init_resource::<FpsLimiter>()
             .init_resource::<SeedInputState>()
@@ -45,6 +45,7 @@ impl Plugin for MenuPlugin {
                     update_dev_button_text_system,
                     update_dev_settings_system,
                     update_option_tooltip_system,
+                    auto_save_graphics_settings_system,
                     fps_limiter_system,
                 ),
             );

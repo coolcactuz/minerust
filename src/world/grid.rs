@@ -230,8 +230,8 @@ impl WorldGrid {
         Self::load_chunk_from_disk_path(&self.save_dir, coord)
     }
 
-    /// Despawns all active chunk meshes and resets world state to switch to a new seed.
-    pub fn reinitialize_with_seed(&mut self, new_seed: WorldSeed, commands: &mut Commands) {
+    /// Despawns all active chunk meshes and clears loaded chunks and internal queues.
+    pub fn despawn_all_chunks(&mut self, commands: &mut Commands) {
         for (_, entity) in self.chunk_entities.drain() {
             commands.entity(entity).despawn();
         }
@@ -248,7 +248,11 @@ impl WorldGrid {
         self.modified_chunks.clear();
         self.chunk_cache = quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY);
         self.last_player_chunk = IVec2::new(i32::MAX, i32::MAX);
+    }
 
+    /// Despawns all active chunk meshes and resets world state to switch to a new seed.
+    pub fn reinitialize_with_seed(&mut self, new_seed: WorldSeed, commands: &mut Commands) {
+        self.despawn_all_chunks(commands);
         self.seed = new_seed;
         self.noise = NoiseGenerator::new(new_seed.0);
         self.save_dir = PathBuf::from(format!("saves/world_{}/chunks", new_seed.0));

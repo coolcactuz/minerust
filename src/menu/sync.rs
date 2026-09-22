@@ -176,12 +176,13 @@ pub fn update_dev_button_text_system(
 }
 
 pub fn update_dev_settings_system(
+    mut commands: Commands,
     graphics_settings: Option<Res<GraphicsSettings>>,
     dev_settings: Option<Res<DevSettings>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut world: ResMut<crate::world::WorldGrid>,
     mut dir_lights: Query<&mut DirectionalLight>,
-    mut fog_query: Query<&mut bevy::pbr::DistanceFog>,
+    mut camera_query: Query<(Entity, Option<&mut bevy::pbr::DistanceFog>), With<crate::camera::FpsCamera>>,
     mut last_config: Local<Option<(bool, i32, bool, i32, bool, i32)>>,
 ) {
     let (greedy_meshing, greedy_threshold, distance_lod, lod_threshold, distance_fog, view_distance) =
@@ -230,17 +231,26 @@ pub fn update_dev_settings_system(
         let fog_start = (max_dist * 0.70).max(48.0);
         let fog_end = (max_dist - 2.0).max(64.0);
 
-        for mut fog in &mut fog_query {
+        for (cam_entity, mut maybe_fog) in &mut camera_query {
             if distance_fog {
-                fog.falloff = bevy::pbr::FogFalloff::Linear {
-                    start: fog_start,
-                    end: fog_end,
-                };
-            } else {
-                fog.falloff = bevy::pbr::FogFalloff::Linear {
-                    start: 99999.0,
-                    end: 100000.0,
-                };
+                if let Some(ref mut fog) = maybe_fog {
+                    fog.color = Color::srgb(0.70, 0.82, 0.95);
+                    fog.falloff = bevy::pbr::FogFalloff::Linear {
+                        start: fog_start,
+                        end: fog_end,
+                    };
+                } else {
+                    commands.entity(cam_entity).insert(bevy::pbr::DistanceFog {
+                        color: Color::srgb(0.70, 0.82, 0.95),
+                        falloff: bevy::pbr::FogFalloff::Linear {
+                            start: fog_start,
+                            end: fog_end,
+                        },
+                        ..default()
+                    });
+                }
+            } else if maybe_fog.is_some() {
+                commands.entity(cam_entity).remove::<bevy::pbr::DistanceFog>();
             }
         }
     }
@@ -410,6 +420,12 @@ pub fn update_slider_visuals_system(
         } else if l_thumb.is_some() {
             node.left = Val::Percent(lod_ratio * 95.0);
         }
+    }
+}
+
+pub fn auto_save_graphics_settings_system(settings: Res<GraphicsSettings>) {
+    if settings.is_changed() {
+        settings.save_to_disk();
     }
 }
 

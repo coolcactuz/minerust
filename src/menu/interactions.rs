@@ -242,7 +242,79 @@ pub fn menu_button_click_system(
                         state.is_editing = false;
                     }
                 }
-                MenuButtonAction::Play => {
+                MenuButtonAction::ContinueGame => {
+                    if let Some(saved_seed) = crate::save::get_latest_saved_world() {
+                        let target_seed = WorldSeed(saved_seed);
+                        if let Some(ref mut w) = world {
+                            w.reinitialize_with_seed(target_seed, &mut commands);
+
+                            let player_save_file = w.player_save_path();
+                            let (player_pos, player_yaw, player_pitch) =
+                                if player_save_file.exists() {
+                                    if let Ok(data) = load_player_from_disk(&player_save_file) {
+                                        if let Some(ref mut inv) = inventory {
+                                            inv.hotbar = data.hotbar;
+                                            inv.main = data.main;
+                                            inv.selected_slot = data.selected_slot;
+                                        }
+                                        (Vec3::from_array(data.position), data.yaw, data.pitch)
+                                    } else {
+                                        let spawn_pos =
+                                            find_safe_surface_spawn(&w.noise, target_seed.0);
+                                        if let Some(ref mut inv) = inventory {
+                                            **inv = Inventory::default();
+                                        }
+                                        (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
+                                    }
+                                } else {
+                                    let spawn_pos =
+                                        find_safe_surface_spawn(&w.noise, target_seed.0);
+                                    if let Some(ref mut inv) = inventory {
+                                        **inv = Inventory::default();
+                                    }
+                                    (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
+                                };
+
+                            if let Ok((mut transform, mut fps_cam, mut physics)) =
+                                player_query.single_mut()
+                            {
+                                transform.translation = player_pos;
+                                transform.rotation = Quat::from_rotation_y(player_yaw)
+                                    * Quat::from_rotation_x(player_pitch);
+                                fps_cam.yaw = player_yaw;
+                                fps_cam.pitch = player_pitch;
+                                physics.velocity = Vec3::ZERO;
+                            }
+
+                            let center_chunk = WorldGrid::world_to_chunk_coord(
+                                player_pos.x.floor() as i32,
+                                player_pos.z.floor() as i32,
+                            )
+                            .0;
+
+                            w.pregenerate_spawn_grid(
+                                center_chunk,
+                                &mut commands,
+                                &mut meshes,
+                                &mut materials,
+                            );
+
+                            window.title = if dev_settings.as_ref().is_some_and(|d| d.dev_mode)
+                            {
+                                format!("MineRust [DEV MODE] - Seed: {}", target_seed.0)
+                            } else {
+                                format!("MineRust - Seed: {}", target_seed.0)
+                            };
+
+                            crate::save::set_last_played_world(target_seed.0);
+                        }
+                    }
+                    menu.world_active = true;
+                    menu.screen = MenuScreen::None;
+                    cursor.grab_mode = CursorGrabMode::Locked;
+                    cursor.visible = false;
+                }
+                MenuButtonAction::NewGame | MenuButtonAction::Play => {
                     if let Some(ref mut state) = seed_state {
                         state.is_editing = false;
                         let target_seed = if state.seed_text.trim().is_empty() {
@@ -252,27 +324,18 @@ pub fn menu_button_click_system(
                         };
 
                         if let Some(ref mut w) = world {
-                            if w.seed != target_seed {
-                                w.reinitialize_with_seed(target_seed, &mut commands);
+                            w.reinitialize_with_seed(target_seed, &mut commands);
 
-                                let player_save_file = w.player_save_path();
-                                let (player_pos, player_yaw, player_pitch) =
-                                    if player_save_file.exists() {
-                                        if let Ok(data) = load_player_from_disk(&player_save_file) {
-                                            if let Some(ref mut inv) = inventory {
-                                                inv.hotbar = data.hotbar;
-                                                inv.main = data.main;
-                                                inv.selected_slot = data.selected_slot;
-                                            }
-                                            (Vec3::from_array(data.position), data.yaw, data.pitch)
-                                        } else {
-                                            let spawn_pos =
-                                                find_safe_surface_spawn(&w.noise, target_seed.0);
-                                            if let Some(ref mut inv) = inventory {
-                                                **inv = Inventory::default();
-                                            }
-                                            (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
+                            let player_save_file = w.player_save_path();
+                            let (player_pos, player_yaw, player_pitch) =
+                                if player_save_file.exists() {
+                                    if let Ok(data) = load_player_from_disk(&player_save_file) {
+                                        if let Some(ref mut inv) = inventory {
+                                            inv.hotbar = data.hotbar;
+                                            inv.main = data.main;
+                                            inv.selected_slot = data.selected_slot;
                                         }
+                                        (Vec3::from_array(data.position), data.yaw, data.pitch)
                                     } else {
                                         let spawn_pos =
                                             find_safe_surface_spawn(&w.noise, target_seed.0);
@@ -280,41 +343,51 @@ pub fn menu_button_click_system(
                                             **inv = Inventory::default();
                                         }
                                         (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
-                                    };
-
-                                if let Ok((mut transform, mut fps_cam, mut physics)) =
-                                    player_query.single_mut()
-                                {
-                                    transform.translation = player_pos;
-                                    transform.rotation = Quat::from_rotation_y(player_yaw)
-                                        * Quat::from_rotation_x(player_pitch);
-                                    fps_cam.yaw = player_yaw;
-                                    fps_cam.pitch = player_pitch;
-                                    physics.velocity = Vec3::ZERO;
-                                }
-
-                                let center_chunk = WorldGrid::world_to_chunk_coord(
-                                    player_pos.x.floor() as i32,
-                                    player_pos.z.floor() as i32,
-                                )
-                                .0;
-
-                                w.pregenerate_spawn_grid(
-                                    center_chunk,
-                                    &mut commands,
-                                    &mut meshes,
-                                    &mut materials,
-                                );
-
-                                window.title = if dev_settings.as_ref().is_some_and(|d| d.dev_mode)
-                                {
-                                    format!("MineRust [DEV MODE] - Seed: {}", target_seed.0)
+                                    }
                                 } else {
-                                    format!("MineRust - Seed: {}", target_seed.0)
+                                    let spawn_pos =
+                                        find_safe_surface_spawn(&w.noise, target_seed.0);
+                                    if let Some(ref mut inv) = inventory {
+                                        **inv = Inventory::default();
+                                    }
+                                    (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
                                 };
+
+                            if let Ok((mut transform, mut fps_cam, mut physics)) =
+                                player_query.single_mut()
+                            {
+                                transform.translation = player_pos;
+                                transform.rotation = Quat::from_rotation_y(player_yaw)
+                                    * Quat::from_rotation_x(player_pitch);
+                                fps_cam.yaw = player_yaw;
+                                fps_cam.pitch = player_pitch;
+                                physics.velocity = Vec3::ZERO;
                             }
+
+                            let center_chunk = WorldGrid::world_to_chunk_coord(
+                                player_pos.x.floor() as i32,
+                                player_pos.z.floor() as i32,
+                            )
+                            .0;
+
+                            w.pregenerate_spawn_grid(
+                                center_chunk,
+                                &mut commands,
+                                &mut meshes,
+                                &mut materials,
+                            );
+
+                            window.title = if dev_settings.as_ref().is_some_and(|d| d.dev_mode)
+                            {
+                                format!("MineRust [DEV MODE] - Seed: {}", target_seed.0)
+                            } else {
+                                format!("MineRust - Seed: {}", target_seed.0)
+                            };
+
+                            crate::save::set_last_played_world(target_seed.0);
                         }
                     }
+                    menu.world_active = true;
                     menu.screen = MenuScreen::None;
                     cursor.grab_mode = CursorGrabMode::Locked;
                     cursor.visible = false;
@@ -338,6 +411,24 @@ pub fn menu_button_click_system(
                     menu.screen = menu.previous_screen;
                 }
                 MenuButtonAction::BackToMain => {
+                    if let Some(ref mut w) = world {
+                        let _ = w.save_all_modified();
+                        if let Ok((transform, fps_cam, _)) = player_query.single() {
+                            if let Some(ref inv) = inventory {
+                                let data = crate::save::PlayerSaveData::new(
+                                    transform.translation,
+                                    fps_cam.yaw,
+                                    fps_cam.pitch,
+                                    inv.hotbar,
+                                    inv.main,
+                                    inv.selected_slot,
+                                );
+                                let _ = crate::save::save_player_to_disk(&w.player_save_path(), &data);
+                            }
+                        }
+                        w.despawn_all_chunks(&mut commands);
+                    }
+                    menu.world_active = false;
                     menu.screen = MenuScreen::Main;
                     cursor.grab_mode = CursorGrabMode::None;
                     cursor.visible = true;

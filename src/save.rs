@@ -57,6 +57,56 @@ pub fn load_player_from_disk(path: &Path) -> Result<PlayerSaveData, std::io::Err
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
+pub const LAST_WORLD_FILE: &str = "saves/last_world.txt";
+
+/// Returns the seed of the most recently played world, if any exists.
+#[must_use]
+pub fn get_latest_saved_world() -> Option<u64> {
+    // 1. Try reading the tracked last_world.txt
+    if let Ok(content) = std::fs::read_to_string(LAST_WORLD_FILE) {
+        if let Ok(seed) = content.trim().parse::<u64>() {
+            let world_path = std::path::PathBuf::from(format!("saves/world_{seed}"));
+            if world_path.exists() {
+                return Some(seed);
+            }
+        }
+    }
+
+    // 2. Scan saves/ directory for world_<seed> directories
+    let Ok(entries) = std::fs::read_dir("saves") else {
+        return None;
+    };
+
+    let mut best_world: Option<(u64, std::time::SystemTime)> = None;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
+                if let Some(seed_str) = file_name.strip_prefix("world_") {
+                    if let Ok(seed) = seed_str.parse::<u64>() {
+                        let mtime = entry
+                            .metadata()
+                            .and_then(|m| m.modified())
+                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                        if best_world.as_ref().is_none_or(|b| mtime > b.1) {
+                            best_world = Some((seed, mtime));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    best_world.map(|(seed, _)| seed)
+}
+
+/// Records the last played world seed to disk.
+pub fn set_last_played_world(seed: u64) {
+    let _ = std::fs::create_dir_all("saves");
+    let _ = std::fs::write(LAST_WORLD_FILE, seed.to_string());
+}
+
 /// Timer for periodic auto-saving during gameplay.
 #[derive(Resource)]
 pub struct AutoSaveTimer(pub Timer);
@@ -75,7 +125,13 @@ pub fn autosave_system(
     inventory: Res<Inventory>,
     player_query: Query<(&Transform, &FpsCamera)>,
 ) {
+    if world.chunks.is_empty() {
+        return;
+    }
+
     if timer.0.tick(time.delta()).just_finished() {
+        set_last_played_world(world.seed.0);
+
         // 1. Flush any modified chunks that have not been written to disk yet
         match world.save_all_dirty_chunks() {
             Ok(count) if count > 0 => {
@@ -113,7 +169,12 @@ pub fn save_on_exit_system(
     player_query: Query<(&Transform, &FpsCamera)>,
 ) {
     if !exit_reader.is_empty() {
+        if world.chunks.is_empty() {
+            return;
+        }
+
         tracing::info!("App exit detected! Flushing all world chunks and player data to disk...");
+        set_last_played_world(world.seed.0);
 
         if let Ok((transform, fps)) = player_query.single() {
             let data = PlayerSaveData::new(

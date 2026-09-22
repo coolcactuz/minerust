@@ -34,6 +34,8 @@ pub fn setup_menu_ui(
 }
 
 fn spawn_main_menu(commands: &mut Commands, is_dev: bool, initial_seed_str: &str) {
+    let maybe_saved_world = crate::save::get_latest_saved_world();
+
     commands
         .spawn((
             Node {
@@ -47,7 +49,7 @@ fn spawn_main_menu(commands: &mut Commands, is_dev: bool, initial_seed_str: &str
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.04, 0.04, 0.07, 0.85)),
+            BackgroundColor(Color::srgb(0.06, 0.07, 0.10)),
             Visibility::Inherited,
             MainMenuRoot,
         ))
@@ -57,7 +59,7 @@ fn spawn_main_menu(commands: &mut Commands, is_dev: bool, initial_seed_str: &str
                 .spawn(Node {
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    margin: UiRect::bottom(Val::Px(30.0)),
+                    margin: UiRect::bottom(Val::Px(24.0)),
                     ..default()
                 })
                 .with_children(|header| {
@@ -72,37 +74,52 @@ fn spawn_main_menu(commands: &mut Commands, is_dev: bool, initial_seed_str: &str
                     header.spawn((
                         Text::new("A High-Performance Voxel Sandbox in Rust"),
                         TextFont {
-                            font_size: FontSize::Px(16.0),
+                            font_size: FontSize::Px(15.0),
                             ..default()
                         },
                         TextColor(Color::srgb(0.7, 0.75, 0.85)),
                         Node {
-                            margin: UiRect::top(Val::Px(6.0)),
+                            margin: UiRect::top(Val::Px(4.0)),
                             ..default()
                         },
                     ));
                 });
 
-            // Seed Configuration Panel
+            // Main Menu Buttons Panel
             parent
                 .spawn(Node {
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    margin: UiRect::bottom(Val::Px(24.0)),
-                    row_gap: Val::Px(6.0),
+                    row_gap: Val::Px(10.0),
                     ..default()
                 })
-                .with_children(|seed_col| {
-                    seed_col.spawn((
-                        Text::new("WORLD GENERATION SEED"),
-                        TextFont {
-                            font_size: FontSize::Px(12.0),
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.4, 0.75, 1.0)),
-                    ));
+                .with_children(|btn_col| {
+                    if let Some(saved_seed) = maybe_saved_world {
+                        // 1. Continue Previous Game Button
+                        spawn_menu_button(
+                            btn_col,
+                            &format!("Continue Game (Seed: {saved_seed})"),
+                            MenuButtonAction::ContinueGame,
+                            true,
+                        );
 
-                    seed_col
+                        // Separator Divider
+                        btn_col.spawn((
+                            Text::new("── OR START A NEW WORLD ──"),
+                            TextFont {
+                                font_size: FontSize::Px(11.0),
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.45, 0.55, 0.70)),
+                            Node {
+                                margin: UiRect::axes(Val::Px(0.0), Val::Px(2.0)),
+                                ..default()
+                            },
+                        ));
+                    }
+
+                    // Seed Configuration Panel
+                    btn_col
                         .spawn(Node {
                             flex_direction: FlexDirection::Row,
                             align_items: AlignItems::Center,
@@ -114,8 +131,8 @@ fn spawn_main_menu(commands: &mut Commands, is_dev: bool, initial_seed_str: &str
                                 .spawn((
                                     Button,
                                     Node {
-                                        width: Val::Px(200.0),
-                                        height: Val::Px(38.0),
+                                        width: Val::Px(180.0),
+                                        height: Val::Px(36.0),
                                         justify_content: JustifyContent::Center,
                                         align_items: AlignItems::Center,
                                         border: UiRect::all(Val::Px(1.5)),
@@ -136,7 +153,7 @@ fn spawn_main_menu(commands: &mut Commands, is_dev: bool, initial_seed_str: &str
                                             format!("Seed: {}", initial_seed_str)
                                         }),
                                         TextFont {
-                                            font_size: FontSize::Px(13.0),
+                                            font_size: FontSize::Px(12.5),
                                             ..default()
                                         },
                                         TextColor(Color::srgb(0.9, 0.95, 1.0)),
@@ -148,11 +165,11 @@ fn spawn_main_menu(commands: &mut Commands, is_dev: bool, initial_seed_str: &str
                                 .spawn((
                                     Button,
                                     Node {
-                                        width: Val::Px(110.0),
-                                        height: Val::Px(38.0),
+                                        width: Val::Px(105.0),
+                                        height: Val::Px(36.0),
                                         justify_content: JustifyContent::Center,
                                         align_items: AlignItems::Center,
-                                        border: UiRect::all(Val::Px(2.0)),
+                                        border: UiRect::all(Val::Px(1.5)),
                                         border_radius: BorderRadius::all(Val::Px(6.0)),
                                         ..default()
                                     },
@@ -164,25 +181,28 @@ fn spawn_main_menu(commands: &mut Commands, is_dev: bool, initial_seed_str: &str
                                     rand_parent.spawn((
                                         Text::new("Random Seed"),
                                         TextFont {
-                                            font_size: FontSize::Px(13.5),
+                                            font_size: FontSize::Px(12.5),
                                             ..default()
                                         },
                                         TextColor(Color::srgb(0.9, 0.95, 1.0)),
                                     ));
                                 });
                         });
-                });
 
-            // Main Menu Buttons Panel
-            parent
-                .spawn(Node {
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    row_gap: Val::Px(14.0),
-                    ..default()
-                })
-                .with_children(|btn_col| {
-                    spawn_menu_button(btn_col, "Play Game", MenuButtonAction::Play, true);
+                    // 2. New Game Button
+                    let is_primary_new = maybe_saved_world.is_none();
+                    spawn_menu_button(
+                        btn_col,
+                        if is_primary_new {
+                            "Create World & Play"
+                        } else {
+                            "Create New World"
+                        },
+                        MenuButtonAction::NewGame,
+                        is_primary_new,
+                    );
+
+                    // 3. Settings & Exit Buttons
                     spawn_menu_button(
                         btn_col,
                         "Graphics Settings",

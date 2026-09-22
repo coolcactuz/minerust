@@ -173,6 +173,7 @@ pub fn update_chunk_mesh(
 pub struct WorldSettingsParams<'w> {
     pub graphics: Option<Res<'w, GraphicsSettings>>,
     pub dev: Option<Res<'w, crate::menu::DevSettings>>,
+    pub menu: Option<Res<'w, crate::menu::MenuState>>,
 }
 
 #[derive(SystemParam)]
@@ -190,16 +191,21 @@ pub struct WorldMeshAssets<'w> {
 /// Continuous chunk streaming system based on player camera position with multithreaded generation
 pub fn world_streaming_system(
     mut commands: Commands,
-    mut camera_query: Query<
-        (&Transform, &mut Projection, Option<&mut DistanceFog>),
-        With<FpsCamera>,
-    >,
+    mut camera_query: Query<(&Transform, &mut Projection), With<FpsCamera>>,
     mut world: ResMut<WorldGrid>,
     mut assets: WorldMeshAssets,
     settings: WorldSettingsParams,
     pools: WorldWorkerPools,
 ) {
-    let Ok((cam_transform, mut projection, mut fog)) = camera_query.single_mut() else {
+    if settings
+        .menu
+        .as_ref()
+        .is_some_and(|m| m.screen == crate::menu::MenuScreen::Main || !m.world_active)
+    {
+        return;
+    }
+
+    let Ok((cam_transform, mut projection)) = camera_query.single_mut() else {
         return;
     };
 
@@ -221,12 +227,6 @@ pub fn world_streaming_system(
     if settings_changed {
         if let Projection::Perspective(ref mut persp) = *projection {
             persp.far = ((view_dist + 4) * 16) as f32 * 1.5;
-        }
-        if let Some(ref mut fog) = fog {
-            fog.falloff = FogFalloff::Linear {
-                start: (view_dist * 16) as f32 * 0.70,
-                end: (view_dist * 16) as f32 * 0.95,
-            };
         }
     }
 

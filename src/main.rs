@@ -7,16 +7,14 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use minerust::camera::{CameraPlugin, FpsCamera};
 use minerust::fluid::FluidPlugin;
 use minerust::interaction::InteractionPlugin;
-use minerust::inventory::{Inventory, InventoryPlugin};
-use minerust::menu::{DevSettings, MenuPlugin, SeedInputState};
+use minerust::inventory::InventoryPlugin;
+use minerust::menu::{DevSettings, GraphicsSettings, MenuPlugin, SeedInputState};
 use minerust::physics::{PhysicsPlugin, PlayerPhysics};
 use minerust::profile::ProfilePlugin;
-use minerust::save::{SavePlugin, load_player_from_disk};
+use minerust::save::SavePlugin;
 use minerust::stage::VoxelStage;
 use minerust::texture;
-use minerust::world::{
-    WorldGrid, WorldPlugin, WorldSeed, calculate_biome_and_height, find_safe_surface_spawn,
-};
+use minerust::world::{WorldGrid, WorldPlugin, WorldSeed};
 
 fn main() {
     // 1. Parse World Seed and Dev flags from command line
@@ -67,6 +65,18 @@ fn main() {
         ..default()
     };
 
+    let graphics_settings = GraphicsSettings::load_or_default();
+    let present_mode = if graphics_settings.vsync {
+        bevy::window::PresentMode::AutoVsync
+    } else {
+        bevy::window::PresentMode::AutoNoVsync
+    };
+    let mode = if graphics_settings.fullscreen {
+        bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
+    } else {
+        bevy::window::WindowMode::Windowed
+    };
+
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -80,15 +90,17 @@ fn main() {
                             format!("MineRust - Seed: {}", seed.0)
                         },
                         resolution: WindowResolution::new(1280, 720),
-                        present_mode: bevy::window::PresentMode::AutoVsync,
+                        present_mode,
+                        mode,
                         ..default()
                     }),
                     ..default()
                 })
                 .disable::<bevy::audio::AudioPlugin>(),
         )
-        .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
+        .insert_resource(ClearColor(Color::srgb(0.06, 0.07, 0.10))) // Clean dark background
         .insert_resource(WorldGrid::new(seed))
+        .insert_resource(graphics_settings)
         .insert_resource(dev_settings)
         .insert_resource(seed_state)
         .configure_sets(
@@ -120,11 +132,9 @@ fn main() {
 fn setup(
     mut commands: Commands,
     mut world: ResMut<WorldGrid>,
-    mut inventory: ResMut<Inventory>,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
-    dev_settings: Option<Res<DevSettings>>,
+    graphics_settings: Res<GraphicsSettings>,
 ) {
     // 0. 128x128 pixel-art Texture Atlas and shared PBR material with Alpha Mask for transparency (Glass)
     let atlas_image = texture::create_texture_atlas();
@@ -140,57 +150,10 @@ fn setup(
     });
     world.block_material = Some(block_mat);
 
-    let seed = world.seed.0;
-    let noise = world.noise.clone();
+    // 1. Spawn FPS camera with integrated AmbientLight, PlayerPhysics component, and DistanceFog (if enabled in settings)
+    let fps_camera = FpsCamera::default();
 
-    // 1. Check for persisted player state (position, camera orientation, and inventory)
-    let player_save_file = world.player_save_path();
-    let maybe_player_data = if player_save_file.exists() {
-        match load_player_from_disk(&player_save_file) {
-            Ok(data) => {
-                info!(
-                    "Loaded saved player data from {}",
-                    player_save_file.display()
-                );
-                Some(data)
-            }
-            Err(e) => {
-                warn!("Failed to load player save file: {e}");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    let default_fps = FpsCamera::default();
-    let (player_pos, player_yaw, player_pitch) = if let Some(ref data) = maybe_player_data {
-        inventory.hotbar = data.hotbar;
-        inventory.main = data.main;
-        inventory.selected_slot = data.selected_slot;
-        (Vec3::from_array(data.position), data.yaw, data.pitch)
-    } else {
-        let spawn_pos = find_safe_surface_spawn(&noise, seed);
-        (spawn_pos, default_fps.yaw, default_fps.pitch)
-    };
-
-    let center_chunk =
-        WorldGrid::world_to_chunk_coord(player_pos.x.floor() as i32, player_pos.z.floor() as i32).0;
-
-    // 2. Pre-generate initial 9x9 chunk grid around center_chunk in parallel across all CPU cores,
-    // checking disk first to restore player modifications.
-    world.pregenerate_spawn_grid(center_chunk, &mut commands, &mut meshes, &mut materials);
-
-    // 3. Spawn FPS camera with integrated AmbientLight, DistanceFog, and PlayerPhysics component
-    let fps_camera = FpsCamera {
-        yaw: player_yaw,
-        pitch: player_pitch,
-        ..default()
-    };
-
-    let rot = Quat::from_rotation_y(player_yaw) * Quat::from_rotation_x(player_pitch);
-
-    commands.spawn((
+    let mut cam_builder = commands.spawn((
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
             far: 2500.0,
@@ -201,24 +164,29 @@ fn setup(
             brightness: 320.0,
             ..default()
         },
-        DistanceFog {
-            color: Color::srgb(0.70, 0.82, 0.95),
-            falloff: FogFalloff::Linear {
-                start: 180.0,
-                end: 255.0,
-            },
-            ..default()
-        },
         Transform {
-            translation: player_pos,
-            rotation: rot,
+            translation: Vec3::new(0.0, 100.0, 0.0),
+            rotation: Quat::from_rotation_y(fps_camera.yaw)
+                * Quat::from_rotation_x(fps_camera.pitch),
             ..default()
         },
         fps_camera,
         PlayerPhysics::default(),
     ));
 
-    // 4. Sun light (Directional Light) with optimized shadow distance
+    if graphics_settings.distance_fog {
+        let max_dist = (graphics_settings.view_distance as f32 * 16.0).max(64.0);
+        cam_builder.insert(DistanceFog {
+            color: Color::srgb(0.70, 0.82, 0.95),
+            falloff: FogFalloff::Linear {
+                start: (max_dist * 0.70).max(48.0),
+                end: (max_dist - 2.0).max(64.0),
+            },
+            ..default()
+        });
+    }
+
+    // 2. Sun light (Directional Light) with optimized shadow distance
     commands.spawn((
         DirectionalLight {
             illuminance: 14_000.0,
@@ -234,34 +202,4 @@ fn setup(
         .build(),
         Transform::from_xyz(200.0, 450.0, 150.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
-
-    let (current_biome, _, _) =
-        calculate_biome_and_height(player_pos.x as f64, player_pos.z as f64, &noise);
-    let is_dev = dev_settings.as_ref().is_some_and(|d| d.dev_mode);
-
-    println!("\n=======================================================");
-    println!("MINERUST: FULL VOXEL ENGINE ACTIVE");
-    println!("=======================================================");
-    println!("* WORLD SEED: {seed}");
-    println!("* CURRENT BIOME: {current_biome:?}");
-    if is_dev {
-        println!("* DEV MODE: ENABLED (Dev & Benchmark Menu + F3 Debug HUD active)");
-    } else {
-        println!("* DEV MODE: DISABLED (Production Mode: All optimizations locked ON)");
-    }
-    println!("* CONTROLS:");
-    println!("  - WASD: Horizontal movement with inertia and friction");
-    println!("  - Mouse: Free-look FPS (Left-click to lock / ESC to unlock)");
-    println!("  - SPACE: Jump (or swim upward in water)");
-    println!("  - SHIFT: Sneak (crouch, edge protection prevents falling) / Dive in water");
-    println!("  - CTRL: Sprint");
-    println!("  - KEY 'F': Toggle Flight Mode (No-Clip / Creative)");
-    println!("  - Left Click: Break targeted block");
-    println!("  - Right Click: Place selected block (with anti-self-collision protection)");
-    println!("  - Keys 1-9 or Mouse Wheel: Select quick slot in Hotbar");
-    println!("  - Key 'E': Open / Close Full Inventory");
-    if is_dev {
-        println!("  - Key 'F3': Toggle Dev & Benchmark HUD");
-    }
-    println!("=======================================================\n");
 }

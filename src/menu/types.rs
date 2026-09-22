@@ -13,6 +13,7 @@ pub enum MenuScreen {
 pub struct MenuState {
     pub screen: MenuScreen,
     pub previous_screen: MenuScreen,
+    pub world_active: bool,
 }
 
 impl Default for MenuState {
@@ -20,6 +21,7 @@ impl Default for MenuState {
         Self {
             screen: MenuScreen::Main, // Start in Main Menu!
             previous_screen: MenuScreen::Main,
+            world_active: false,
         }
     }
 }
@@ -68,7 +70,7 @@ impl Default for DevSettings {
     }
 }
 
-#[derive(Resource, Clone, Debug)]
+#[derive(Resource, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GraphicsSettings {
     pub vsync: bool,
     pub fullscreen: bool,
@@ -93,6 +95,27 @@ impl Default for GraphicsSettings {
             greedy_threshold: 2,
             distance_lod: true,
             lod_threshold: 8,
+        }
+    }
+}
+
+impl GraphicsSettings {
+    pub const SAVE_PATH: &'static str = "saves/settings.json";
+
+    #[must_use]
+    pub fn load_or_default() -> Self {
+        if let Ok(bytes) = std::fs::read(Self::SAVE_PATH) {
+            if let Ok(settings) = serde_json::from_slice::<Self>(&bytes) {
+                return settings;
+            }
+        }
+        Self::default()
+    }
+
+    pub fn save_to_disk(&self) {
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            let _ = std::fs::create_dir_all("saves");
+            let _ = std::fs::write(Self::SAVE_PATH, json);
         }
     }
 }
@@ -375,6 +398,8 @@ pub struct SeedInputState {
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MenuButtonAction {
     Play,
+    ContinueGame,
+    NewGame,
     ResumeGame,
     OpenSettings,
     OpenDevSettings,

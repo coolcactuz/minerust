@@ -123,11 +123,17 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
                 impact: "- All graphical and benchmark adjustments apply immediately in real-time.",
             })
         }
-        MenuButtonAction::Play => Some(OptionDescription {
-            header: "GAMEPLAY",
-            title: "Play Game",
-            description: "Generate or load the voxel world and enter gameplay.",
-            impact: "- Uses the current world seed and graphics settings.",
+        MenuButtonAction::Play | MenuButtonAction::NewGame => Some(OptionDescription {
+            header: "WORLD GENERATION",
+            title: "Start New World",
+            description: "Generate and enter a brand new voxel world using the specified or randomized seed.",
+            impact: "- Spawns on safe dry land with clean procedural terrain.",
+        }),
+        MenuButtonAction::ContinueGame => Some(OptionDescription {
+            header: "SAVE GAME",
+            title: "Continue Saved World",
+            description: "Resume your journey in the most recently played procedural world with your saved position and inventory.",
+            impact: "- Instantly restores terrain modifications and player state from disk.",
         }),
         MenuButtonAction::ResumeGame => Some(OptionDescription {
             header: "GAMEPLAY",
