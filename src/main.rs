@@ -98,7 +98,7 @@ fn main() {
                 })
                 .disable::<bevy::audio::AudioPlugin>(),
         )
-        .insert_resource(ClearColor(Color::srgb(0.06, 0.07, 0.10))) // Clean dark background
+        .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .insert_resource(graphics_settings)
         .insert_resource(dev_settings)
@@ -177,7 +177,7 @@ fn setup(
     if graphics_settings.distance_fog {
         let max_dist = (graphics_settings.view_distance as f32 * 16.0).max(64.0);
         cam_builder.insert(DistanceFog {
-            color: Color::srgb(0.70, 0.82, 0.95),
+            color: Color::srgb(0.53, 0.81, 0.98),
             falloff: FogFalloff::Linear {
                 start: (max_dist * 0.70).max(48.0),
                 end: (max_dist - 2.0).max(64.0),

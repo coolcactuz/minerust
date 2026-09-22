@@ -234,14 +234,14 @@ pub fn update_dev_settings_system(
         for (cam_entity, mut maybe_fog) in &mut camera_query {
             if distance_fog {
                 if let Some(ref mut fog) = maybe_fog {
-                    fog.color = Color::srgb(0.70, 0.82, 0.95);
+                    fog.color = Color::srgb(0.53, 0.81, 0.98);
                     fog.falloff = bevy::pbr::FogFalloff::Linear {
                         start: fog_start,
                         end: fog_end,
                     };
                 } else {
                     commands.entity(cam_entity).insert(bevy::pbr::DistanceFog {
-                        color: Color::srgb(0.70, 0.82, 0.95),
+                        color: Color::srgb(0.53, 0.81, 0.98),
                         falloff: bevy::pbr::FogFalloff::Linear {
                             start: fog_start,
                             end: fog_end,
