@@ -2,13 +2,13 @@ use bevy::prelude::*;
 
 use super::descriptions::get_option_description;
 use super::types::{
-    AsyncMeshingBtnText, BackfaceCullingBtnText, DebugHudBtnText, DevSettings,
-    DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsLimiter,
-    FullscreenBtnText, GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb,
-    GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, GreedyMeshingBtnText,
-    MaxYSkipBtnText, MenuButtonAction, MeshBudgetBtnText, OptionTooltipCard, OptionTooltipDesc,
-    OptionTooltipHeader, OptionTooltipImpact, OptionTooltipTitle, PregenMarginBtnText,
-    ShadowsBtnText, ViewDistanceBtnText, ViewDistanceFill, ViewDistanceThumb, VsyncBtnText,
+    AsyncMeshingBtnText, BackfaceCullingBtnText, DebugHudBtnText, DevSettings, DistanceFogBtnText,
+    DistanceLodBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsLimiter, FullscreenBtnText,
+    GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsLodBtnText,
+    GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, GreedyMeshingBtnText, MaxYSkipBtnText,
+    MenuButtonAction, MeshBudgetBtnText, OptionTooltipCard, OptionTooltipDesc, OptionTooltipHeader,
+    OptionTooltipImpact, OptionTooltipTitle, PregenMarginBtnText, ShadowsBtnText,
+    ViewDistanceBtnText, ViewDistanceFill, ViewDistanceThumb, VsyncBtnText,
 };
 
 pub fn update_settings_button_text_system(
@@ -31,11 +31,7 @@ pub fn update_settings_button_text_system(
         if vsync.is_some() {
             *text = Text::new(format!(
                 "VSync: {}",
-                if settings.vsync {
-                    "ON (Smooth)"
-                } else {
-                    "OFF (Uncapped)"
-                }
+                if settings.vsync { "ON" } else { "OFF" }
             ));
         } else if fs.is_some() {
             *text = Text::new(format!(
@@ -43,17 +39,13 @@ pub fn update_settings_button_text_system(
                 if settings.fullscreen {
                     "Fullscreen"
                 } else {
-                    "Windowed (1280x720)"
+                    "Windowed"
                 }
             ));
         } else if fog.is_some() {
             *text = Text::new(format!(
                 "Distance Fog: {}",
-                if settings.distance_fog {
-                    "ON (Blended Horizon)"
-                } else {
-                    "OFF (Harsh Edge)"
-                }
+                if settings.distance_fog { "ON" } else { "OFF" }
             ));
         } else if fps.is_some() {
             *text = Text::new(settings.fps_cap_label());
@@ -92,65 +84,37 @@ pub fn update_dev_button_text_system(
         if cull.is_some() {
             *text = Text::new(format!(
                 "Backface Culling: {}",
-                if dev.backface_culling {
-                    "ON (GPU -50%)"
-                } else {
-                    "OFF (Draw front & back)"
-                }
+                if dev.backface_culling { "ON" } else { "OFF" }
             ));
         } else if shadow.is_some() {
             *text = Text::new(format!(
                 "Dynamic Shadows: {}",
-                if dev.shadows_enabled {
-                    "ON (120m Cascades)"
-                } else {
-                    "OFF (Zero shadow passes)"
-                }
+                if dev.shadows_enabled { "ON" } else { "OFF" }
             ));
         } else if max_y.is_some() {
             *text = Text::new(format!(
                 "Mesher max_y Skip: {}",
-                if dev.max_y_skip {
-                    "ON (2x faster meshing)"
-                } else {
-                    "OFF (Loop all 384 layers)"
-                }
+                if dev.max_y_skip { "ON" } else { "OFF" }
             ));
         } else if budget.is_some() {
             *text = Text::new(format!(
                 "Mesh Budget: {}",
-                if dev.mesh_budget {
-                    "ON (6/frame smooth)"
-                } else {
-                    "OFF (Spike benchmark)"
-                }
+                if dev.mesh_budget { "ON" } else { "OFF" }
             ));
         } else if async_m.is_some() {
             *text = Text::new(format!(
                 "Async Meshing: {}",
-                if dev.async_meshing {
-                    "ON (0ms main thread)"
-                } else {
-                    "OFF (Sync frame spikes)"
-                }
+                if dev.async_meshing { "ON" } else { "OFF" }
             ));
         } else if greedy.is_some() {
             *text = Text::new(format!(
                 "Greedy Meshing: {}",
-                if dev.greedy_meshing {
-                    "ON (-75% verts)"
-                } else {
-                    "OFF (1x1 block quads)"
-                }
+                if dev.greedy_meshing { "ON" } else { "OFF" }
             ));
         } else if lod.is_some() {
             *text = Text::new(format!(
                 "Distance LOD: {}",
-                if dev.distance_lod {
-                    "ON (Dynamic detail)"
-                } else {
-                    "OFF (Uniform meshing)"
-                }
+                if dev.distance_lod { "ON" } else { "OFF" }
             ));
         } else if margin.is_some() {
             *text = Text::new(if dev.pregen_margin == 0 {
@@ -165,11 +129,7 @@ pub fn update_dev_button_text_system(
         } else if hud.is_some() {
             *text = Text::new(format!(
                 "Dev HUD (F3): {}",
-                if dev.show_debug_hud {
-                    "ON (Visible)"
-                } else {
-                    "OFF (Hidden)"
-                }
+                if dev.show_debug_hud { "ON" } else { "OFF" }
             ));
         }
     }
@@ -182,26 +142,45 @@ pub fn update_dev_settings_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut world: ResMut<crate::world::WorldGrid>,
     mut dir_lights: Query<&mut DirectionalLight>,
-    mut camera_query: Query<(Entity, Option<&mut bevy::pbr::DistanceFog>), With<crate::camera::FpsCamera>>,
+    mut camera_query: Query<
+        (Entity, Option<&mut bevy::pbr::DistanceFog>),
+        With<crate::camera::FpsCamera>,
+    >,
     mut last_config: Local<Option<(bool, i32, bool, i32, bool, i32)>>,
 ) {
-    let (greedy_meshing, greedy_threshold, distance_lod, lod_threshold, distance_fog, view_distance) =
-        graphics_settings.as_ref().map_or_else(
-            || {
-                dev_settings.as_ref().map_or(
-                    (true, 2, true, 8, true, 16),
-                    |d| (d.greedy_meshing, 2, d.distance_lod, d.lod_threshold, d.distance_fog, 16),
-                )
-            },
-            |g| (
+    let (
+        greedy_meshing,
+        greedy_threshold,
+        distance_lod,
+        lod_threshold,
+        distance_fog,
+        view_distance,
+    ) = graphics_settings.as_ref().map_or_else(
+        || {
+            dev_settings
+                .as_ref()
+                .map_or((true, 2, true, 8, true, 16), |d| {
+                    (
+                        d.greedy_meshing,
+                        2,
+                        d.distance_lod,
+                        d.lod_threshold,
+                        d.distance_fog,
+                        16,
+                    )
+                })
+        },
+        |g| {
+            (
                 g.greedy_meshing,
                 g.greedy_threshold,
                 g.distance_lod,
                 g.lod_threshold,
                 g.distance_fog,
                 g.view_distance,
-            ),
-        );
+            )
+        },
+    );
     let current_config = (
         greedy_meshing,
         greedy_threshold,
@@ -226,7 +205,9 @@ pub fn update_dev_settings_system(
     }
 
     // 2. If fog or view_distance changed, update Distance Fog in real-time
-    if last_config.map_or(true, |last| last.4 != current_config.4 || last.5 != current_config.5) {
+    if last_config.map_or(true, |last| {
+        last.4 != current_config.4 || last.5 != current_config.5
+    }) {
         let max_dist = (view_distance as f32 * 16.0).max(64.0);
         let fog_start = (max_dist * 0.70).max(48.0);
         let fog_end = (max_dist - 2.0).max(64.0);
@@ -250,7 +231,9 @@ pub fn update_dev_settings_system(
                     });
                 }
             } else if maybe_fog.is_some() {
-                commands.entity(cam_entity).remove::<bevy::pbr::DistanceFog>();
+                commands
+                    .entity(cam_entity)
+                    .remove::<bevy::pbr::DistanceFog>();
             }
         }
     }
@@ -428,4 +411,3 @@ pub fn auto_save_graphics_settings_system(settings: Res<GraphicsSettings>) {
         settings.save_to_disk();
     }
 }
-
