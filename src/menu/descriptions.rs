@@ -16,16 +16,22 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             description: "Switches between Borderless Fullscreen (native monitor resolution) and Windowed mode (1280x720).",
             impact: "- Fullscreen: Immersive edge-to-edge display.\n- Windowed: Convenient multitasking and window positioning.",
         }),
-        MenuButtonAction::CycleFpsCap => Some(OptionDescription {
+        MenuButtonAction::CycleFpsCap
+        | MenuButtonAction::StepFpsCapLeft
+        | MenuButtonAction::StepFpsCapRight
+        | MenuButtonAction::SlideFpsCap => Some(OptionDescription {
             header: "PERFORMANCE & THERMALS",
             title: "Frame Rate Limiter",
-            description: "Limits maximum frames rendered per second (Uncapped, 60, 120, 144 FPS) using microsecond sleep pacing.",
+            description: "Limits maximum frames rendered per second (30 to 240 FPS, or Uncapped) using microsecond sleep pacing.",
             impact: "- Capping FPS significantly lowers GPU temperature, power consumption, and fan noise.",
         }),
-        MenuButtonAction::CycleViewDistance => Some(OptionDescription {
+        MenuButtonAction::CycleViewDistance
+        | MenuButtonAction::StepViewDistanceLeft
+        | MenuButtonAction::StepViewDistanceRight
+        | MenuButtonAction::SlideViewDistance => Some(OptionDescription {
             header: "WORLD GENERATION & RENDER RADIUS",
             title: "Render Distance",
-            description: "Sets the horizontal radius of chunks loaded and rendered around the player (8 to 64 chunks = 128m to 1024m).",
+            description: "Sets the horizontal radius of chunks loaded and rendered around the player (4 to 64 chunks = 64m to 1024m).",
             impact: "- 16 Chunks (256m): Recommended balance of horizon view and performance.\n- 32-64 Chunks: Sweeping vistas; higher RAM/VRAM load.",
         }),
         MenuButtonAction::ToggleBackfaceCulling => Some(OptionDescription {

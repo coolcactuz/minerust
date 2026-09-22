@@ -3,12 +3,13 @@ use bevy::text::FontSize;
 
 use super::types::{
     AsyncMeshingBtnText, BackfaceCullingBtnText, DebugHudBtnText, DevSettings, DevSettingsMenuRoot,
-    DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FullscreenBtnText, GraphicsGreedyBtnText,
-    GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsGreedyTrack, GraphicsLodBtnText,
-    GraphicsLodFill, GraphicsLodThumb, GraphicsLodTrack, GraphicsSettings, GreedyMeshingBtnText,
-    LodThresholdBtnText, MainMenuRoot, MaxYSkipBtnText, MenuButtonAction, MeshBudgetBtnText,
-    PauseMenuRoot, PregenMarginBtnText, SeedInputBox, SeedInputState, SeedInputText,
-    SettingsMenuRoot, ShadowsBtnText, ViewDistanceBtnText, VsyncBtnText,
+    DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsCapTrack,
+    FullscreenBtnText, GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb,
+    GraphicsGreedyTrack, GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsLodTrack,
+    GraphicsSettings, GreedyMeshingBtnText, MainMenuRoot, MaxYSkipBtnText, MenuButtonAction,
+    MeshBudgetBtnText, PauseMenuRoot, PregenMarginBtnText, SeedInputBox, SeedInputState,
+    SeedInputText, SettingsMenuRoot, ShadowsBtnText, ViewDistanceBtnText, ViewDistanceFill,
+    ViewDistanceThumb, ViewDistanceTrack, VsyncBtnText,
 };
 use super::widgets::{
     spawn_menu_button, spawn_menu_button_sized, spawn_option_tooltip_card, spawn_settings_button,
@@ -267,6 +268,14 @@ fn spawn_pause_menu(commands: &mut Commands, is_dev: bool) {
 }
 
 fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&GraphicsSettings>) {
+    let (fps_label, fps_ratio) = graphics_settings.map_or_else(
+        || ("FPS Limit: Uncapped (Max FPS)".to_string(), 1.0),
+        |g| (g.fps_cap_label(), g.fps_cap_ratio()),
+    );
+    let (dist_label, dist_ratio) = graphics_settings.map_or_else(
+        || ("Render Distance: 16 Chunks (256m)".to_string(), 6.0 / 15.0),
+        |g| (g.view_distance_label(), g.view_distance_ratio()),
+    );
     let (greedy_label, greedy_ratio) = graphics_settings.map_or_else(
         || ("Greedy Distance: > 2 Chunks (32m)".to_string(), 0.2),
         |g| (g.greedy_label(), g.greedy_ratio()),
@@ -274,6 +283,16 @@ fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&Graph
     let (lod_label, lod_ratio) = graphics_settings.map_or_else(
         || ("Distant Sloped LOD: > 8 Chunks (128m)".to_string(), 7.0 / 15.0),
         |g| (g.lod_label(), g.lod_ratio()),
+    );
+    let fog_label = graphics_settings.map_or_else(
+        || "Distance Fog: ON (Blended)".to_string(),
+        |g| {
+            if g.distance_fog {
+                "Distance Fog: ON (Blended)".to_string()
+            } else {
+                "Distance Fog: OFF (Harsh Edge)".to_string()
+            }
+        },
     );
 
     commands
@@ -298,24 +317,24 @@ fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&Graph
                 .spawn(Node {
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    margin: UiRect::bottom(Val::Px(24.0)),
+                    margin: UiRect::bottom(Val::Px(16.0)),
                     ..default()
                 })
                 .with_children(|header| {
                     header.spawn((
                         Text::new("GRAPHICS SETTINGS"),
                         TextFont {
-                            font_size: FontSize::Px(34.0),
+                            font_size: FontSize::Px(32.0),
                             ..default()
                         },
                         TextColor(Color::srgb(1.0, 0.85, 0.2)),
                     ));
                     header.spawn((
                         Text::new(
-                            "Configure display preferences, frame rate limits, and visual distance",
+                            "Configure display preferences, frame rate limits, fog, and visual detail",
                         ),
                         TextFont {
-                            font_size: FontSize::Px(14.0),
+                            font_size: FontSize::Px(13.5),
                             ..default()
                         },
                         TextColor(Color::srgb(0.7, 0.75, 0.85)),
@@ -330,15 +349,15 @@ fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&Graph
                 .spawn(Node {
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::FlexStart,
-                    column_gap: Val::Px(28.0),
+                    column_gap: Val::Px(24.0),
                     ..default()
                 })
                 .with_children(|row| {
-                    // Buttons Column
+                    // Controls Column
                     row.spawn(Node {
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
-                        row_gap: Val::Px(8.0),
+                        row_gap: Val::Px(6.0),
                         ..default()
                     })
                     .with_children(|btn_col| {
@@ -349,8 +368,8 @@ fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&Graph
                             MenuButtonAction::ToggleVsync,
                             VsyncBtnText,
                             320.0,
-                            42.0,
-                            14.0,
+                            36.0,
+                            13.5,
                         );
 
                         // Fullscreen Button
@@ -360,30 +379,53 @@ fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&Graph
                             MenuButtonAction::ToggleFullscreen,
                             FullscreenBtnText,
                             320.0,
-                            42.0,
-                            14.0,
+                            36.0,
+                            13.5,
                         );
 
-                        // FPS Cap Button
+                        // Distance Fog Button (Moved from Dev Settings)
                         spawn_settings_button(
                             btn_col,
-                            "FPS Limit: Uncapped",
-                            MenuButtonAction::CycleFpsCap,
+                            &fog_label,
+                            MenuButtonAction::ToggleDistanceFog,
+                            DistanceFogBtnText,
+                            320.0,
+                            36.0,
+                            13.5,
+                        );
+
+                        // FPS Cap Slider
+                        spawn_slider_setting(
+                            btn_col,
                             FpsCapBtnText,
+                            FpsCapTrack,
+                            FpsCapFill,
+                            FpsCapThumb,
+                            MenuButtonAction::StepFpsCapLeft,
+                            MenuButtonAction::StepFpsCapRight,
+                            MenuButtonAction::SlideFpsCap,
+                            MenuButtonAction::CycleFpsCap,
+                            &fps_label,
+                            fps_ratio,
                             320.0,
-                            42.0,
-                            14.0,
+                            46.0,
                         );
 
-                        // Render Distance Button
-                        spawn_settings_button(
+                        // Render Distance Slider
+                        spawn_slider_setting(
                             btn_col,
-                            "Render Distance: 16 Chunks",
-                            MenuButtonAction::CycleViewDistance,
                             ViewDistanceBtnText,
+                            ViewDistanceTrack,
+                            ViewDistanceFill,
+                            ViewDistanceThumb,
+                            MenuButtonAction::StepViewDistanceLeft,
+                            MenuButtonAction::StepViewDistanceRight,
+                            MenuButtonAction::SlideViewDistance,
+                            MenuButtonAction::CycleViewDistance,
+                            &dist_label,
+                            dist_ratio,
                             320.0,
-                            42.0,
-                            14.0,
+                            46.0,
                         );
 
                         // Greedy Meshing Distance Slider
@@ -400,7 +442,7 @@ fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&Graph
                             &greedy_label,
                             greedy_ratio,
                             320.0,
-                            48.0,
+                            46.0,
                         );
 
                         // Distant Sloped LOD Slider
@@ -417,7 +459,7 @@ fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&Graph
                             &lod_label,
                             lod_ratio,
                             320.0,
-                            48.0,
+                            46.0,
                         );
 
                         // Back Button
@@ -427,13 +469,13 @@ fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&Graph
                             MenuButtonAction::BackFromSettings,
                             true,
                             320.0,
-                            42.0,
-                            15.0,
+                            38.0,
+                            14.5,
                         );
                     });
 
                     // Right Info Popup Card
-                    spawn_option_tooltip_card(row, 380.0, 354.0);
+                    spawn_option_tooltip_card(row, 380.0, 380.0);
                 });
         });
 }
@@ -497,7 +539,7 @@ fn spawn_dev_settings_menu(commands: &mut Commands) {
                     ..default()
                 })
                 .with_children(|row| {
-                    // Column 1 (6 buttons)
+                    // Column 1 (5 buttons - Distance Fog moved to Graphics Settings)
                     row.spawn(Node {
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
@@ -534,15 +576,6 @@ fn spawn_dev_settings_menu(commands: &mut Commands) {
                         );
                         spawn_settings_button(
                             col1,
-                            "Distance Fog: ON",
-                            MenuButtonAction::ToggleDistanceFog,
-                            DistanceFogBtnText,
-                            280.0,
-                            44.0,
-                            13.5,
-                        );
-                        spawn_settings_button(
-                            col1,
                             "Mesh Budget: ON (6/frame)",
                             MenuButtonAction::ToggleMeshBudget,
                             MeshBudgetBtnText,
@@ -561,7 +594,7 @@ fn spawn_dev_settings_menu(commands: &mut Commands) {
                         );
                     });
 
-                    // Column 2 (6 buttons)
+                    // Column 2 (5 buttons - LOD Distance moved to Graphics Settings)
                     row.spawn(Node {
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
@@ -583,15 +616,6 @@ fn spawn_dev_settings_menu(commands: &mut Commands) {
                             "Distance LOD: ON (Dynamic detail)",
                             MenuButtonAction::ToggleDistanceLod,
                             DistanceLodBtnText,
-                            280.0,
-                            44.0,
-                            13.5,
-                        );
-                        spawn_settings_button(
-                            col2,
-                            "LOD Distance: 4 Chunks (64m)",
-                            MenuButtonAction::CycleLodThreshold,
-                            LodThresholdBtnText,
                             280.0,
                             44.0,
                             13.5,
@@ -626,7 +650,7 @@ fn spawn_dev_settings_menu(commands: &mut Commands) {
                     });
 
                     // Right Info Popup Card
-                    spawn_option_tooltip_card(row, 370.0, 304.0);
+                    spawn_option_tooltip_card(row, 370.0, 252.0);
                 });
         });
 }

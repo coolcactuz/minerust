@@ -69,7 +69,13 @@ fn test_get_option_description_all_actions() {
         MenuButtonAction::ToggleVsync,
         MenuButtonAction::ToggleFullscreen,
         MenuButtonAction::CycleFpsCap,
+        MenuButtonAction::StepFpsCapLeft,
+        MenuButtonAction::StepFpsCapRight,
+        MenuButtonAction::SlideFpsCap,
         MenuButtonAction::CycleViewDistance,
+        MenuButtonAction::StepViewDistanceLeft,
+        MenuButtonAction::StepViewDistanceRight,
+        MenuButtonAction::SlideViewDistance,
         MenuButtonAction::CycleGreedyMeshing,
         MenuButtonAction::StepGreedyMeshingLeft,
         MenuButtonAction::StepGreedyMeshingRight,
@@ -196,6 +202,68 @@ fn test_distance_lod_slider_steps_and_ratios() {
     assert!(gs.distance_lod);
     assert_eq!(gs.lod_threshold, 32);
     assert_eq!(gs.lod_label(), "Distant Sloped LOD: > 32 Chunks (512m)");
+}
+
+#[test]
+fn test_fps_cap_slider_steps_and_ratios() {
+    let mut gs = super::types::GraphicsSettings::default();
+
+    // Default is None (Uncapped) -> index 8 (1.0 ratio)
+    assert_eq!(gs.fps_cap_step_index(), 8);
+    assert!((gs.fps_cap_ratio() - 1.0).abs() < 1e-4);
+    assert_eq!(gs.fps_cap_label(), "FPS Limit: Uncapped (Max FPS)");
+
+    // Step down to 240 FPS, then 165 FPS, ...
+    gs.step_fps_cap(-1);
+    assert_eq!(gs.fps_cap_step_index(), 7);
+    assert_eq!(gs.fps_cap, Some(240));
+    assert_eq!(gs.fps_cap_label(), "FPS Limit: 240 FPS");
+
+    // Set from ratio: 0.0 -> 30 FPS
+    gs.set_fps_cap_from_ratio(0.0);
+    assert_eq!(gs.fps_cap_step_index(), 0);
+    assert_eq!(gs.fps_cap, Some(30));
+    assert_eq!(gs.fps_cap_label(), "FPS Limit: 30 FPS");
+
+    // Set from ratio: 0.125 -> 60 FPS
+    gs.set_fps_cap_from_ratio(0.125);
+    assert_eq!(gs.fps_cap_step_index(), 1);
+    assert_eq!(gs.fps_cap, Some(60));
+    assert_eq!(gs.fps_cap_label(), "FPS Limit: 60 FPS");
+}
+
+#[test]
+fn test_view_distance_slider_steps_and_ratios() {
+    let mut gs = super::types::GraphicsSettings::default();
+
+    // Default is 16 chunks -> index 6 (ratio = 6/15)
+    assert_eq!(gs.view_distance_step_index(), 6);
+    assert!((gs.view_distance_ratio() - 6.0 / 15.0).abs() < 1e-4);
+    assert_eq!(gs.view_distance_label(), "Render Distance: 16 Chunks (256m)");
+
+    // Step down to 14, 12, ...
+    gs.step_view_distance(-1);
+    assert_eq!(gs.view_distance_step_index(), 5);
+    assert_eq!(gs.view_distance, 14);
+    assert_eq!(gs.view_distance_label(), "Render Distance: 14 Chunks (224m)");
+
+    // Set from ratio: 0.0 -> 4 chunks (64m)
+    gs.set_view_distance_from_ratio(0.0);
+    assert_eq!(gs.view_distance_step_index(), 0);
+    assert_eq!(gs.view_distance, 4);
+    assert_eq!(gs.view_distance_label(), "Render Distance: 4 Chunks (64m)");
+
+    // Set from ratio: 1.0 -> 64 chunks (1024m)
+    gs.set_view_distance_from_ratio(1.0);
+    assert_eq!(gs.view_distance_step_index(), 15);
+    assert_eq!(gs.view_distance, 64);
+    assert_eq!(gs.view_distance_label(), "Render Distance: 64 Chunks (1024m)");
+}
+
+#[test]
+fn test_distance_fog_default() {
+    let gs = super::types::GraphicsSettings::default();
+    assert!(gs.distance_fog, "distance fog should default to true in graphics settings");
 }
 
 #[test]

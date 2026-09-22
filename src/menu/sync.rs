@@ -3,12 +3,12 @@ use bevy::prelude::*;
 use super::descriptions::get_option_description;
 use super::types::{
     AsyncMeshingBtnText, BackfaceCullingBtnText, DebugHudBtnText, DevSettings,
-    DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FpsLimiter, FullscreenBtnText,
-    GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsLodBtnText,
-    GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, GreedyMeshingBtnText,
-    LodThresholdBtnText, MaxYSkipBtnText, MenuButtonAction, MeshBudgetBtnText, OptionTooltipCard,
-    OptionTooltipDesc, OptionTooltipHeader, OptionTooltipImpact, OptionTooltipTitle,
-    PregenMarginBtnText, ShadowsBtnText, ViewDistanceBtnText, VsyncBtnText,
+    DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsLimiter,
+    FullscreenBtnText, GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb,
+    GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, GreedyMeshingBtnText,
+    MaxYSkipBtnText, MenuButtonAction, MeshBudgetBtnText, OptionTooltipCard, OptionTooltipDesc,
+    OptionTooltipHeader, OptionTooltipImpact, OptionTooltipTitle, PregenMarginBtnText,
+    ShadowsBtnText, ViewDistanceBtnText, ViewDistanceFill, ViewDistanceThumb, VsyncBtnText,
 };
 
 pub fn update_settings_button_text_system(
@@ -17,6 +17,7 @@ pub fn update_settings_button_text_system(
         &mut Text,
         Option<&VsyncBtnText>,
         Option<&FullscreenBtnText>,
+        Option<&DistanceFogBtnText>,
         Option<&FpsCapBtnText>,
         Option<&ViewDistanceBtnText>,
         Option<&GraphicsGreedyBtnText>,
@@ -26,7 +27,7 @@ pub fn update_settings_button_text_system(
     if !settings.is_changed() {
         return;
     }
-    for (mut text, vsync, fs, fps, dist, greedy, lod) in &mut query {
+    for (mut text, vsync, fs, fog, fps, dist, greedy, lod) in &mut query {
         if vsync.is_some() {
             *text = Text::new(format!(
                 "VSync: {}",
@@ -45,19 +46,19 @@ pub fn update_settings_button_text_system(
                     "Windowed (1280x720)"
                 }
             ));
-        } else if fps.is_some() {
+        } else if fog.is_some() {
             *text = Text::new(format!(
-                "FPS Limit: {}",
-                match settings.fps_cap {
-                    None => "Uncapped".to_string(),
-                    Some(cap) => format!("{} FPS", cap),
+                "Distance Fog: {}",
+                if settings.distance_fog {
+                    "ON (Blended Horizon)"
+                } else {
+                    "OFF (Harsh Edge)"
                 }
             ));
+        } else if fps.is_some() {
+            *text = Text::new(settings.fps_cap_label());
         } else if dist.is_some() {
-            *text = Text::new(format!(
-                "Render Distance: {} Chunks",
-                settings.view_distance
-            ));
+            *text = Text::new(settings.view_distance_label());
         } else if greedy.is_some() {
             *text = Text::new(settings.greedy_label());
         } else if lod.is_some() {
@@ -73,12 +74,10 @@ pub fn update_dev_button_text_system(
         Option<&BackfaceCullingBtnText>,
         Option<&ShadowsBtnText>,
         Option<&MaxYSkipBtnText>,
-        Option<&DistanceFogBtnText>,
         Option<&MeshBudgetBtnText>,
         Option<&AsyncMeshingBtnText>,
         Option<&GreedyMeshingBtnText>,
         Option<&DistanceLodBtnText>,
-        Option<&LodThresholdBtnText>,
         Option<&DebugHudBtnText>,
         Option<&PregenMarginBtnText>,
     )>,
@@ -89,9 +88,7 @@ pub fn update_dev_button_text_system(
     if !dev.is_changed() {
         return;
     }
-    for (mut text, cull, shadow, max_y, fog, budget, async_m, greedy, lod, thresh, hud, margin) in
-        &mut query
-    {
+    for (mut text, cull, shadow, max_y, budget, async_m, greedy, lod, hud, margin) in &mut query {
         if cull.is_some() {
             *text = Text::new(format!(
                 "Backface Culling: {}",
@@ -117,15 +114,6 @@ pub fn update_dev_button_text_system(
                     "ON (2x faster meshing)"
                 } else {
                     "OFF (Loop all 384 layers)"
-                }
-            ));
-        } else if fog.is_some() {
-            *text = Text::new(format!(
-                "Distance Fog: {}",
-                if dev.distance_fog {
-                    "ON (Blended horizon)"
-                } else {
-                    "OFF (Harsh edge)"
                 }
             ));
         } else if budget.is_some() {
@@ -164,12 +152,6 @@ pub fn update_dev_button_text_system(
                     "OFF (Uniform meshing)"
                 }
             ));
-        } else if thresh.is_some() {
-            *text = Text::new(format!(
-                "LOD Distance: {} Chunks ({}m)",
-                dev.lod_threshold,
-                dev.lod_threshold * 16
-            ));
         } else if margin.is_some() {
             *text = Text::new(if dev.pregen_margin == 0 {
                 "Lookahead Buffer: 0 (Disabled / Stutter prone)".to_string()
@@ -200,35 +182,76 @@ pub fn update_dev_settings_system(
     mut world: ResMut<crate::world::WorldGrid>,
     mut dir_lights: Query<&mut DirectionalLight>,
     mut fog_query: Query<&mut bevy::pbr::DistanceFog>,
-    mut last_config: Local<Option<(bool, i32, bool, i32)>>,
+    mut last_config: Local<Option<(bool, i32, bool, i32, bool, i32)>>,
 ) {
-    let (greedy_meshing, greedy_threshold, distance_lod, lod_threshold) =
+    let (greedy_meshing, greedy_threshold, distance_lod, lod_threshold, distance_fog, view_distance) =
         graphics_settings.as_ref().map_or_else(
             || {
                 dev_settings.as_ref().map_or(
-                    (true, 2, true, 8),
-                    |d| (d.greedy_meshing, 2, d.distance_lod, d.lod_threshold),
+                    (true, 2, true, 8, true, 16),
+                    |d| (d.greedy_meshing, 2, d.distance_lod, d.lod_threshold, d.distance_fog, 16),
                 )
             },
-            |g| (g.greedy_meshing, g.greedy_threshold, g.distance_lod, g.lod_threshold),
+            |g| (
+                g.greedy_meshing,
+                g.greedy_threshold,
+                g.distance_lod,
+                g.lod_threshold,
+                g.distance_fog,
+                g.view_distance,
+            ),
         );
-    let current_config = (greedy_meshing, greedy_threshold, distance_lod, lod_threshold);
+    let current_config = (
+        greedy_meshing,
+        greedy_threshold,
+        distance_lod,
+        lod_threshold,
+        distance_fog,
+        view_distance,
+    );
 
     // 1. If greedy meshing or LOD settings changed, clear tracked tiers and re-queue all loaded chunks for re-meshing
-    if last_config.map_or(false, |last| last != current_config) {
+    if last_config.map_or(false, |last| {
+        last.0 != current_config.0
+            || last.1 != current_config.1
+            || last.2 != current_config.2
+            || last.3 != current_config.3
+    }) {
         world.chunk_lod.clear();
         let coords: Vec<_> = world.chunks.keys().copied().collect();
         for coord in coords {
             world.queue_mesh(coord);
         }
     }
+
+    // 2. If fog or view_distance changed, update Distance Fog in real-time
+    if last_config.map_or(true, |last| last.4 != current_config.4 || last.5 != current_config.5) {
+        let max_dist = (view_distance as f32 * 16.0).max(64.0);
+        let fog_start = (max_dist * 0.70).max(48.0);
+        let fog_end = (max_dist - 2.0).max(64.0);
+
+        for mut fog in &mut fog_query {
+            if distance_fog {
+                fog.falloff = bevy::pbr::FogFalloff::Linear {
+                    start: fog_start,
+                    end: fog_end,
+                };
+            } else {
+                fog.falloff = bevy::pbr::FogFalloff::Linear {
+                    start: 99999.0,
+                    end: 100000.0,
+                };
+            }
+        }
+    }
+
     *last_config = Some(current_config);
 
     let Some(dev) = dev_settings else {
         return;
     };
     if dev.is_changed() {
-        // 2. Update Backface Culling in real-time across ALL chunks
+        // 3. Update Backface Culling in real-time across ALL chunks
         if let Some(ref mat_handle) = world.block_material {
             if let Some(mut mat) = materials.get_mut(mat_handle) {
                 mat.cull_mode = if dev.backface_culling {
@@ -239,24 +262,9 @@ pub fn update_dev_settings_system(
             }
         }
 
-        // 3. Update Directional Light Shadows in real-time
+        // 4. Update Directional Light Shadows in real-time
         for mut light in &mut dir_lights {
             light.shadow_maps_enabled = dev.shadows_enabled;
-        }
-
-        // 4. Update Distance Fog in real-time
-        for mut fog in &mut fog_query {
-            if dev.distance_fog {
-                fog.falloff = bevy::pbr::FogFalloff::Linear {
-                    start: 180.0,
-                    end: 255.0,
-                };
-            } else {
-                fog.falloff = bevy::pbr::FogFalloff::Linear {
-                    start: 99999.0,
-                    end: 100000.0,
-                };
-            }
         }
     }
 }
@@ -342,24 +350,48 @@ pub fn update_slider_visuals_system(
     settings: Res<GraphicsSettings>,
     mut query: Query<(
         &mut Node,
+        Option<&FpsCapFill>,
+        Option<&FpsCapThumb>,
+        Option<&ViewDistanceFill>,
+        Option<&ViewDistanceThumb>,
         Option<&GraphicsGreedyFill>,
         Option<&GraphicsLodFill>,
         Option<&GraphicsGreedyThumb>,
         Option<&GraphicsLodThumb>,
     )>,
-    mut last_ratios: Local<Option<(f32, f32)>>,
+    mut last_ratios: Local<Option<(f32, f32, f32, f32)>>,
 ) {
+    let fps_ratio = settings.fps_cap_ratio();
+    let dist_ratio = settings.view_distance_ratio();
     let greedy_ratio = settings.greedy_ratio();
     let lod_ratio = settings.lod_ratio();
-    let current_ratios = (greedy_ratio, lod_ratio);
+    let current_ratios = (fps_ratio, dist_ratio, greedy_ratio, lod_ratio);
 
     if last_ratios.is_some_and(|r| r == current_ratios) {
         return;
     }
     *last_ratios = Some(current_ratios);
 
-    for (mut node, g_fill, l_fill, g_thumb, l_thumb) in &mut query {
-        if g_fill.is_some() {
+    for (mut node, fps_f, fps_t, dist_f, dist_t, g_fill, l_fill, g_thumb, l_thumb) in &mut query {
+        if fps_f.is_some() {
+            let fill_pct = if fps_ratio <= 0.0 {
+                0.0
+            } else {
+                (fps_ratio * 95.0 + 5.0).min(100.0)
+            };
+            node.width = Val::Percent(fill_pct);
+        } else if fps_t.is_some() {
+            node.left = Val::Percent(fps_ratio * 95.0);
+        } else if dist_f.is_some() {
+            let fill_pct = if dist_ratio <= 0.0 {
+                0.0
+            } else {
+                (dist_ratio * 95.0 + 5.0).min(100.0)
+            };
+            node.width = Val::Percent(fill_pct);
+        } else if dist_t.is_some() {
+            node.left = Val::Percent(dist_ratio * 95.0);
+        } else if g_fill.is_some() {
             let fill_pct = if greedy_ratio <= 0.0 {
                 0.0
             } else {
