@@ -5,7 +5,7 @@ use bevy::render::mesh::{Indices, PrimitiveTopology};
 use super::helpers::{add_quad, should_render_face};
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
-use crate::texture::{block_texture, get_tile_uvs};
+use crate::texture::{block_texture, quad_uvs};
 
 /// Standard 1x1 voxel face mesher
 pub fn build_chunk_mesh_standard(
@@ -19,8 +19,11 @@ pub fn build_chunk_mesh_standard(
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(2048);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(2048);
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(2048);
+    let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(2048);
     let mut colors: Vec<[f32; 4]> = Vec::with_capacity(2048);
     let mut indices: Vec<u32> = Vec::with_capacity(3072);
+
+    let unit_uvs = quad_uvs(1.0, 1.0);
 
     for ly in 0..=max_y {
         let fy = ly as f32;
@@ -41,11 +44,12 @@ pub fn build_chunk_mesh_standard(
                     BlockType::Air
                 };
                 if should_render_face(block, top_neighbor, BlockFace::Top) {
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::Top));
+                    let layer = block_texture(block, BlockFace::Top).layer();
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -55,7 +59,8 @@ pub fn build_chunk_mesh_standard(
                             [fx + 1.0, fy + 1.0, fz],
                         ],
                         [0.0, 1.0, 0.0],
-                        tile_uvs,
+                        unit_uvs,
+                        layer,
                         1.0,
                     );
 
@@ -65,6 +70,7 @@ pub fn build_chunk_mesh_standard(
                             &mut positions,
                             &mut normals,
                             &mut uvs,
+                            &mut uvs_1,
                             &mut colors,
                             &mut indices,
                             [
@@ -74,7 +80,8 @@ pub fn build_chunk_mesh_standard(
                                 [fx, fy + 1.0, fz + 1.0],
                             ],
                             [0.0, -1.0, 0.0],
-                            tile_uvs,
+                            unit_uvs,
+                            layer,
                             0.7,
                         );
                     }
@@ -87,11 +94,12 @@ pub fn build_chunk_mesh_standard(
                     BlockType::Air
                 };
                 if should_render_face(block, bottom_neighbor, BlockFace::Bottom) {
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::Bottom));
+                    let layer = block_texture(block, BlockFace::Bottom).layer();
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -101,7 +109,8 @@ pub fn build_chunk_mesh_standard(
                             [fx + 1.0, fy, fz + 1.0],
                         ],
                         [0.0, -1.0, 0.0],
-                        tile_uvs,
+                        unit_uvs,
+                        layer,
                         0.5,
                     );
                 }
@@ -117,11 +126,12 @@ pub fn build_chunk_mesh_standard(
                     BlockType::Air
                 };
                 if should_render_face(block, north_neighbor, BlockFace::North) {
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::North));
+                    let layer = block_texture(block, BlockFace::North).layer();
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -131,7 +141,8 @@ pub fn build_chunk_mesh_standard(
                             [fx + 1.0, fy + 1.0, fz + 1.0],
                         ],
                         [0.0, 0.0, 1.0],
-                        tile_uvs,
+                        unit_uvs,
+                        layer,
                         0.85,
                     );
                 }
@@ -147,11 +158,12 @@ pub fn build_chunk_mesh_standard(
                     BlockType::Air
                 };
                 if should_render_face(block, south_neighbor, BlockFace::South) {
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::South));
+                    let layer = block_texture(block, BlockFace::South).layer();
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -161,7 +173,8 @@ pub fn build_chunk_mesh_standard(
                             [fx, fy + 1.0, fz],
                         ],
                         [0.0, 0.0, -1.0],
-                        tile_uvs,
+                        unit_uvs,
+                        layer,
                         0.85,
                     );
                 }
@@ -177,11 +190,12 @@ pub fn build_chunk_mesh_standard(
                     BlockType::Air
                 };
                 if should_render_face(block, east_neighbor, BlockFace::East) {
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::East));
+                    let layer = block_texture(block, BlockFace::East).layer();
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -191,7 +205,8 @@ pub fn build_chunk_mesh_standard(
                             [fx + 1.0, fy + 1.0, fz],
                         ],
                         [1.0, 0.0, 0.0],
-                        tile_uvs,
+                        unit_uvs,
+                        layer,
                         0.7,
                     );
                 }
@@ -207,11 +222,12 @@ pub fn build_chunk_mesh_standard(
                     BlockType::Air
                 };
                 if should_render_face(block, west_neighbor, BlockFace::West) {
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::West));
+                    let layer = block_texture(block, BlockFace::West).layer();
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -221,7 +237,8 @@ pub fn build_chunk_mesh_standard(
                             [fx, fy + 1.0, fz + 1.0],
                         ],
                         [-1.0, 0.0, 0.0],
-                        tile_uvs,
+                        unit_uvs,
+                        layer,
                         0.7,
                     );
                 }
@@ -240,6 +257,7 @@ pub fn build_chunk_mesh_standard(
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     mesh.insert_indices(Indices::U32(indices));
 

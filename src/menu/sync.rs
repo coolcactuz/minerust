@@ -10,6 +10,7 @@ use super::types::{
     OptionTooltipImpact, OptionTooltipTitle, PregenMarginBtnText, ShadowsBtnText,
     ViewDistanceBtnText, ViewDistanceFill, ViewDistanceThumb, VsyncBtnText,
 };
+use crate::voxel_material::VoxelBlockMaterial;
 
 pub fn update_settings_button_text_system(
     settings: Res<GraphicsSettings>,
@@ -139,7 +140,7 @@ pub fn update_dev_settings_system(
     mut commands: Commands,
     graphics_settings: Option<Res<GraphicsSettings>>,
     dev_settings: Option<Res<DevSettings>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<VoxelBlockMaterial>>,
     mut world: ResMut<crate::world::WorldGrid>,
     mut dir_lights: Query<&mut DirectionalLight>,
     mut camera_query: Query<
@@ -247,7 +248,7 @@ pub fn update_dev_settings_system(
         // 3. Update Backface Culling in real-time across ALL chunks
         if let Some(ref mat_handle) = world.block_material {
             if let Some(mut mat) = materials.get_mut(mat_handle) {
-                mat.cull_mode = if dev.backface_culling {
+                mat.base.cull_mode = if dev.backface_culling {
                     Some(bevy::render::render_resource::Face::Back)
                 } else {
                     None

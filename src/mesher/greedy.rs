@@ -5,7 +5,7 @@ use bevy::render::mesh::{Indices, PrimitiveTopology};
 use super::helpers::{add_quad, can_merge_blocks, should_render_face};
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
-use crate::texture::{block_texture, get_tile_uvs};
+use crate::texture::{block_texture, quad_uvs};
 
 pub fn build_chunk_mesh_greedy(
     chunk: &Chunk,
@@ -18,6 +18,7 @@ pub fn build_chunk_mesh_greedy(
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(1024);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(1024);
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(1024);
+    let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(1024);
     let mut colors: Vec<[f32; 4]> = Vec::with_capacity(1024);
     let mut indices: Vec<u32> = Vec::with_capacity(1536);
 
@@ -38,10 +39,8 @@ pub fn build_chunk_mesh_greedy(
                     if should_render_face(block, top_neighbor, BlockFace::Top) {
                         top_mask[lz * CHUNK_WIDTH + lx] = Some(block);
                         any_face = true;
-                        continue;
                     }
                 }
-                top_mask[lz * CHUNK_WIDTH + lx] = None;
             }
         }
 
@@ -84,11 +83,13 @@ pub fn build_chunk_mesh_greedy(
                     let fz = lz as f32;
                     let fw = w as f32;
                     let fh = h as f32;
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::Top));
+                    let layer = block_texture(block, BlockFace::Top).layer();
+                    let face_uvs = quad_uvs(fw, fh);
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -98,7 +99,8 @@ pub fn build_chunk_mesh_greedy(
                             [fx + fw, fy + 1.0, fz],
                         ],
                         [0.0, 1.0, 0.0],
-                        tile_uvs,
+                        face_uvs,
+                        layer,
                         1.0,
                     );
 
@@ -108,6 +110,7 @@ pub fn build_chunk_mesh_greedy(
                             &mut positions,
                             &mut normals,
                             &mut uvs,
+                            &mut uvs_1,
                             &mut colors,
                             &mut indices,
                             [
@@ -117,7 +120,8 @@ pub fn build_chunk_mesh_greedy(
                                 [fx, fy + 1.0, fz + fh],
                             ],
                             [0.0, -1.0, 0.0],
-                            tile_uvs,
+                            face_uvs,
+                            layer,
                             0.7,
                         );
                     }
@@ -181,11 +185,13 @@ pub fn build_chunk_mesh_greedy(
                     let fz = lz as f32;
                     let fw = w as f32;
                     let fh = h as f32;
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::Bottom));
+                    let layer = block_texture(block, BlockFace::Bottom).layer();
+                    let face_uvs = quad_uvs(fw, fh);
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -195,7 +201,8 @@ pub fn build_chunk_mesh_greedy(
                             [fx + fw, fy, fz + fh],
                         ],
                         [0.0, -1.0, 0.0],
-                        tile_uvs,
+                        face_uvs,
+                        layer,
                         0.5,
                     );
                 }
@@ -271,11 +278,13 @@ pub fn build_chunk_mesh_greedy(
                     let fy = ly as f32;
                     let fw = w as f32;
                     let fh = h as f32;
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::North));
+                    let layer = block_texture(block, BlockFace::North).layer();
+                    let face_uvs = quad_uvs(fw, fh);
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -285,7 +294,8 @@ pub fn build_chunk_mesh_greedy(
                             [fx + fw, fy + fh, fz + 1.0],
                         ],
                         [0.0, 0.0, 1.0],
-                        tile_uvs,
+                        face_uvs,
+                        layer,
                         0.85,
                     );
                 }
@@ -357,11 +367,13 @@ pub fn build_chunk_mesh_greedy(
                     let fy = ly as f32;
                     let fw = w as f32;
                     let fh = h as f32;
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::South));
+                    let layer = block_texture(block, BlockFace::South).layer();
+                    let face_uvs = quad_uvs(fw, fh);
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -371,7 +383,8 @@ pub fn build_chunk_mesh_greedy(
                             [fx, fy + fh, fz],
                         ],
                         [0.0, 0.0, -1.0],
-                        tile_uvs,
+                        face_uvs,
+                        layer,
                         0.85,
                     );
                 }
@@ -443,11 +456,13 @@ pub fn build_chunk_mesh_greedy(
                     let fy = ly as f32;
                     let fw = w as f32;
                     let fh = h as f32;
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::East));
+                    let layer = block_texture(block, BlockFace::East).layer();
+                    let face_uvs = quad_uvs(fw, fh);
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -457,7 +472,8 @@ pub fn build_chunk_mesh_greedy(
                             [fx + 1.0, fy + fh, fz],
                         ],
                         [1.0, 0.0, 0.0],
-                        tile_uvs,
+                        face_uvs,
+                        layer,
                         0.7,
                     );
                 }
@@ -529,11 +545,13 @@ pub fn build_chunk_mesh_greedy(
                     let fy = ly as f32;
                     let fw = w as f32;
                     let fh = h as f32;
-                    let tile_uvs = get_tile_uvs(block_texture(block, BlockFace::West));
+                    let layer = block_texture(block, BlockFace::West).layer();
+                    let face_uvs = quad_uvs(fw, fh);
                     add_quad(
                         &mut positions,
                         &mut normals,
                         &mut uvs,
+                        &mut uvs_1,
                         &mut colors,
                         &mut indices,
                         [
@@ -543,7 +561,8 @@ pub fn build_chunk_mesh_greedy(
                             [fx, fy + fh, fz + fw],
                         ],
                         [-1.0, 0.0, 0.0],
-                        tile_uvs,
+                        face_uvs,
+                        layer,
                         0.7,
                     );
                 }
@@ -562,6 +581,7 @@ pub fn build_chunk_mesh_greedy(
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     mesh.insert_indices(Indices::U32(indices));
 

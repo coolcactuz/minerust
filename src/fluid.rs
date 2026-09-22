@@ -4,6 +4,7 @@ use std::collections::{HashSet, VecDeque};
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::chunk::CHUNK_HEIGHT;
+use crate::voxel_material::VoxelBlockMaterial;
 use crate::world::{
     SEA_LEVEL, WorldGrid, chunk_distance_sq_to_player, determine_chunk_tier, update_chunk_mesh,
 };
@@ -181,7 +182,7 @@ pub fn fluid_simulation_system(
     mut world: ResMut<WorldGrid>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<VoxelBlockMaterial>>,
     graphics_settings: Option<Res<crate::menu::GraphicsSettings>>,
     dev_settings: Option<Res<crate::menu::DevSettings>>,
     camera_query: Query<&Transform, With<FpsCamera>>,

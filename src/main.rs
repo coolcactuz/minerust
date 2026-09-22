@@ -1,3 +1,4 @@
+use bevy::pbr::ExtendedMaterial;
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 
@@ -14,6 +15,7 @@ use minerust::profile::ProfilePlugin;
 use minerust::save::SavePlugin;
 use minerust::stage::VoxelStage;
 use minerust::texture;
+use minerust::voxel_material::{VoxelBlockMaterial, VoxelExtension};
 use minerust::world::{WorldGrid, WorldPlugin, WorldSeed};
 
 fn main() {
@@ -22,6 +24,7 @@ fn main() {
     let mut seed_specified = false;
     let mut dev_mode = false;
     let mut profile_mode = false;
+    let mut quickstart = false;
     let args: Vec<String> = std::env::args().collect();
     for i in 0..args.len() {
         if (args[i] == "--seed" || args[i] == "-s") && i + 1 < args.len() {
@@ -34,6 +37,9 @@ fn main() {
         if args[i] == "--profile" || args[i] == "-p" {
             profile_mode = true;
         }
+        if args[i] == "--quickstart" || args[i] == "-q" {
+            quickstart = true;
+        }
         if args[i] == "--help" || args[i] == "-h" {
             println!("MineRust - A High-Performance Voxel Sandbox in Rust");
             println!("Usage: minerust [OPTIONS]");
@@ -43,6 +49,7 @@ fn main() {
                 "  -d, --dev, --debug      Enable Developer Mode (benchmarks & debug settings)"
             );
             println!("  -p, --profile           Enable Real-time Performance Profiler HUD");
+            println!("  -q, --quickstart        Start directly in-game bypassing the main menu");
             println!("  -h, --help              Print help information");
             return;
         }
@@ -56,6 +63,16 @@ fn main() {
     let seed_state = SeedInputState {
         seed_text: seed.0.to_string(),
         is_editing: false,
+    };
+
+    let menu_state = if quickstart {
+        minerust::menu::MenuState {
+            screen: minerust::menu::MenuScreen::None,
+            previous_screen: minerust::menu::MenuScreen::None,
+            world_active: true,
+        }
+    } else {
+        minerust::menu::MenuState::default()
     };
 
     let dev_settings = DevSettings {
@@ -103,6 +120,7 @@ fn main() {
         .insert_resource(graphics_settings)
         .insert_resource(dev_settings)
         .insert_resource(seed_state)
+        .insert_resource(menu_state)
         .configure_sets(
             Update,
             (
@@ -114,6 +132,7 @@ fn main() {
             )
                 .chain(),
         )
+        .add_plugins(MaterialPlugin::<VoxelBlockMaterial>::default())
         .add_plugins((
             CameraPlugin,
             PhysicsPlugin,
@@ -132,23 +151,34 @@ fn main() {
 fn setup(
     mut commands: Commands,
     mut world: ResMut<WorldGrid>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<VoxelBlockMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     graphics_settings: Res<GraphicsSettings>,
+    menu_state: Res<minerust::menu::MenuState>,
 ) {
-    // 0. 128x128 pixel-art Texture Atlas and shared PBR material with Alpha Mask for transparency (Glass)
-    let atlas_image = texture::create_texture_atlas();
-    let atlas_handle = images.add(atlas_image);
+    // 0. 2D Texture Array (25 layers of 16x16 pixel-art) and shared ExtendedMaterial with Alpha Mask for transparency (Glass)
+    let array_image = texture::create_texture_array();
+    let array_handle = images.add(array_image);
 
-    let block_mat = materials.add(StandardMaterial {
-        base_color_texture: Some(atlas_handle),
-        perceptual_roughness: 0.85,
-        reflectance: 0.15,
-        cull_mode: Some(bevy::render::render_resource::Face::Back),
-        alpha_mode: AlphaMode::Mask(0.5),
-        ..default()
+    let block_mat = materials.add(ExtendedMaterial {
+        base: StandardMaterial {
+            perceptual_roughness: 0.85,
+            reflectance: 0.15,
+            cull_mode: Some(bevy::render::render_resource::Face::Back),
+            alpha_mode: AlphaMode::Mask(0.5),
+            ..default()
+        },
+        extension: VoxelExtension {
+            array_texture: array_handle,
+        },
     });
     world.block_material = Some(block_mat);
+
+    if menu_state.world_active {
+        let center_chunk = WorldGrid::world_to_chunk_coord(0, 0).0;
+        world.pregenerate_spawn_grid(center_chunk, &mut commands, &mut meshes, &mut materials);
+    }
 
     // 1. Spawn FPS camera with integrated AmbientLight, PlayerPhysics component, and DistanceFog (if enabled in settings)
     let fps_camera = FpsCamera::default();

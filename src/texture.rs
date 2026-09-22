@@ -1,9 +1,12 @@
 use bevy::asset::RenderAssetUsages;
-use bevy::image::{Image, ImageSampler};
+use bevy::image::{Image, ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::block::{BlockFace, BlockType};
+
+pub const TILE_SIZE: usize = 16;
+pub const LAYER_COUNT: usize = 25;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
@@ -33,6 +36,13 @@ pub enum TextureId {
     Gravel = 22,
     Ice = 23,
     Glass = 24,
+}
+
+impl TextureId {
+    #[inline(always)]
+    pub fn layer(self) -> f32 {
+        self as usize as f32
+    }
 }
 
 pub fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
@@ -77,37 +87,30 @@ pub fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
     }
 }
 
-pub fn get_tile_uvs(texture_id: TextureId) -> [[f32; 2]; 4] {
-    let id = texture_id as usize;
-    let col = (id % 8) as f32;
-    let row = (id / 8) as f32;
-
-    let u_min = col / 8.0;
-    let u_max = (col + 1.0) / 8.0;
-    let v_min = row / 8.0;
-    let v_max = (row + 1.0) / 8.0;
-
+#[inline(always)]
+pub fn quad_uvs(width: f32, height: f32) -> [[f32; 2]; 4] {
     [
-        [u_min, v_min], // 0: Top-left
-        [u_min, v_max], // 1: Bottom-left
-        [u_max, v_max], // 2: Bottom-right
-        [u_max, v_min], // 3: Top-right
+        [0.0, 0.0],
+        [0.0, height],
+        [width, height],
+        [width, 0.0],
     ]
 }
 
-/// Generates at runtime the full 128x128 pixel Texture Atlas in retro 16x16 pixel-art Minecraft style
-pub fn create_texture_atlas() -> Image {
-    const ATLAS_SIZE: usize = 128;
-    let mut data = vec![0u8; ATLAS_SIZE * ATLAS_SIZE * 4];
+#[inline(always)]
+pub fn get_tile_uvs(_texture_id: TextureId) -> [[f32; 2]; 4] {
+    quad_uvs(1.0, 1.0)
+}
 
-    // Helper to set pixel color in a specific tile (px, py in 0..16)
+/// Generates at runtime the 2D Texture Array (25 layers of 16x16 pixel-art textures)
+/// with hardware Repeat addressing and Nearest-Neighbor filtering.
+pub fn create_texture_array() -> Image {
+    let mut data = vec![0u8; LAYER_COUNT * TILE_SIZE * TILE_SIZE * 4];
+
+    // Helper to set pixel color in a specific layer (px, py in 0..16)
     let mut set_px = |tile_id: TextureId, px: usize, py: usize, rgba: [u8; 4]| {
-        let id = tile_id as usize;
-        let tile_x = id % 8;
-        let tile_y = id / 8;
-        let x = tile_x * 16 + px;
-        let y = tile_y * 16 + py;
-        let idx = (y * ATLAS_SIZE + x) * 4;
+        let layer = tile_id as usize;
+        let idx = (layer * (TILE_SIZE * TILE_SIZE) + py * TILE_SIZE + px) * 4;
         data[idx..idx + 4].copy_from_slice(&rgba);
     };
 
@@ -490,9 +493,9 @@ pub fn create_texture_atlas() -> Image {
 
     let mut image = Image::new(
         Extent3d {
-            width: ATLAS_SIZE as u32,
-            height: ATLAS_SIZE as u32,
-            depth_or_array_layers: 1,
+            width: TILE_SIZE as u32,
+            height: TILE_SIZE as u32,
+            depth_or_array_layers: LAYER_COUNT as u32,
         },
         TextureDimension::D2,
         data,
@@ -500,7 +503,20 @@ pub fn create_texture_atlas() -> Image {
         RenderAssetUsages::default(),
     );
 
-    // Sharp pixel art with Nearest-Neighbor filtering
-    image.sampler = ImageSampler::nearest();
+    // Sharp pixel art with Nearest-Neighbor filtering and Repeat address mode
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::Repeat,
+        address_mode_v: ImageAddressMode::Repeat,
+        address_mode_w: ImageAddressMode::Repeat,
+        mag_filter: ImageFilterMode::Nearest,
+        min_filter: ImageFilterMode::Nearest,
+        mipmap_filter: ImageFilterMode::Nearest,
+        ..default()
+    });
     image
+}
+
+/// Compatibility alias for `create_texture_array`
+pub fn create_texture_atlas() -> Image {
+    create_texture_array()
 }

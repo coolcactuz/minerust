@@ -296,7 +296,7 @@ fn test_menu_systems_schedule_no_conflicts() {
     app.add_plugins(MinimalPlugins)
         .add_plugins(bevy::input::InputPlugin)
         .add_plugins(bevy::asset::AssetPlugin::default())
-        .init_asset::<StandardMaterial>()
+        .init_asset::<crate::voxel_material::VoxelBlockMaterial>()
         .init_asset::<Mesh>()
         .insert_resource(crate::world::WorldGrid::new(crate::world::WorldSeed::default()))
         .add_plugins(crate::menu::MenuPlugin);
@@ -313,7 +313,7 @@ fn test_menu_systems_schedule_dev_mode() {
     app.add_plugins(MinimalPlugins)
         .add_plugins(bevy::input::InputPlugin)
         .add_plugins(bevy::asset::AssetPlugin::default())
-        .init_asset::<StandardMaterial>()
+        .init_asset::<crate::voxel_material::VoxelBlockMaterial>()
         .init_asset::<Mesh>()
         .insert_resource(crate::world::WorldGrid::new(crate::world::WorldSeed::default()))
         .insert_resource(crate::menu::DevSettings {

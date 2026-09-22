@@ -1,4 +1,5 @@
 use bevy::ecs::system::SystemParam;
+use bevy::pbr::ExtendedMaterial;
 use bevy::prelude::*;
 use bevy::tasks::AsyncComputeTaskPool;
 use std::sync::Mutex;
@@ -9,6 +10,7 @@ use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
 use crate::mesher::build_chunk_mesh_lod;
+use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
 use crate::world::grid::WorldGrid;
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{
@@ -76,7 +78,7 @@ pub fn apply_chunk_mesh(
     commands: &mut Commands,
     world: &mut WorldGrid,
     meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
+    materials: &mut Assets<VoxelBlockMaterial>,
 ) {
     let world_pos = Vec3::new(
         (coord.x * CHUNK_WIDTH as i32) as f32,
@@ -94,11 +96,16 @@ pub fn apply_chunk_mesh(
     world.total_vertices = world.total_vertices.saturating_sub(old_vert_count) + new_vert_count;
 
     let material = world.block_material.clone().unwrap_or_else(|| {
-        materials.add(StandardMaterial {
-            cull_mode: Some(bevy::render::render_resource::Face::Back),
-            perceptual_roughness: 0.85,
-            reflectance: 0.15,
-            ..default()
+        materials.add(ExtendedMaterial {
+            base: StandardMaterial {
+                cull_mode: Some(bevy::render::render_resource::Face::Back),
+                perceptual_roughness: 0.85,
+                reflectance: 0.15,
+                ..default()
+            },
+            extension: VoxelExtension {
+                array_texture: Handle::default(),
+            },
         })
     });
 
@@ -147,7 +154,7 @@ pub fn update_chunk_mesh(
     commands: &mut Commands,
     world: &mut WorldGrid,
     meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
+    materials: &mut Assets<VoxelBlockMaterial>,
     max_y_skip: bool,
     tier: u8,
 ) {
@@ -185,7 +192,7 @@ pub struct WorldWorkerPools<'w> {
 #[derive(SystemParam)]
 pub struct WorldMeshAssets<'w> {
     pub meshes: ResMut<'w, Assets<Mesh>>,
-    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+    pub materials: ResMut<'w, Assets<VoxelBlockMaterial>>,
 }
 
 /// Continuous chunk streaming system based on player camera position with multithreaded generation

@@ -205,7 +205,7 @@ fn test_zombie_mesh_prevention_and_streaming_cleanup() {
     app.add_plugins(MinimalPlugins);
     app.add_plugins(bevy::asset::AssetPlugin::default());
     app.init_asset::<Mesh>();
-    app.init_asset::<StandardMaterial>();
+    app.init_asset::<crate::voxel_material::VoxelBlockMaterial>();
 
     let mut world_grid = WorldGrid::default();
     // Insert a distant chunk that is in Tier 2 (outside view_dist = 2, inside unload_dist)

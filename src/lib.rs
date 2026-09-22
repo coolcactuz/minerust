@@ -16,4 +16,5 @@ pub mod profile;
 pub mod save;
 pub mod stage;
 pub mod texture;
+pub mod voxel_material;
 pub mod world;

@@ -5,7 +5,7 @@ use bevy::render::mesh::{Indices, PrimitiveTopology};
 use super::helpers::{add_quad, add_triangle, simplify_block_for_lod, triangle_normal};
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
-use crate::texture::{block_texture, get_tile_uvs};
+use crate::texture::{block_texture, quad_uvs};
 
 /// Sloped Heightfield Mesher for distant Level of Detail (LOD 1).
 ///
@@ -150,6 +150,7 @@ pub fn build_chunk_mesh_sloped_lod(
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(512);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(512);
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(512);
+    let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(512);
     let mut colors: Vec<[f32; 4]> = Vec::with_capacity(512);
     let mut indices: Vec<u32> = Vec::with_capacity(1024);
 
@@ -197,11 +198,13 @@ pub fn build_chunk_mesh_sloped_lod(
             // If dominant block is water, water must remain completely flat at sea level (64.0)
             if dominant_block.is_water() {
                 let water_y = 64.0;
-                let tile_uvs = get_tile_uvs(block_texture(BlockType::Water, BlockFace::Top));
+                let layer = block_texture(BlockType::Water, BlockFace::Top).layer();
+                let water_uvs = quad_uvs(CELL_SIZE as f32, CELL_SIZE as f32);
                 add_quad(
                     &mut positions,
                     &mut normals,
                     &mut uvs,
+                    &mut uvs_1,
                     &mut colors,
                     &mut indices,
                     [
@@ -211,7 +214,8 @@ pub fn build_chunk_mesh_sloped_lod(
                         [fx1, water_y, fz0],
                     ],
                     [0.0, 1.0, 0.0],
-                    tile_uvs,
+                    water_uvs,
+                    layer,
                     1.0,
                 );
 
@@ -220,6 +224,7 @@ pub fn build_chunk_mesh_sloped_lod(
                     &mut positions,
                     &mut normals,
                     &mut uvs,
+                    &mut uvs_1,
                     &mut colors,
                     &mut indices,
                     [
@@ -229,7 +234,8 @@ pub fn build_chunk_mesh_sloped_lod(
                         [fx0, water_y, fz1],
                     ],
                     [0.0, -1.0, 0.0],
-                    tile_uvs,
+                    water_uvs,
+                    layer,
                     0.7,
                 );
                 continue;
@@ -260,7 +266,8 @@ pub fn build_chunk_mesh_sloped_lod(
             let p2 = [fx1, y11, fz1];
             let p3 = [fx1, y10, fz0];
 
-            let tile_uvs = get_tile_uvs(block_texture(dominant_block, BlockFace::Top));
+            let layer = block_texture(dominant_block, BlockFace::Top).layer();
+            let f_size = CELL_SIZE as f32;
 
             // Triangle 1: p0 -> p1 -> p2
             let norm_1 = triangle_normal(p0, p1, p2);
@@ -269,11 +276,13 @@ pub fn build_chunk_mesh_sloped_lod(
                 &mut positions,
                 &mut normals,
                 &mut uvs,
+                &mut uvs_1,
                 &mut colors,
                 &mut indices,
                 [p0, p1, p2],
                 norm_1,
-                [tile_uvs[0], tile_uvs[1], tile_uvs[2]],
+                [[0.0, 0.0], [0.0, f_size], [f_size, f_size]],
+                layer,
                 shade_1,
             );
 
@@ -284,15 +293,19 @@ pub fn build_chunk_mesh_sloped_lod(
                 &mut positions,
                 &mut normals,
                 &mut uvs,
+                &mut uvs_1,
                 &mut colors,
                 &mut indices,
                 [p0, p2, p3],
                 norm_2,
-                [tile_uvs[0], tile_uvs[2], tile_uvs[3]],
+                [[0.0, 0.0], [f_size, f_size], [f_size, 0.0]],
+                layer,
                 shade_2,
             );
         }
     }
+
+    let skirt_uvs = quad_uvs(CELL_SIZE as f32, SKIRT_DROP);
 
     // 4. Perimeter Skirts: drop down 2.5 blocks along outer boundaries to seal cracks with adjacent chunks
     // South border (Z = 0)
@@ -303,11 +316,12 @@ pub fn build_chunk_mesh_sloped_lod(
         let y1 = vertex_h[0][(cx + 1) * CELL_SIZE];
         let b = col_blocks[0][cx * CELL_SIZE];
         if b != BlockType::Air && !b.is_water() {
-            let tile_uvs = get_tile_uvs(block_texture(b, BlockFace::South));
+            let layer = block_texture(b, BlockFace::South).layer();
             add_quad(
                 &mut positions,
                 &mut normals,
                 &mut uvs,
+                &mut uvs_1,
                 &mut colors,
                 &mut indices,
                 [
@@ -317,7 +331,8 @@ pub fn build_chunk_mesh_sloped_lod(
                     [lx0, y0, 0.0],
                 ],
                 [0.0, 0.0, -1.0],
-                tile_uvs,
+                skirt_uvs,
+                layer,
                 0.75,
             );
         }
@@ -331,11 +346,12 @@ pub fn build_chunk_mesh_sloped_lod(
         let y1 = vertex_h[CHUNK_DEPTH][(cx + 1) * CELL_SIZE];
         let b = col_blocks[CHUNK_DEPTH - 1][cx * CELL_SIZE];
         if b != BlockType::Air && !b.is_water() {
-            let tile_uvs = get_tile_uvs(block_texture(b, BlockFace::North));
+            let layer = block_texture(b, BlockFace::North).layer();
             add_quad(
                 &mut positions,
                 &mut normals,
                 &mut uvs,
+                &mut uvs_1,
                 &mut colors,
                 &mut indices,
                 [
@@ -345,7 +361,8 @@ pub fn build_chunk_mesh_sloped_lod(
                     [lx1, y1, 16.0],
                 ],
                 [0.0, 0.0, 1.0],
-                tile_uvs,
+                skirt_uvs,
+                layer,
                 0.75,
             );
         }
@@ -359,11 +376,12 @@ pub fn build_chunk_mesh_sloped_lod(
         let y1 = vertex_h[(cz + 1) * CELL_SIZE][0];
         let b = col_blocks[cz * CELL_SIZE][0];
         if b != BlockType::Air && !b.is_water() {
-            let tile_uvs = get_tile_uvs(block_texture(b, BlockFace::West));
+            let layer = block_texture(b, BlockFace::West).layer();
             add_quad(
                 &mut positions,
                 &mut normals,
                 &mut uvs,
+                &mut uvs_1,
                 &mut colors,
                 &mut indices,
                 [
@@ -373,7 +391,8 @@ pub fn build_chunk_mesh_sloped_lod(
                     [0.0, y1, lz1],
                 ],
                 [-1.0, 0.0, 0.0],
-                tile_uvs,
+                skirt_uvs,
+                layer,
                 0.7,
             );
         }
@@ -387,11 +406,12 @@ pub fn build_chunk_mesh_sloped_lod(
         let y1 = vertex_h[(cz + 1) * CELL_SIZE][CHUNK_WIDTH];
         let b = col_blocks[cz * CELL_SIZE][CHUNK_WIDTH - 1];
         if b != BlockType::Air && !b.is_water() {
-            let tile_uvs = get_tile_uvs(block_texture(b, BlockFace::East));
+            let layer = block_texture(b, BlockFace::East).layer();
             add_quad(
                 &mut positions,
                 &mut normals,
                 &mut uvs,
+                &mut uvs_1,
                 &mut colors,
                 &mut indices,
                 [
@@ -401,7 +421,8 @@ pub fn build_chunk_mesh_sloped_lod(
                     [16.0, y0, lz0],
                 ],
                 [1.0, 0.0, 0.0],
-                tile_uvs,
+                skirt_uvs,
+                layer,
                 0.7,
             );
         }
@@ -418,6 +439,7 @@ pub fn build_chunk_mesh_sloped_lod(
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     mesh.insert_indices(Indices::U32(indices));
 

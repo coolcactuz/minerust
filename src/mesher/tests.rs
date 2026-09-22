@@ -183,3 +183,74 @@ fn test_sloped_lod_groups_ores_on_mountain() {
     let mesh_lod1 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 1).unwrap();
     assert!(mesh_lod1.count_vertices() > 0);
 }
+
+#[test]
+fn test_texture_array_properties_and_repeat_mode() {
+    use crate::texture::{LAYER_COUNT, TILE_SIZE, create_texture_array};
+    use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler};
+    use bevy::render::render_resource::TextureDimension;
+
+    let image = create_texture_array();
+    assert_eq!(image.texture_descriptor.size.width, TILE_SIZE as u32);
+    assert_eq!(image.texture_descriptor.size.height, TILE_SIZE as u32);
+    assert_eq!(
+        image.texture_descriptor.size.depth_or_array_layers,
+        LAYER_COUNT as u32
+    );
+    assert_eq!(image.texture_descriptor.dimension, TextureDimension::D2);
+
+    if let ImageSampler::Descriptor(ref desc) = image.sampler {
+        assert_eq!(desc.address_mode_u, ImageAddressMode::Repeat);
+        assert_eq!(desc.address_mode_v, ImageAddressMode::Repeat);
+        assert_eq!(desc.mag_filter, ImageFilterMode::Nearest);
+        assert_eq!(desc.min_filter, ImageFilterMode::Nearest);
+    } else {
+        panic!("Expected ImageSampler::Descriptor with Repeat address mode");
+    }
+}
+
+#[test]
+fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
+    use crate::block::BlockFace;
+    use crate::texture::{TextureId, block_texture};
+    use bevy::render::mesh::VertexAttributeValues;
+
+    let mut chunk = Chunk::new();
+    // Fill a 4x2 area of Stone blocks at y = 10 (X: 0..4, Z: 0..2)
+    for lx in 0..4 {
+        for lz in 0..2 {
+            chunk.set(lx, 10, lz, BlockType::Stone);
+        }
+    }
+
+    let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+
+    // Verify ATTRIBUTE_UV_0 (repeating coordinates from 0..w and 0..h)
+    let uv0_values = mesh.attribute(Mesh::ATTRIBUTE_UV_0).expect("ATTRIBUTE_UV_0 must exist");
+    if let VertexAttributeValues::Float32x2(uvs) = uv0_values {
+        // Find max U and max V across vertices
+        let max_u = uvs.iter().map(|uv| uv[0]).fold(0.0f32, f32::max);
+        let max_v = uvs.iter().map(|uv| uv[1]).fold(0.0f32, f32::max);
+        // The merged quad of 4x2 blocks must have max U or V equal to 4.0 or 2.0
+        assert!(
+            max_u >= 4.0 || max_v >= 4.0 || max_u >= 2.0,
+            "Greedy merged quad must have repeating UV dimensions, got max_u={}, max_v={}",
+            max_u,
+            max_v
+        );
+    } else {
+        panic!("Expected Float32x2 for ATTRIBUTE_UV_0");
+    }
+
+    // Verify ATTRIBUTE_UV_1 (layer attribute)
+    let uv1_values = mesh.attribute(Mesh::ATTRIBUTE_UV_1).expect("ATTRIBUTE_UV_1 must exist");
+    if let VertexAttributeValues::Float32x2(uv1s) = uv1_values {
+        assert_eq!(uv1s.len(), mesh.count_vertices());
+        let expected_stone_layer = block_texture(BlockType::Stone, BlockFace::Top).layer();
+        assert!((expected_stone_layer - TextureId::Stone as usize as f32).abs() < f32::EPSILON);
+        let found_stone = uv1s.iter().any(|uv| (uv[0] - expected_stone_layer).abs() < 1e-4);
+        assert!(found_stone, "Expected at least one vertex with Stone layer ID");
+    } else {
+        panic!("Expected Float32x2 for ATTRIBUTE_UV_1");
+    }
+}

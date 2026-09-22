@@ -42,11 +42,13 @@ pub fn add_quad(
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
     uvs: &mut Vec<[f32; 2]>,
+    uvs_1: &mut Vec<[f32; 2]>,
     colors: &mut Vec<[f32; 4]>,
     indices: &mut Vec<u32>,
     verts: [[f32; 3]; 4],
     norm: [f32; 3],
     quad_uvs: [[f32; 2]; 4],
+    layer: f32,
     shade: f32,
 ) {
     let start_idx = positions.len() as u32;
@@ -55,6 +57,7 @@ pub fn add_quad(
         positions.push(*v);
         normals.push(norm);
         colors.push([shade, shade, shade, 1.0]);
+        uvs_1.push([layer, 0.0]);
     }
 
     uvs.extend_from_slice(&quad_uvs);
@@ -75,11 +78,13 @@ pub fn add_triangle(
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
     uvs: &mut Vec<[f32; 2]>,
+    uvs_1: &mut Vec<[f32; 2]>,
     colors: &mut Vec<[f32; 4]>,
     indices: &mut Vec<u32>,
     verts: [[f32; 3]; 3],
     norm: [f32; 3],
     tri_uvs: [[f32; 2]; 3],
+    layer: f32,
     shade: f32,
 ) {
     let start_idx = positions.len() as u32;
@@ -88,6 +93,7 @@ pub fn add_triangle(
         positions.push(*v);
         normals.push(norm);
         colors.push([shade, shade, shade, 1.0]);
+        uvs_1.push([layer, 0.0]);
     }
 
     uvs.extend_from_slice(&tri_uvs);

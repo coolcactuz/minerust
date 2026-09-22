@@ -9,6 +9,7 @@ use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
 use crate::physics::PlayerPhysics;
 use crate::save::load_player_from_disk;
+use crate::voxel_material::VoxelBlockMaterial;
 use crate::world::{WorldGrid, WorldSeed, find_safe_surface_spawn};
 
 use super::types::{
@@ -215,7 +216,7 @@ pub fn menu_button_click_system(
     mut inventory: Option<ResMut<Inventory>>,
     mut player_query: Query<(&mut Transform, &mut FpsCamera, &mut PlayerPhysics)>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<VoxelBlockMaterial>>,
     mut window_query: Query<&mut Window, With<PrimaryWindow>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut exit_writer: MessageWriter<AppExit>,

@@ -6,6 +6,7 @@ use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
 use crate::menu::MenuState;
+use crate::voxel_material::VoxelBlockMaterial;
 use crate::world::{
     WorldGrid, chunk_distance_sq_to_player, determine_chunk_tier, update_chunk_mesh,
 };
@@ -105,7 +106,7 @@ pub fn voxel_raycast(
 #[derive(SystemParam)]
 pub struct InteractionAssets<'w> {
     pub meshes: ResMut<'w, Assets<Mesh>>,
-    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+    pub materials: ResMut<'w, Assets<VoxelBlockMaterial>>,
 }
 
 #[derive(SystemParam)]

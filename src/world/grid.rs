@@ -7,6 +7,7 @@ use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
 use crate::coords::{BlockPos, ChunkPos};
 use crate::error::WorldError;
 use crate::noise::NoiseGenerator;
+use crate::voxel_material::VoxelBlockMaterial;
 use crate::world::streaming::update_chunk_mesh;
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{CHUNK_CACHE_CAPACITY, WorldSeed};
@@ -27,7 +28,7 @@ pub struct WorldGrid {
     pub save_dir: PathBuf,
     pub seed: WorldSeed,
     pub noise: NoiseGenerator,
-    pub block_material: Option<Handle<StandardMaterial>>,
+    pub block_material: Option<Handle<VoxelBlockMaterial>>,
     pub total_vertices: usize,
     pub chunk_vertices: HashMap<IVec2, usize>,
     pub chunk_lod: HashMap<IVec2, u8>,
@@ -264,7 +265,7 @@ impl WorldGrid {
         center_chunk: IVec2,
         commands: &mut Commands,
         meshes: &mut Assets<Mesh>,
-        materials: &mut Assets<StandardMaterial>,
+        materials: &mut Assets<VoxelBlockMaterial>,
     ) {
         let seed = self.seed.0;
         let noise = self.noise.clone();
