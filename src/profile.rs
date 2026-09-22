@@ -25,11 +25,126 @@ pub fn read_process_memory() -> ProcessMemory {
     parse_process_memory_from_str(&std::fs::read_to_string("/proc/self/status").unwrap_or_default())
 }
 
-/// Safely queries the current GPU VRAM usage from `/sys/class/drm/card*/device/mem_info_vram_used`.
-/// On Linux with amdgpu or compatible drivers, this returns physical VRAM allocations in MB.
-/// Falls back to default (0.0) if unavailable.
+/// Safely queries the current GPU VRAM usage.
+/// Uses per-process DRM fdinfo (`/proc/self/fdinfo/*`) to measure physical dedicated VRAM allocated
+/// exclusively to MineRust (matching `nvtop`'s source of truth).
+/// Falls back to global DRM sysfs if `/proc/self/fdinfo` is unavailable or reports zero.
 pub fn read_gpu_vram() -> GpuMemory {
-    read_gpu_vram_from_drm_path("/sys/class/drm")
+    let process_vram_mb = parse_process_vram_from_fdinfo_dir("/proc/self/fdinfo");
+    let total_hw_vram_mb = read_total_hardware_vram_from_drm_path("/sys/class/drm");
+
+    if process_vram_mb > 0.0 {
+        GpuMemory {
+            used_mb: process_vram_mb,
+            total_mb: total_hw_vram_mb,
+        }
+    } else {
+        read_gpu_vram_from_drm_path("/sys/class/drm")
+    }
+}
+
+/// Reads the total hardware VRAM capacity from the primary discrete GPU exposed in DRM sysfs.
+pub fn read_total_hardware_vram_from_drm_path<P: AsRef<std::path::Path>>(drm_path: P) -> f32 {
+    read_gpu_vram_from_drm_path(drm_path).total_mb
+}
+
+/// Helper to parse DRM memory size strings like "1886944 KiB", "1024 MiB", "2 GiB", "1048576 B", or "1048576".
+/// Returns size in KiB.
+pub fn parse_drm_size_kib(s: &str) -> Option<f64> {
+    let s = s.trim();
+    if let Some(rest) = s.strip_suffix("KiB") {
+        rest.trim().parse::<f64>().ok()
+    } else if let Some(rest) = s.strip_suffix("MiB") {
+        rest.trim().parse::<f64>().map(|v| v * 1024.0).ok()
+    } else if let Some(rest) = s.strip_suffix("GiB") {
+        rest.trim().parse::<f64>().map(|v| v * 1024.0 * 1024.0).ok()
+    } else if let Some(rest) = s.strip_suffix("kB") {
+        rest.trim().parse::<f64>().ok()
+    } else if let Some(rest) = s.strip_suffix("MB") {
+        rest.trim().parse::<f64>().map(|v| v * 1024.0).ok()
+    } else if let Some(rest) = s.strip_suffix("GB") {
+        rest.trim().parse::<f64>().map(|v| v * 1024.0 * 1024.0).ok()
+    } else if let Some(rest) = s.strip_suffix('B') {
+        rest.trim().parse::<f64>().map(|v| v / 1024.0).ok()
+    } else {
+        s.parse::<f64>().ok()
+    }
+}
+
+/// Helper to parse a single `/proc/<pid>/fdinfo/<fd>` file content for DRM client ID and dedicated VRAM.
+pub fn parse_drm_fdinfo_content(content: &str) -> Option<(Option<u64>, f64)> {
+    let mut is_drm = false;
+    let mut client_id = None;
+    let mut vram_kib = 0.0;
+    let mut found_vram = false;
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("drm-driver:") {
+            is_drm = true;
+        } else if let Some(rest) = line.strip_prefix("drm-client-id:") {
+            is_drm = true;
+            if let Ok(id) = rest.trim().parse::<u64>() {
+                client_id = Some(id);
+            }
+        } else if let Some(rest) = line.strip_prefix("drm-memory-vram:") {
+            is_drm = true;
+            if let Some(kb) = parse_drm_size_kib(rest) {
+                vram_kib = kb;
+                found_vram = true;
+            }
+        } else if !found_vram {
+            if let Some(rest) = line.strip_prefix("drm-resident-vram:") {
+                is_drm = true;
+                if let Some(kb) = parse_drm_size_kib(rest) {
+                    vram_kib = kb;
+                    found_vram = true;
+                }
+            } else if let Some(rest) = line.strip_prefix("drm-total-vram:") {
+                is_drm = true;
+                if let Some(kb) = parse_drm_size_kib(rest) {
+                    vram_kib = kb;
+                }
+            }
+        }
+    }
+
+    if is_drm && (vram_kib > 0.0 || client_id.is_some()) {
+        Some((client_id, vram_kib))
+    } else {
+        None
+    }
+}
+
+/// Safely queries process-dedicated GPU VRAM allocations by reading `/proc/<pid>/fdinfo/*`.
+/// Deduplicates by `drm-client-id` across open file descriptors to avoid double counting shared clients.
+pub fn parse_process_vram_from_fdinfo_dir<P: AsRef<std::path::Path>>(dir_path: P) -> f32 {
+    let Ok(entries) = std::fs::read_dir(dir_path) else {
+        return 0.0;
+    };
+
+    let mut client_vram_kib: std::collections::HashMap<u64, f64> = std::collections::HashMap::new();
+    let mut anonymous_vram_kib = 0.0;
+
+    for entry in entries.flatten() {
+        let Ok(content) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+
+        if let Some((client_id, vram_kib)) = parse_drm_fdinfo_content(&content) {
+            if let Some(id) = client_id {
+                let existing = client_vram_kib.entry(id).or_insert(0.0);
+                if vram_kib > *existing {
+                    *existing = vram_kib;
+                }
+            } else {
+                anonymous_vram_kib += vram_kib;
+            }
+        }
+    }
+
+    let total_kib: f64 = client_vram_kib.values().copied().sum::<f64>() + anonymous_vram_kib;
+    (total_kib / 1024.0) as f32
 }
 
 /// Testable parser for DRM sysfs directory structure.
@@ -499,6 +614,59 @@ mod tests {
         let vram = read_gpu_vram_from_drm_path(&temp_dir);
         assert!((vram.total_mb - 20480.0).abs() < 1.0);
         assert!((vram.used_mb - 2048.0).abs() < 1.0);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_parse_drm_size_units() {
+        assert_eq!(parse_drm_size_kib("1024 KiB"), Some(1024.0));
+        assert_eq!(parse_drm_size_kib("2 MiB"), Some(2048.0));
+        assert_eq!(parse_drm_size_kib("1 GiB"), Some(1048576.0));
+        assert_eq!(parse_drm_size_kib("2048 kB"), Some(2048.0));
+        assert_eq!(parse_drm_size_kib("4096"), Some(4096.0));
+    }
+
+    #[test]
+    fn test_parse_drm_fdinfo_content() {
+        let sample = "pos:\t0\nflags:\t02100002\ndrm-driver:\tamdgpu\ndrm-client-id:\t569\ndrm-memory-vram:\t1886944 KiB\n";
+        let parsed = parse_drm_fdinfo_content(sample);
+        assert_eq!(parsed, Some((Some(569), 1886944.0)));
+
+        // Fallback to resident vram if memory-vram is absent
+        let fallback_sample = "drm-driver:\ti915\ndrm-client-id:\t42\ndrm-resident-vram:\t524288 KiB\n";
+        let parsed_fallback = parse_drm_fdinfo_content(fallback_sample);
+        assert_eq!(parsed_fallback, Some((Some(42), 524288.0)));
+
+        // Non-DRM fdinfo returns None
+        let non_drm = "pos:\t0\nflags:\t02\n";
+        assert_eq!(parse_drm_fdinfo_content(non_drm), None);
+    }
+
+    #[test]
+    fn test_parse_process_vram_from_fdinfo_dir_deduplication() {
+        let temp_dir = std::env::temp_dir().join(format!("minerust_fdinfo_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        // FD 10: client 500 with 500 MiB
+        let fd10 = "drm-driver:\tamdgpu\ndrm-client-id:\t500\ndrm-memory-vram:\t512000 KiB\n";
+        let _ = std::fs::write(temp_dir.join("10"), fd10);
+
+        // FD 11: same client 500 with 500 MiB (duplicate file descriptor pointing to same client)
+        let fd11 = "drm-driver:\tamdgpu\ndrm-client-id:\t500\ndrm-memory-vram:\t512000 KiB\n";
+        let _ = std::fs::write(temp_dir.join("11"), fd11);
+
+        // FD 12: different client 600 with 200 MiB
+        let fd12 = "drm-driver:\tamdgpu\ndrm-client-id:\t600\ndrm-memory-vram:\t204800 KiB\n";
+        let _ = std::fs::write(temp_dir.join("12"), fd12);
+
+        // FD 13: non-DRM fd
+        let fd13 = "pos:\t0\nflags:\t02\n";
+        let _ = std::fs::write(temp_dir.join("13"), fd13);
+
+        let total_mb = parse_process_vram_from_fdinfo_dir(&temp_dir);
+        // Client 500 (500 MB) + Client 600 (200 MB) = 700 MB
+        assert!((total_mb - 700.0).abs() < 1.0, "Expected ~700 MB but got {}", total_mb);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
