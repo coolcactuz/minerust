@@ -70,6 +70,7 @@ fn test_get_option_description_all_actions() {
         MenuButtonAction::ToggleFullscreen,
         MenuButtonAction::CycleFpsCap,
         MenuButtonAction::CycleViewDistance,
+        MenuButtonAction::CycleGreedyMeshing,
         MenuButtonAction::CycleDistanceLod,
         MenuButtonAction::ToggleBackfaceCulling,
         MenuButtonAction::ToggleShadows,
@@ -109,11 +110,19 @@ fn test_get_option_description_all_actions() {
 fn test_graphics_settings_lod_defaults() {
     let gs = super::types::GraphicsSettings::default();
     assert!(
+        gs.greedy_meshing,
+        "greedy meshing should default to true in graphics settings"
+    );
+    assert_eq!(
+        gs.greedy_threshold, 2,
+        "default greedy threshold should be 2 chunks (32m)"
+    );
+    assert!(
         gs.distance_lod,
         "distance LOD should default to true in graphics settings"
     );
     assert_eq!(
-        gs.lod_threshold, 4,
-        "default lod threshold should be 4 chunks"
+        gs.lod_threshold, 8,
+        "default distant lod threshold should be 8 chunks (128m)"
     );
 }

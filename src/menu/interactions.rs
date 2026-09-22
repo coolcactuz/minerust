@@ -357,19 +357,37 @@ pub fn menu_button_click_system(
                         _ => 16,
                     };
                 }
+                MenuButtonAction::CycleGreedyMeshing => {
+                    if !settings.greedy_meshing {
+                        settings.greedy_meshing = true;
+                        settings.greedy_threshold = 2;
+                    } else {
+                        match settings.greedy_threshold {
+                            2 => settings.greedy_threshold = 3,
+                            3 => settings.greedy_threshold = 4,
+                            4 => settings.greedy_threshold = 0, // All chunks
+                            0 => {
+                                settings.greedy_meshing = false;
+                                settings.greedy_threshold = 2;
+                            }
+                            _ => settings.greedy_threshold = 2,
+                        }
+                    }
+                }
                 MenuButtonAction::CycleDistanceLod => {
                     if !settings.distance_lod {
                         settings.distance_lod = true;
-                        settings.lod_threshold = 4;
+                        settings.lod_threshold = 8;
                     } else {
                         match settings.lod_threshold {
-                            4 => settings.lod_threshold = 6,
-                            6 => settings.lod_threshold = 8,
-                            8 => {
+                            8 => settings.lod_threshold = 10,
+                            10 => settings.lod_threshold = 12,
+                            12 => settings.lod_threshold = 6,
+                            6 => {
                                 settings.distance_lod = false;
-                                settings.lod_threshold = 4;
+                                settings.lod_threshold = 8;
                             }
-                            _ => settings.lod_threshold = 4,
+                            _ => settings.lod_threshold = 8,
                         }
                     }
                 }

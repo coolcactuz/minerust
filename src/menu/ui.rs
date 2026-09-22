@@ -3,11 +3,12 @@ use bevy::text::FontSize;
 
 use super::types::{
     AsyncMeshingBtnText, BackfaceCullingBtnText, DebugHudBtnText, DevSettings, DevSettingsMenuRoot,
-    DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FullscreenBtnText, GreedyMeshingBtnText,
-    LodThresholdBtnText, MainMenuRoot, MaxYSkipBtnText, MenuButtonAction, MeshBudgetBtnText,
-    OptionTooltipCard, OptionTooltipDesc, OptionTooltipHeader, OptionTooltipImpact,
-    OptionTooltipTitle, PauseMenuRoot, PregenMarginBtnText, SeedInputBox, SeedInputState,
-    SeedInputText, SettingsMenuRoot, ShadowsBtnText, ViewDistanceBtnText, VsyncBtnText,
+    DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FullscreenBtnText, GraphicsGreedyBtnText,
+    GraphicsLodBtnText, GreedyMeshingBtnText, LodThresholdBtnText, MainMenuRoot, MaxYSkipBtnText,
+    MenuButtonAction, MeshBudgetBtnText, OptionTooltipCard, OptionTooltipDesc, OptionTooltipHeader,
+    OptionTooltipImpact, OptionTooltipTitle, PauseMenuRoot, PregenMarginBtnText, SeedInputBox,
+    SeedInputState, SeedInputText, SettingsMenuRoot, ShadowsBtnText, ViewDistanceBtnText,
+    VsyncBtnText,
 };
 
 pub fn setup_menu_ui(
@@ -323,7 +324,7 @@ fn spawn_settings_menu(commands: &mut Commands) {
                     row.spawn(Node {
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
-                        row_gap: Val::Px(12.0),
+                        row_gap: Val::Px(8.0),
                         ..default()
                     })
                     .with_children(|btn_col| {
@@ -334,8 +335,8 @@ fn spawn_settings_menu(commands: &mut Commands) {
                             MenuButtonAction::ToggleVsync,
                             VsyncBtnText,
                             320.0,
-                            48.0,
-                            15.0,
+                            42.0,
+                            14.0,
                         );
 
                         // Fullscreen Button
@@ -345,8 +346,8 @@ fn spawn_settings_menu(commands: &mut Commands) {
                             MenuButtonAction::ToggleFullscreen,
                             FullscreenBtnText,
                             320.0,
-                            48.0,
-                            15.0,
+                            42.0,
+                            14.0,
                         );
 
                         // FPS Cap Button
@@ -356,8 +357,8 @@ fn spawn_settings_menu(commands: &mut Commands) {
                             MenuButtonAction::CycleFpsCap,
                             FpsCapBtnText,
                             320.0,
-                            48.0,
-                            15.0,
+                            42.0,
+                            14.0,
                         );
 
                         // Render Distance Button
@@ -367,19 +368,30 @@ fn spawn_settings_menu(commands: &mut Commands) {
                             MenuButtonAction::CycleViewDistance,
                             ViewDistanceBtnText,
                             320.0,
-                            48.0,
-                            15.0,
+                            42.0,
+                            14.0,
                         );
 
-                        // Distant LOD Button
+                        // Greedy Meshing Distance Button
                         spawn_settings_button(
                             btn_col,
-                            "Distant LOD: ON (4 Chunks)",
-                            MenuButtonAction::CycleDistanceLod,
-                            DistanceLodBtnText,
+                            "Greedy Distance: > 2 Chunks (32m)",
+                            MenuButtonAction::CycleGreedyMeshing,
+                            GraphicsGreedyBtnText,
                             320.0,
-                            48.0,
-                            15.0,
+                            42.0,
+                            14.0,
+                        );
+
+                        // Distant Sloped LOD Button
+                        spawn_settings_button(
+                            btn_col,
+                            "Distant Sloped LOD: > 8 Chunks (128m)",
+                            MenuButtonAction::CycleDistanceLod,
+                            GraphicsLodBtnText,
+                            320.0,
+                            42.0,
+                            14.0,
                         );
 
                         // Back Button
@@ -389,13 +401,13 @@ fn spawn_settings_menu(commands: &mut Commands) {
                             MenuButtonAction::BackFromSettings,
                             true,
                             320.0,
-                            48.0,
-                            16.0,
+                            42.0,
+                            15.0,
                         );
                     });
 
                     // Right Info Popup Card
-                    spawn_option_tooltip_card(row, 380.0, 348.0);
+                    spawn_option_tooltip_card(row, 380.0, 350.0);
                 });
         });
 }

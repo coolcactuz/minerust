@@ -74,8 +74,10 @@ pub struct GraphicsSettings {
     pub fullscreen: bool,
     pub fps_cap: Option<u32>, // None = Uncapped, Some(60), Some(120), Some(144)
     pub view_distance: i32,   // 8, 16, 24, 32, 64
+    pub greedy_meshing: bool, // Greedy coplanar quad merging beyond greedy threshold
+    pub greedy_threshold: i32, // Distance threshold in chunks: 2 (32m), 3 (48m), 4 (64m), 0 (all)
     pub distance_lod: bool,   // Distant Sloped Heightfield LOD
-    pub lod_threshold: i32,   // 2, 4, 6, 8 chunks
+    pub lod_threshold: i32,   // 6, 8, 10, 12 chunks
 }
 
 impl Default for GraphicsSettings {
@@ -85,8 +87,10 @@ impl Default for GraphicsSettings {
             fullscreen: false,
             fps_cap: None,
             view_distance: 16,
+            greedy_meshing: true,
+            greedy_threshold: 2,
             distance_lod: true,
-            lod_threshold: 4,
+            lod_threshold: 8,
         }
     }
 }
@@ -118,6 +122,7 @@ pub enum MenuButtonAction {
     ToggleFullscreen,
     CycleFpsCap,
     CycleViewDistance,
+    CycleGreedyMeshing,
     CycleDistanceLod,
     ToggleBackfaceCulling,
     ToggleShadows,
@@ -188,6 +193,12 @@ pub struct MeshBudgetBtnText;
 
 #[derive(Component)]
 pub struct AsyncMeshingBtnText;
+
+#[derive(Component)]
+pub struct GraphicsGreedyBtnText;
+
+#[derive(Component)]
+pub struct GraphicsLodBtnText;
 
 #[derive(Component)]
 pub struct GreedyMeshingBtnText;

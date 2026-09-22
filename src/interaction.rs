@@ -6,7 +6,9 @@ use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
 use crate::menu::MenuState;
-use crate::world::{WorldGrid, chunk_distance_sq_to_player, update_chunk_mesh};
+use crate::world::{
+    WorldGrid, chunk_distance_sq_to_player, determine_chunk_tier, update_chunk_mesh,
+};
 
 pub struct RaycastHit {
     pub hit_block: IVec3,
@@ -229,30 +231,38 @@ pub fn block_interaction_system(
 
             let player_pos = cam_transform.translation;
             let max_y_skip = context.dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
+            let (greedy_meshing, greedy_threshold) = context.graphics_settings.as_ref().map_or_else(
+                || {
+                    context
+                        .dev_settings
+                        .as_ref()
+                        .map_or((true, 2), |d| (d.greedy_meshing, 2))
+                },
+                |g| (g.greedy_meshing, g.greedy_threshold),
+            );
             let (distance_lod, lod_threshold) = context.graphics_settings.as_ref().map_or_else(
                 || {
                     context
                         .dev_settings
                         .as_ref()
-                        .map_or((true, 4), |d| (d.distance_lod, d.lod_threshold))
+                        .map_or((true, 8), |d| (d.distance_lod, d.lod_threshold))
                 },
                 |g| (g.distance_lod, g.lod_threshold),
             );
-            let threshold_world = (lod_threshold as f32) * 16.0;
-            let threshold_sq = threshold_world * threshold_world;
-            let global_greedy = context
-                .dev_settings
-                .as_ref()
-                .map_or(true, |d| d.greedy_meshing);
+            let lod_threshold_sq = ((lod_threshold as f32) * 16.0).powi(2);
+            let greedy_threshold_sq = ((greedy_threshold as f32) * 16.0).powi(2);
 
             for coord in dirty_coords {
                 let chunk_opt = world.chunks.get(&coord);
                 let dist_sq = chunk_distance_sq_to_player(coord, player_pos, chunk_opt);
-                let greedy = if distance_lod {
-                    dist_sq > threshold_sq
-                } else {
-                    global_greedy
-                };
+                let (tier, _, _) = determine_chunk_tier(
+                    dist_sq,
+                    distance_lod,
+                    lod_threshold_sq,
+                    greedy_meshing,
+                    greedy_threshold,
+                    greedy_threshold_sq,
+                );
                 update_chunk_mesh(
                     &coord,
                     &mut commands,
@@ -260,7 +270,7 @@ pub fn block_interaction_system(
                     &mut assets.meshes,
                     &mut assets.materials,
                     max_y_skip,
-                    greedy,
+                    tier,
                 );
             }
         }

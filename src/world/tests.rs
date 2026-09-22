@@ -391,3 +391,80 @@ fn test_find_safe_surface_spawn_different_seeds() {
     assert!((spawn1.x - spawn2.x).abs() > 1.0);
     assert!((spawn1.z - spawn2.z).abs() > 1.0);
 }
+
+#[test]
+fn test_determine_chunk_tier_near_mid_distant() {
+    use crate::world::streaming::determine_chunk_tier;
+
+    let greedy_threshold = 2; // 2 chunks = 32m
+    let greedy_threshold_sq = 32.0 * 32.0; // 1024.0
+    let lod_threshold_sq = 128.0 * 128.0; // 8 chunks = 128m = 16384.0
+
+    // 1. Near camera (distance 10m < 32m) -> Tier 0 (Standard 1x1 voxel, no merging)
+    let near_dist_sq = 10.0 * 10.0;
+    let (tier, greedy, lod) = determine_chunk_tier(
+        near_dist_sq,
+        true,
+        lod_threshold_sq,
+        true,
+        greedy_threshold,
+        greedy_threshold_sq,
+    );
+    assert_eq!(tier, 0, "Near chunk must be Tier 0 (Standard 1x1)");
+    assert!(!greedy, "Near chunk must not be greedy meshed");
+    assert_eq!(lod, 0, "Near chunk must be LOD 0");
+
+    // 2. Mid-range (distance 60m: between 32m and 128m) -> Tier 1 (Greedy coplanar merging)
+    let mid_dist_sq = 60.0 * 60.0;
+    let (tier, greedy, lod) = determine_chunk_tier(
+        mid_dist_sq,
+        true,
+        lod_threshold_sq,
+        true,
+        greedy_threshold,
+        greedy_threshold_sq,
+    );
+    assert_eq!(tier, 1, "Mid-range chunk must be Tier 1 (Greedy)");
+    assert!(greedy, "Mid-range chunk must be greedy meshed");
+    assert_eq!(lod, 0, "Mid-range chunk must be LOD 0 (blocky voxel)");
+
+    // 3. Distant (distance 150m > 128m) -> Tier 2 (Sloped heightfield LOD)
+    let far_dist_sq = 150.0 * 150.0;
+    let (tier, greedy, lod) = determine_chunk_tier(
+        far_dist_sq,
+        true,
+        lod_threshold_sq,
+        true,
+        greedy_threshold,
+        greedy_threshold_sq,
+    );
+    assert_eq!(tier, 2, "Distant chunk must be Tier 2 (Sloped LOD)");
+    assert!(!greedy, "Sloped LOD handles its own triangles");
+    assert_eq!(lod, 1, "Distant chunk must be LOD 1");
+
+    // 4. When greedy meshing is toggled OFF: mid-range remains Tier 0 (Standard 1x1)
+    let (tier, greedy, lod) = determine_chunk_tier(
+        mid_dist_sq,
+        true,
+        lod_threshold_sq,
+        false,
+        greedy_threshold,
+        greedy_threshold_sq,
+    );
+    assert_eq!(tier, 0, "When greedy is OFF, mid-range must be Tier 0");
+    assert!(!greedy);
+    assert_eq!(lod, 0);
+
+    // 5. When distant LOD is toggled OFF: distant chunk remains Tier 1 (Greedy)
+    let (tier, greedy, lod) = determine_chunk_tier(
+        far_dist_sq,
+        false,
+        lod_threshold_sq,
+        true,
+        greedy_threshold,
+        greedy_threshold_sq,
+    );
+    assert_eq!(tier, 1, "When LOD is OFF, distant chunk remains Tier 1");
+    assert!(greedy);
+    assert_eq!(lod, 0);
+}

@@ -122,6 +122,25 @@ pub fn apply_chunk_mesh(
     }
 }
 
+/// Determines the chunk mesh tier and meshing parameters based on distance to player
+#[inline]
+pub fn determine_chunk_tier(
+    dist_sq: f32,
+    distance_lod: bool,
+    lod_threshold_sq: f32,
+    greedy_meshing: bool,
+    greedy_threshold: i32,
+    greedy_threshold_sq: f32,
+) -> (u8, bool, u8) {
+    if distance_lod && dist_sq > lod_threshold_sq {
+        (2, false, 1) // Tier 2: Sloped Heightfield LOD
+    } else if greedy_meshing && (greedy_threshold <= 0 || dist_sq >= greedy_threshold_sq) {
+        (1, true, 0) // Tier 1: Greedy Voxel Meshing
+    } else {
+        (0, false, 0) // Tier 0: Standard 1x1 Voxel Meshing
+    }
+}
+
 /// Updates or creates the mesh for the specified chunk synchronously
 pub fn update_chunk_mesh(
     coord: &IVec2,
@@ -130,7 +149,7 @@ pub fn update_chunk_mesh(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     max_y_skip: bool,
-    greedy: bool,
+    tier: u8,
 ) {
     let Some(chunk) = world.chunks.get(coord) else {
         return;
@@ -141,9 +160,13 @@ pub fn update_chunk_mesh(
     let east = world.chunks.get(&(*coord + IVec2::new(1, 0)));
     let west = world.chunks.get(&(*coord + IVec2::new(-1, 0)));
 
-    let lod = world.chunk_lod.get(coord).copied().unwrap_or(0);
+    let (greedy, lod) = match tier {
+        2 => (false, 1),
+        1 => (true, 0),
+        _ => (false, 0),
+    };
     let new_mesh = build_chunk_mesh_lod(chunk, north, south, east, west, max_y_skip, greedy, lod);
-    apply_chunk_mesh(*coord, new_mesh, lod, commands, world, meshes, materials);
+    apply_chunk_mesh(*coord, new_mesh, tier, commands, world, meshes, materials);
 }
 
 #[derive(SystemParam)]
@@ -439,24 +462,48 @@ pub fn world_streaming_system(
         }
     }
 
-    let distance_lod = settings.graphics.as_ref().map_or(true, |g| g.distance_lod);
-    let lod_threshold = settings.graphics.as_ref().map_or(4, |g| g.lod_threshold);
-    let global_greedy = settings.dev.as_ref().is_none_or(|d| d.greedy_meshing);
+    let (greedy_meshing, greedy_threshold) = settings.graphics.as_ref().map_or_else(
+        || {
+            settings
+                .dev
+                .as_ref()
+                .map_or((true, 2), |d| (d.greedy_meshing, 2))
+        },
+        |g| (g.greedy_meshing, g.greedy_threshold),
+    );
+    let (distance_lod, lod_threshold) = settings.graphics.as_ref().map_or_else(
+        || {
+            settings
+                .dev
+                .as_ref()
+                .map_or((true, 8), |d| (d.distance_lod, d.lod_threshold))
+        },
+        |g| (g.distance_lod, g.lod_threshold),
+    );
 
     let player_pos = cam_transform.translation;
-    let threshold_world = (lod_threshold as f32) * 16.0;
-    let threshold_sq = threshold_world * threshold_world;
+    let lod_threshold_world = (lod_threshold as f32) * 16.0;
+    let lod_threshold_sq = lod_threshold_world * lod_threshold_world;
+    let greedy_threshold_world = (greedy_threshold as f32) * 16.0;
+    let greedy_threshold_sq = greedy_threshold_world * greedy_threshold_world;
 
-    // Dynamic 3D LOD transitions: check if any active chunks need to change LOD as player moves in 3D (including vertical flight)
+    // Dynamic 3D LOD transitions: check if any active chunks need to change mesh tier as player moves in 3D
     let mut chunks_needing_lod_update = Vec::new();
     for (&coord, chunk) in &world.chunks {
         let diff = coord - player_chunk;
         let dist_2d = diff.x.abs().max(diff.y.abs());
         if dist_2d <= view_dist && world.chunk_entities.contains_key(&coord) {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-            let target_lod = u8::from(distance_lod && dist_sq > threshold_sq);
+            let (target_tier, _, _) = determine_chunk_tier(
+                dist_sq,
+                distance_lod,
+                lod_threshold_sq,
+                greedy_meshing,
+                greedy_threshold,
+                greedy_threshold_sq,
+            );
 
-            if world.chunk_lod.get(&coord) != Some(&target_lod)
+            if world.chunk_lod.get(&coord) != Some(&target_tier)
                 && !world.queued_for_mesh.contains(&coord)
                 && !world.in_progress_meshes.contains(&coord)
             {
@@ -500,7 +547,14 @@ pub fn world_streaming_system(
                 let dist_2d = diff.x.abs().max(diff.y.abs());
                 if dist_2d <= view_dist {
                     let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-                    let target_lod = u8::from(distance_lod && dist_sq > threshold_sq);
+                    let (target_tier, chunk_greedy, chunk_lod) = determine_chunk_tier(
+                        dist_sq,
+                        distance_lod,
+                        lod_threshold_sq,
+                        greedy_meshing,
+                        greedy_threshold,
+                        greedy_threshold_sq,
+                    );
 
                     if async_meshing {
                         if world.in_progress_meshes.contains(&coord) {
@@ -523,10 +577,10 @@ pub fn world_streaming_system(
                                     east.as_ref(),
                                     west.as_ref(),
                                     max_y_skip,
-                                    global_greedy,
-                                    target_lod,
+                                    chunk_greedy,
+                                    chunk_lod,
                                 );
-                                let _ = tx.send((coord, mesh, target_lod));
+                                let _ = tx.send((coord, mesh, target_tier));
                             })
                             .detach();
                     } else {
@@ -537,7 +591,7 @@ pub fn world_streaming_system(
                             &mut assets.meshes,
                             &mut assets.materials,
                             max_y_skip,
-                            global_greedy,
+                            target_tier,
                         );
                     }
                     meshed += 1;

@@ -4,67 +4,23 @@ use super::descriptions::get_option_description;
 use super::types::{
     AsyncMeshingBtnText, BackfaceCullingBtnText, DebugHudBtnText, DevSettings,
     DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FpsLimiter, FullscreenBtnText,
-    GraphicsSettings, GreedyMeshingBtnText, LodThresholdBtnText, MaxYSkipBtnText,
-    MenuButtonAction, MeshBudgetBtnText, OptionTooltipCard, OptionTooltipDesc,
-    OptionTooltipHeader, OptionTooltipImpact, OptionTooltipTitle, PregenMarginBtnText,
-    ShadowsBtnText, ViewDistanceBtnText, VsyncBtnText,
+    GraphicsGreedyBtnText, GraphicsLodBtnText, GraphicsSettings, GreedyMeshingBtnText,
+    LodThresholdBtnText, MaxYSkipBtnText, MenuButtonAction, MeshBudgetBtnText, OptionTooltipCard,
+    OptionTooltipDesc, OptionTooltipHeader, OptionTooltipImpact, OptionTooltipTitle,
+    PregenMarginBtnText, ShadowsBtnText, ViewDistanceBtnText, VsyncBtnText,
 };
 
 pub fn update_settings_button_text_system(
     settings: Res<GraphicsSettings>,
-    mut vsync_text_query: Query<
-        &mut Text,
-        (
-            With<VsyncBtnText>,
-            Without<FullscreenBtnText>,
-            Without<FpsCapBtnText>,
-            Without<ViewDistanceBtnText>,
-            Without<DistanceLodBtnText>,
-        ),
-    >,
-    mut fs_text_query: Query<
-        &mut Text,
-        (
-            With<FullscreenBtnText>,
-            Without<VsyncBtnText>,
-            Without<FpsCapBtnText>,
-            Without<ViewDistanceBtnText>,
-            Without<DistanceLodBtnText>,
-        ),
-    >,
-    mut fps_text_query: Query<
-        &mut Text,
-        (
-            With<FpsCapBtnText>,
-            Without<VsyncBtnText>,
-            Without<FullscreenBtnText>,
-            Without<ViewDistanceBtnText>,
-            Without<DistanceLodBtnText>,
-        ),
-    >,
-    mut dist_text_query: Query<
-        &mut Text,
-        (
-            With<ViewDistanceBtnText>,
-            Without<VsyncBtnText>,
-            Without<FullscreenBtnText>,
-            Without<FpsCapBtnText>,
-            Without<DistanceLodBtnText>,
-        ),
-    >,
-    mut lod_text_query: Query<
-        &mut Text,
-        (
-            With<DistanceLodBtnText>,
-            Without<VsyncBtnText>,
-            Without<FullscreenBtnText>,
-            Without<FpsCapBtnText>,
-            Without<ViewDistanceBtnText>,
-        ),
-    >,
+    mut vsync_text_query: Query<&mut Text, With<VsyncBtnText>>,
+    mut fs_text_query: Query<&mut Text, With<FullscreenBtnText>>,
+    mut fps_text_query: Query<&mut Text, With<FpsCapBtnText>>,
+    mut dist_text_query: Query<&mut Text, With<ViewDistanceBtnText>>,
+    mut greedy_text_query: Query<&mut Text, With<GraphicsGreedyBtnText>>,
+    mut lod_text_query: Query<&mut Text, With<GraphicsLodBtnText>>,
 ) {
     if settings.is_changed() {
-        if let Ok(mut text) = vsync_text_query.single_mut() {
+        for mut text in &mut vsync_text_query {
             *text = Text::new(format!(
                 "VSync: {}",
                 if settings.vsync {
@@ -74,7 +30,7 @@ pub fn update_settings_button_text_system(
                 }
             ));
         }
-        if let Ok(mut text) = fs_text_query.single_mut() {
+        for mut text in &mut fs_text_query {
             *text = Text::new(format!(
                 "Display: {}",
                 if settings.fullscreen {
@@ -84,7 +40,7 @@ pub fn update_settings_button_text_system(
                 }
             ));
         }
-        if let Ok(mut text) = fps_text_query.single_mut() {
+        for mut text in &mut fps_text_query {
             *text = Text::new(format!(
                 "FPS Limit: {}",
                 match settings.fps_cap {
@@ -93,17 +49,36 @@ pub fn update_settings_button_text_system(
                 }
             ));
         }
-        if let Ok(mut text) = dist_text_query.single_mut() {
+        for mut text in &mut dist_text_query {
             *text = Text::new(format!(
                 "Render Distance: {} Chunks",
                 settings.view_distance
             ));
         }
-        if let Ok(mut text) = lod_text_query.single_mut() {
-            *text = Text::new(if settings.distance_lod {
-                format!("Distant LOD: ON ({} Chunks)", settings.lod_threshold)
+        for mut text in &mut greedy_text_query {
+            *text = Text::new(if settings.greedy_meshing {
+                if settings.greedy_threshold == 0 {
+                    "Greedy Distance: All Chunks (0m)".to_string()
+                } else {
+                    format!(
+                        "Greedy Distance: > {} Chunks ({}m)",
+                        settings.greedy_threshold,
+                        settings.greedy_threshold * 16
+                    )
+                }
             } else {
-                "Distant LOD: OFF (Voxel Only)".to_string()
+                "Greedy Meshing: OFF (1x1 Voxels)".to_string()
+            });
+        }
+        for mut text in &mut lod_text_query {
+            *text = Text::new(if settings.distance_lod {
+                format!(
+                    "Distant Sloped LOD: > {} Chunks ({}m)",
+                    settings.lod_threshold,
+                    settings.lod_threshold * 16
+                )
+            } else {
+                "Distant Sloped LOD: OFF (Blocky Only)".to_string()
             });
         }
     }
@@ -410,31 +385,29 @@ pub fn update_dev_settings_system(
     mut world: ResMut<crate::world::WorldGrid>,
     mut dir_lights: Query<&mut DirectionalLight>,
     mut fog_query: Query<&mut bevy::pbr::DistanceFog>,
-    mut last_greedy: Local<Option<bool>>,
-    mut last_lod: Local<Option<(bool, i32)>>,
+    mut last_config: Local<Option<(bool, i32, bool, i32)>>,
 ) {
-    let (distance_lod, lod_threshold) = graphics_settings.as_ref().map_or_else(
-        || {
-            dev_settings
-                .as_ref()
-                .map_or((true, 4), |d| (d.distance_lod, d.lod_threshold))
-        },
-        |g| (g.distance_lod, g.lod_threshold),
-    );
-    let lod_config = (distance_lod, lod_threshold);
-    let dev_greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
+    let (greedy_meshing, greedy_threshold, distance_lod, lod_threshold) =
+        graphics_settings.as_ref().map_or_else(
+            || {
+                dev_settings.as_ref().map_or(
+                    (true, 2, true, 8),
+                    |d| (d.greedy_meshing, 2, d.distance_lod, d.lod_threshold),
+                )
+            },
+            |g| (g.greedy_meshing, g.greedy_threshold, g.distance_lod, g.lod_threshold),
+        );
+    let current_config = (greedy_meshing, greedy_threshold, distance_lod, lod_threshold);
 
-    // 1. If greedy meshing or LOD settings changed, re-queue all loaded chunks for re-meshing
-    if last_lod.map_or(false, |last| last != lod_config)
-        || last_greedy.map_or(false, |last| last != dev_greedy)
-    {
+    // 1. If greedy meshing or LOD settings changed, clear tracked tiers and re-queue all loaded chunks for re-meshing
+    if last_config.map_or(false, |last| last != current_config) {
+        world.chunk_lod.clear();
         let coords: Vec<_> = world.chunks.keys().copied().collect();
         for coord in coords {
             world.queue_mesh(coord);
         }
     }
-    *last_greedy = Some(dev_greedy);
-    *last_lod = Some(lod_config);
+    *last_config = Some(current_config);
 
     let Some(dev) = dev_settings else {
         return;
