@@ -126,3 +126,41 @@ fn test_graphics_settings_lod_defaults() {
         "default distant lod threshold should be 8 chunks (128m)"
     );
 }
+
+#[test]
+fn test_menu_systems_schedule_no_conflicts() {
+    use bevy::prelude::*;
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .add_plugins(bevy::input::InputPlugin)
+        .add_plugins(bevy::asset::AssetPlugin::default())
+        .init_asset::<StandardMaterial>()
+        .init_asset::<Mesh>()
+        .insert_resource(crate::world::WorldGrid::new(crate::world::WorldSeed::default()))
+        .add_plugins(crate::menu::MenuPlugin);
+    app.finish();
+    app.cleanup();
+    app.update();
+}
+
+#[test]
+fn test_menu_systems_schedule_dev_mode() {
+    use bevy::prelude::*;
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .add_plugins(bevy::input::InputPlugin)
+        .add_plugins(bevy::asset::AssetPlugin::default())
+        .init_asset::<StandardMaterial>()
+        .init_asset::<Mesh>()
+        .insert_resource(crate::world::WorldGrid::new(crate::world::WorldSeed::default()))
+        .insert_resource(crate::menu::DevSettings {
+            dev_mode: true,
+            ..default()
+        })
+        .add_plugins(crate::menu::MenuPlugin);
+    app.finish();
+    app.cleanup();
+    app.update();
+}

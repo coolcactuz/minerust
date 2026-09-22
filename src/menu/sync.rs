@@ -12,15 +12,21 @@ use super::types::{
 
 pub fn update_settings_button_text_system(
     settings: Res<GraphicsSettings>,
-    mut vsync_text_query: Query<&mut Text, With<VsyncBtnText>>,
-    mut fs_text_query: Query<&mut Text, With<FullscreenBtnText>>,
-    mut fps_text_query: Query<&mut Text, With<FpsCapBtnText>>,
-    mut dist_text_query: Query<&mut Text, With<ViewDistanceBtnText>>,
-    mut greedy_text_query: Query<&mut Text, With<GraphicsGreedyBtnText>>,
-    mut lod_text_query: Query<&mut Text, With<GraphicsLodBtnText>>,
+    mut query: Query<(
+        &mut Text,
+        Option<&VsyncBtnText>,
+        Option<&FullscreenBtnText>,
+        Option<&FpsCapBtnText>,
+        Option<&ViewDistanceBtnText>,
+        Option<&GraphicsGreedyBtnText>,
+        Option<&GraphicsLodBtnText>,
+    )>,
 ) {
-    if settings.is_changed() {
-        for mut text in &mut vsync_text_query {
+    if !settings.is_changed() {
+        return;
+    }
+    for (mut text, vsync, fs, fps, dist, greedy, lod) in &mut query {
+        if vsync.is_some() {
             *text = Text::new(format!(
                 "VSync: {}",
                 if settings.vsync {
@@ -29,8 +35,7 @@ pub fn update_settings_button_text_system(
                     "OFF (Uncapped)"
                 }
             ));
-        }
-        for mut text in &mut fs_text_query {
+        } else if fs.is_some() {
             *text = Text::new(format!(
                 "Display: {}",
                 if settings.fullscreen {
@@ -39,8 +44,7 @@ pub fn update_settings_button_text_system(
                     "Windowed (1280x720)"
                 }
             ));
-        }
-        for mut text in &mut fps_text_query {
+        } else if fps.is_some() {
             *text = Text::new(format!(
                 "FPS Limit: {}",
                 match settings.fps_cap {
@@ -48,14 +52,12 @@ pub fn update_settings_button_text_system(
                     Some(cap) => format!("{} FPS", cap),
                 }
             ));
-        }
-        for mut text in &mut dist_text_query {
+        } else if dist.is_some() {
             *text = Text::new(format!(
                 "Render Distance: {} Chunks",
                 settings.view_distance
             ));
-        }
-        for mut text in &mut greedy_text_query {
+        } else if greedy.is_some() {
             *text = Text::new(if settings.greedy_meshing {
                 if settings.greedy_threshold == 0 {
                     "Greedy Distance: All Chunks (0m)".to_string()
@@ -69,8 +71,7 @@ pub fn update_settings_button_text_system(
             } else {
                 "Greedy Meshing: OFF (1x1 Voxels)".to_string()
             });
-        }
-        for mut text in &mut lod_text_query {
+        } else if lod.is_some() {
             *text = Text::new(if settings.distance_lod {
                 format!(
                     "Distant Sloped LOD: > {} Chunks ({}m)",
@@ -86,188 +87,31 @@ pub fn update_settings_button_text_system(
 
 pub fn update_dev_button_text_system(
     dev_settings: Option<Res<DevSettings>>,
-    mut cull_text_query: Query<
+    mut query: Query<(
         &mut Text,
-        (
-            With<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<DebugHudBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut shadow_text_query: Query<
-        &mut Text,
-        (
-            With<ShadowsBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<DebugHudBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut max_y_text_query: Query<
-        &mut Text,
-        (
-            With<MaxYSkipBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<DebugHudBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut fog_text_query: Query<
-        &mut Text,
-        (
-            With<DistanceFogBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<DebugHudBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut budget_text_query: Query<
-        &mut Text,
-        (
-            With<MeshBudgetBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<DebugHudBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut async_text_query: Query<
-        &mut Text,
-        (
-            With<AsyncMeshingBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<DebugHudBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut greedy_text_query: Query<
-        &mut Text,
-        (
-            With<GreedyMeshingBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<DebugHudBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut lod_text_query: Query<
-        &mut Text,
-        (
-            With<DistanceLodBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<DebugHudBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut thresh_text_query: Query<
-        &mut Text,
-        (
-            With<LodThresholdBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<DebugHudBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut hud_text_query: Query<
-        &mut Text,
-        (
-            With<DebugHudBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<PregenMarginBtnText>,
-        ),
-    >,
-    mut margin_text_query: Query<
-        &mut Text,
-        (
-            With<PregenMarginBtnText>,
-            Without<BackfaceCullingBtnText>,
-            Without<ShadowsBtnText>,
-            Without<MaxYSkipBtnText>,
-            Without<DistanceFogBtnText>,
-            Without<MeshBudgetBtnText>,
-            Without<AsyncMeshingBtnText>,
-            Without<GreedyMeshingBtnText>,
-            Without<DistanceLodBtnText>,
-            Without<LodThresholdBtnText>,
-            Without<DebugHudBtnText>,
-        ),
-    >,
+        Option<&BackfaceCullingBtnText>,
+        Option<&ShadowsBtnText>,
+        Option<&MaxYSkipBtnText>,
+        Option<&DistanceFogBtnText>,
+        Option<&MeshBudgetBtnText>,
+        Option<&AsyncMeshingBtnText>,
+        Option<&GreedyMeshingBtnText>,
+        Option<&DistanceLodBtnText>,
+        Option<&LodThresholdBtnText>,
+        Option<&DebugHudBtnText>,
+        Option<&PregenMarginBtnText>,
+    )>,
 ) {
     let Some(dev) = dev_settings else {
         return;
     };
-    if dev.is_changed() {
-        if let Ok(mut text) = cull_text_query.single_mut() {
+    if !dev.is_changed() {
+        return;
+    }
+    for (mut text, cull, shadow, max_y, fog, budget, async_m, greedy, lod, thresh, hud, margin) in
+        &mut query
+    {
+        if cull.is_some() {
             *text = Text::new(format!(
                 "Backface Culling: {}",
                 if dev.backface_culling {
@@ -276,8 +120,7 @@ pub fn update_dev_button_text_system(
                     "OFF (Draw front & back)"
                 }
             ));
-        }
-        if let Ok(mut text) = shadow_text_query.single_mut() {
+        } else if shadow.is_some() {
             *text = Text::new(format!(
                 "Dynamic Shadows: {}",
                 if dev.shadows_enabled {
@@ -286,8 +129,7 @@ pub fn update_dev_button_text_system(
                     "OFF (Zero shadow passes)"
                 }
             ));
-        }
-        if let Ok(mut text) = max_y_text_query.single_mut() {
+        } else if max_y.is_some() {
             *text = Text::new(format!(
                 "Mesher max_y Skip: {}",
                 if dev.max_y_skip {
@@ -296,8 +138,7 @@ pub fn update_dev_button_text_system(
                     "OFF (Loop all 384 layers)"
                 }
             ));
-        }
-        if let Ok(mut text) = fog_text_query.single_mut() {
+        } else if fog.is_some() {
             *text = Text::new(format!(
                 "Distance Fog: {}",
                 if dev.distance_fog {
@@ -306,8 +147,7 @@ pub fn update_dev_button_text_system(
                     "OFF (Harsh edge)"
                 }
             ));
-        }
-        if let Ok(mut text) = budget_text_query.single_mut() {
+        } else if budget.is_some() {
             *text = Text::new(format!(
                 "Mesh Budget: {}",
                 if dev.mesh_budget {
@@ -316,8 +156,7 @@ pub fn update_dev_button_text_system(
                     "OFF (Spike benchmark)"
                 }
             ));
-        }
-        if let Ok(mut text) = async_text_query.single_mut() {
+        } else if async_m.is_some() {
             *text = Text::new(format!(
                 "Async Meshing: {}",
                 if dev.async_meshing {
@@ -326,8 +165,7 @@ pub fn update_dev_button_text_system(
                     "OFF (Sync frame spikes)"
                 }
             ));
-        }
-        if let Ok(mut text) = greedy_text_query.single_mut() {
+        } else if greedy.is_some() {
             *text = Text::new(format!(
                 "Greedy Meshing: {}",
                 if dev.greedy_meshing {
@@ -336,8 +174,7 @@ pub fn update_dev_button_text_system(
                     "OFF (1x1 block quads)"
                 }
             ));
-        }
-        if let Ok(mut text) = lod_text_query.single_mut() {
+        } else if lod.is_some() {
             *text = Text::new(format!(
                 "Distance LOD: {}",
                 if dev.distance_lod {
@@ -346,15 +183,13 @@ pub fn update_dev_button_text_system(
                     "OFF (Uniform meshing)"
                 }
             ));
-        }
-        if let Ok(mut text) = thresh_text_query.single_mut() {
+        } else if thresh.is_some() {
             *text = Text::new(format!(
                 "LOD Distance: {} Chunks ({}m)",
                 dev.lod_threshold,
                 dev.lod_threshold * 16
             ));
-        }
-        if let Ok(mut text) = margin_text_query.single_mut() {
+        } else if margin.is_some() {
             *text = Text::new(if dev.pregen_margin == 0 {
                 "Lookahead Buffer: 0 (Disabled / Stutter prone)".to_string()
             } else {
@@ -364,8 +199,7 @@ pub fn update_dev_button_text_system(
                     dev.pregen_margin * 16
                 )
             });
-        }
-        if let Ok(mut text) = hud_text_query.single_mut() {
+        } else if hud.is_some() {
             *text = Text::new(format!(
                 "Dev HUD (F3): {}",
                 if dev.show_debug_hud {
@@ -449,42 +283,13 @@ pub fn update_dev_settings_system(
 pub fn update_option_tooltip_system(
     interaction_query: Query<(&Interaction, &MenuButtonAction), With<Button>>,
     mut last_hovered: Local<Option<MenuButtonAction>>,
-    mut header_query: Query<
+    mut text_query: Query<(
         &mut Text,
-        (
-            With<OptionTooltipHeader>,
-            Without<OptionTooltipTitle>,
-            Without<OptionTooltipDesc>,
-            Without<OptionTooltipImpact>,
-        ),
-    >,
-    mut title_query: Query<
-        &mut Text,
-        (
-            With<OptionTooltipTitle>,
-            Without<OptionTooltipHeader>,
-            Without<OptionTooltipDesc>,
-            Without<OptionTooltipImpact>,
-        ),
-    >,
-    mut desc_query: Query<
-        &mut Text,
-        (
-            With<OptionTooltipDesc>,
-            Without<OptionTooltipHeader>,
-            Without<OptionTooltipTitle>,
-            Without<OptionTooltipImpact>,
-        ),
-    >,
-    mut impact_query: Query<
-        &mut Text,
-        (
-            With<OptionTooltipImpact>,
-            Without<OptionTooltipHeader>,
-            Without<OptionTooltipTitle>,
-            Without<OptionTooltipDesc>,
-        ),
-    >,
+        Option<&OptionTooltipHeader>,
+        Option<&OptionTooltipTitle>,
+        Option<&OptionTooltipDesc>,
+        Option<&OptionTooltipImpact>,
+    )>,
     mut card_query: Query<&mut BorderColor, With<OptionTooltipCard>>,
 ) {
     let currently_hovered = interaction_query
@@ -499,38 +304,36 @@ pub fn update_option_tooltip_system(
 
         if let Some(action) = currently_hovered {
             if let Some(desc) = get_option_description(&action) {
-                for mut text in &mut header_query {
-                    *text = Text::new(format!("[ {} ]", desc.header));
-                }
-                for mut text in &mut title_query {
-                    *text = Text::new(desc.title);
-                }
-                for mut text in &mut desc_query {
-                    *text = Text::new(desc.description);
-                }
-                for mut text in &mut impact_query {
-                    *text = Text::new(desc.impact);
+                for (mut text, header, title, desc_opt, impact) in &mut text_query {
+                    if header.is_some() {
+                        *text = Text::new(format!("[ {} ]", desc.header));
+                    } else if title.is_some() {
+                        *text = Text::new(desc.title);
+                    } else if desc_opt.is_some() {
+                        *text = Text::new(desc.description);
+                    } else if impact.is_some() {
+                        *text = Text::new(desc.impact);
+                    }
                 }
                 for mut border in &mut card_query {
                     *border = BorderColor::all(Color::srgb(1.0, 0.85, 0.2));
                 }
             }
         } else {
-            for mut text in &mut header_query {
-                *text = Text::new("[ SETTING INFO ]");
-            }
-            for mut text in &mut title_query {
-                *text = Text::new("Hover over any setting");
-            }
-            for mut text in &mut desc_query {
-                *text = Text::new(
-                    "Move your mouse over any graphic or performance setting on the left to inspect its technical details, rendering behavior, and performance impact.",
-                );
-            }
-            for mut text in &mut impact_query {
-                *text = Text::new(
-                    "- All MineRust optimizations are tuned for maximum 60+ FPS stability.",
-                );
+            for (mut text, header, title, desc_opt, impact) in &mut text_query {
+                if header.is_some() {
+                    *text = Text::new("[ SETTING INFO ]");
+                } else if title.is_some() {
+                    *text = Text::new("Hover over any setting");
+                } else if desc_opt.is_some() {
+                    *text = Text::new(
+                        "Move your mouse over any graphic or performance setting on the left to inspect its technical details, rendering behavior, and performance impact.",
+                    );
+                } else if impact.is_some() {
+                    *text = Text::new(
+                        "- All MineRust optimizations are tuned for maximum 60+ FPS stability.",
+                    );
+                }
             }
             for mut border in &mut card_query {
                 *border = BorderColor::all(Color::srgba(0.35, 0.55, 0.85, 0.8));
