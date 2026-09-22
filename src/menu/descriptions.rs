@@ -64,11 +64,14 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             description: "Dispatches chunk greedy meshing computations to background worker threads across all available CPU cores.",
             impact: "- ON: Zero main-thread lag (0ms) during terrain meshing.\n- OFF: Synchronous meshing on the render thread, causing frame drops.",
         }),
-        MenuButtonAction::CycleGreedyMeshing => Some(OptionDescription {
+        MenuButtonAction::CycleGreedyMeshing
+        | MenuButtonAction::StepGreedyMeshingLeft
+        | MenuButtonAction::StepGreedyMeshingRight
+        | MenuButtonAction::SlideGreedyMeshing => Some(OptionDescription {
             header: "VOXEL GREEDY MERGING",
             title: "Greedy Meshing Distance",
             description: "Controls the distance from the player beyond which adjacent coplanar block faces are merged into optimized quads. Chunks closer than this distance preserve crisp 1x1 individual voxel block faces.",
-            impact: "- > 2-4 Chunks: Crisp 1x1 blocks near camera, high FPS at medium/long range.\n- OFF: 1x1 block quads everywhere.\n- All Chunks: Maximum geometry optimization everywhere.",
+            impact: "- > 1-4 Chunks: Crisp 1x1 blocks near camera, high FPS at medium/long range.\n- OFF: 1x1 block quads everywhere.\n- All Chunks: Maximum geometry optimization everywhere.",
         }),
         MenuButtonAction::ToggleGreedyMeshing => Some(OptionDescription {
             header: "GEOMETRY OPTIMIZATION BENCHMARK",
@@ -76,12 +79,16 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             description: "Iteratively merges adjacent coplanar block faces sharing the same voxel type into large single rectangular quads.",
             impact: "- ON: Reduces chunk vertex and triangle counts by ~75%.\n- OFF: Emits separate 1x1 quads for every exposed block face.",
         }),
-        MenuButtonAction::CycleDistanceLod | MenuButtonAction::ToggleDistanceLod => {
+        MenuButtonAction::CycleDistanceLod
+        | MenuButtonAction::StepDistanceLodLeft
+        | MenuButtonAction::StepDistanceLodRight
+        | MenuButtonAction::SlideDistanceLod
+        | MenuButtonAction::ToggleDistanceLod => {
             Some(OptionDescription {
                 header: "DISTANCE LEVEL OF DETAIL (LOD)",
                 title: "Distant Sloped Heightfield LOD",
                 description: "Replaces distant stepped voxel stairs on mountain slopes with smooth continuous angled surfaces and groups exposed ore veins into stone. Engages only for chunks far in the distance.",
-                impact: "- ON (6-12 Chunks): Cuts distant geometry by up to 90%, stabilizing 60+ FPS without affecting foreground voxels.\n- OFF: Renders every distant block as a 1x1 voxel cube.",
+                impact: "- ON (2-32 Chunks): Cuts distant geometry by up to 90%, stabilizing 60+ FPS without affecting foreground voxels.\n- OFF: Renders every distant block as a 1x1 voxel cube.",
             })
         }
         MenuButtonAction::CycleLodThreshold => Some(OptionDescription {

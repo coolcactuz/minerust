@@ -4,16 +4,21 @@ use bevy::text::FontSize;
 use super::types::{
     AsyncMeshingBtnText, BackfaceCullingBtnText, DebugHudBtnText, DevSettings, DevSettingsMenuRoot,
     DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FullscreenBtnText, GraphicsGreedyBtnText,
-    GraphicsLodBtnText, GreedyMeshingBtnText, LodThresholdBtnText, MainMenuRoot, MaxYSkipBtnText,
-    MenuButtonAction, MeshBudgetBtnText, OptionTooltipCard, OptionTooltipDesc, OptionTooltipHeader,
-    OptionTooltipImpact, OptionTooltipTitle, PauseMenuRoot, PregenMarginBtnText, SeedInputBox,
-    SeedInputState, SeedInputText, SettingsMenuRoot, ShadowsBtnText, ViewDistanceBtnText,
-    VsyncBtnText,
+    GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsGreedyTrack, GraphicsLodBtnText,
+    GraphicsLodFill, GraphicsLodThumb, GraphicsLodTrack, GraphicsSettings, GreedyMeshingBtnText,
+    LodThresholdBtnText, MainMenuRoot, MaxYSkipBtnText, MenuButtonAction, MeshBudgetBtnText,
+    PauseMenuRoot, PregenMarginBtnText, SeedInputBox, SeedInputState, SeedInputText,
+    SettingsMenuRoot, ShadowsBtnText, ViewDistanceBtnText, VsyncBtnText,
+};
+use super::widgets::{
+    spawn_menu_button, spawn_menu_button_sized, spawn_option_tooltip_card, spawn_settings_button,
+    spawn_slider_setting,
 };
 
 pub fn setup_menu_ui(
     mut commands: Commands,
     dev_settings: Option<Res<DevSettings>>,
+    graphics_settings: Option<Res<GraphicsSettings>>,
     seed_state: Option<Res<SeedInputState>>,
 ) {
     let is_dev = dev_settings.as_ref().is_some_and(|d| d.dev_mode);
@@ -23,7 +28,7 @@ pub fn setup_menu_ui(
 
     spawn_main_menu(&mut commands, is_dev, &initial_seed_str);
     spawn_pause_menu(&mut commands, is_dev);
-    spawn_settings_menu(&mut commands);
+    spawn_settings_menu(&mut commands, graphics_settings.as_deref());
     spawn_dev_settings_menu(&mut commands);
 }
 
@@ -261,7 +266,16 @@ fn spawn_pause_menu(commands: &mut Commands, is_dev: bool) {
         });
 }
 
-fn spawn_settings_menu(commands: &mut Commands) {
+fn spawn_settings_menu(commands: &mut Commands, graphics_settings: Option<&GraphicsSettings>) {
+    let (greedy_label, greedy_ratio) = graphics_settings.map_or_else(
+        || ("Greedy Distance: > 2 Chunks (32m)".to_string(), 0.2),
+        |g| (g.greedy_label(), g.greedy_ratio()),
+    );
+    let (lod_label, lod_ratio) = graphics_settings.map_or_else(
+        || ("Distant Sloped LOD: > 8 Chunks (128m)".to_string(), 7.0 / 15.0),
+        |g| (g.lod_label(), g.lod_ratio()),
+    );
+
     commands
         .spawn((
             Node {
@@ -372,26 +386,38 @@ fn spawn_settings_menu(commands: &mut Commands) {
                             14.0,
                         );
 
-                        // Greedy Meshing Distance Button
-                        spawn_settings_button(
+                        // Greedy Meshing Distance Slider
+                        spawn_slider_setting(
                             btn_col,
-                            "Greedy Distance: > 2 Chunks (32m)",
-                            MenuButtonAction::CycleGreedyMeshing,
                             GraphicsGreedyBtnText,
+                            GraphicsGreedyTrack,
+                            GraphicsGreedyFill,
+                            GraphicsGreedyThumb,
+                            MenuButtonAction::StepGreedyMeshingLeft,
+                            MenuButtonAction::StepGreedyMeshingRight,
+                            MenuButtonAction::SlideGreedyMeshing,
+                            MenuButtonAction::CycleGreedyMeshing,
+                            &greedy_label,
+                            greedy_ratio,
                             320.0,
-                            42.0,
-                            14.0,
+                            48.0,
                         );
 
-                        // Distant Sloped LOD Button
-                        spawn_settings_button(
+                        // Distant Sloped LOD Slider
+                        spawn_slider_setting(
                             btn_col,
-                            "Distant Sloped LOD: > 8 Chunks (128m)",
-                            MenuButtonAction::CycleDistanceLod,
                             GraphicsLodBtnText,
+                            GraphicsLodTrack,
+                            GraphicsLodFill,
+                            GraphicsLodThumb,
+                            MenuButtonAction::StepDistanceLodLeft,
+                            MenuButtonAction::StepDistanceLodRight,
+                            MenuButtonAction::SlideDistanceLod,
+                            MenuButtonAction::CycleDistanceLod,
+                            &lod_label,
+                            lod_ratio,
                             320.0,
-                            42.0,
-                            14.0,
+                            48.0,
                         );
 
                         // Back Button
@@ -407,7 +433,7 @@ fn spawn_settings_menu(commands: &mut Commands) {
                     });
 
                     // Right Info Popup Card
-                    spawn_option_tooltip_card(row, 380.0, 350.0);
+                    spawn_option_tooltip_card(row, 380.0, 354.0);
                 });
         });
 }
@@ -605,185 +631,3 @@ fn spawn_dev_settings_menu(commands: &mut Commands) {
         });
 }
 
-pub fn spawn_option_tooltip_card(parent: &mut ChildSpawnerCommands, width_px: f32, height_px: f32) {
-    parent
-        .spawn((
-            Node {
-                width: Val::Px(width_px),
-                height: Val::Px(height_px),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(16.0)),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(8.0)),
-                row_gap: Val::Px(8.0),
-                justify_content: JustifyContent::SpaceBetween,
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.07, 0.09, 0.15, 0.95)),
-            BorderColor::all(Color::srgba(0.35, 0.55, 0.85, 0.8)),
-            OptionTooltipCard,
-        ))
-        .with_children(|card| {
-            card.spawn(Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(6.0),
-                ..default()
-            })
-            .with_children(|top| {
-                top.spawn((
-                    Text::new("[ SETTING INFO ]"),
-                    TextFont {
-                        font_size: FontSize::Px(11.5),
-                        ..default()
-                    },
-                    TextColor(Color::srgb(0.35, 0.8, 1.0)),
-                    OptionTooltipHeader,
-                ));
-
-                top.spawn((
-                    Text::new("Hover over any setting"),
-                    TextFont {
-                        font_size: FontSize::Px(16.5),
-                        ..default()
-                    },
-                    TextColor(Color::srgb(1.0, 0.85, 0.2)),
-                    OptionTooltipTitle,
-                ));
-
-                top.spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Px(1.5),
-                        margin: UiRect::axes(Val::Px(0.0), Val::Px(4.0)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(0.4, 0.5, 0.7, 0.35)),
-                ));
-
-                top.spawn((
-                    Text::new(
-                        "Move your mouse over any graphic or performance setting on the left to inspect its technical details, rendering behavior, and performance impact.",
-                    ),
-                    TextFont {
-                        font_size: FontSize::Px(12.5),
-                        ..default()
-                    },
-                    TextColor(Color::srgb(0.85, 0.88, 0.93)),
-                    OptionTooltipDesc,
-                ));
-            });
-
-            card.spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(Val::Px(8.0)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    border_radius: BorderRadius::all(Val::Px(6.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.12, 0.16, 0.25, 0.85)),
-                BorderColor::all(Color::srgba(0.3, 0.5, 0.7, 0.5)),
-            ))
-            .with_children(|impact_box| {
-                impact_box.spawn((
-                    Text::new("- All MineRust optimizations are tuned for maximum 60+ FPS stability."),
-                    TextFont {
-                        font_size: FontSize::Px(11.5),
-                        ..default()
-                    },
-                    TextColor(Color::srgb(0.45, 0.95, 0.65)),
-                    OptionTooltipImpact,
-                ));
-            });
-        });
-}
-
-pub fn spawn_menu_button(
-    parent: &mut ChildSpawnerCommands,
-    label: &str,
-    action: MenuButtonAction,
-    highlight: bool,
-) {
-    spawn_menu_button_sized(parent, label, action, highlight, 320.0, 50.0, 16.0);
-}
-
-pub fn spawn_menu_button_sized(
-    parent: &mut ChildSpawnerCommands,
-    label: &str,
-    action: MenuButtonAction,
-    highlight: bool,
-    width_px: f32,
-    height_px: f32,
-    font_size: f32,
-) {
-    parent
-        .spawn((
-            Button,
-            Node {
-                width: Val::Px(width_px),
-                height: Val::Px(height_px),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                border: UiRect::all(Val::Px(if highlight { 2.5 } else { 1.5 })),
-                padding: UiRect::all(Val::Px(6.0)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.16, 0.16, 0.22, 0.9)),
-            BorderColor::all(if highlight {
-                Color::srgb(1.0, 0.85, 0.2)
-            } else {
-                Color::srgba(0.45, 0.45, 0.55, 0.8)
-            }),
-            action,
-        ))
-        .with_children(|btn| {
-            btn.spawn((
-                Text::new(label),
-                TextFont {
-                    font_size: FontSize::Px(font_size),
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-            ));
-        });
-}
-
-pub fn spawn_settings_button<T: Component>(
-    parent: &mut ChildSpawnerCommands,
-    label: &str,
-    action: MenuButtonAction,
-    text_marker: T,
-    width_px: f32,
-    height_px: f32,
-    font_size: f32,
-) {
-    parent
-        .spawn((
-            Button,
-            Node {
-                width: Val::Px(width_px),
-                height: Val::Px(height_px),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                border: UiRect::all(Val::Px(1.5)),
-                padding: UiRect::all(Val::Px(6.0)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.16, 0.16, 0.22, 0.9)),
-            BorderColor::all(Color::srgba(0.45, 0.45, 0.55, 0.8)),
-            action,
-        ))
-        .with_children(|btn| {
-            btn.spawn((
-                Text::new(label),
-                TextFont {
-                    font_size: FontSize::Px(font_size),
-                    ..default()
-                },
-                TextColor(Color::srgb(0.9, 0.95, 1.0)),
-                text_marker,
-            ));
-        });
-}

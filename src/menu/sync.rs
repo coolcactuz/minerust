@@ -4,7 +4,8 @@ use super::descriptions::get_option_description;
 use super::types::{
     AsyncMeshingBtnText, BackfaceCullingBtnText, DebugHudBtnText, DevSettings,
     DistanceFogBtnText, DistanceLodBtnText, FpsCapBtnText, FpsLimiter, FullscreenBtnText,
-    GraphicsGreedyBtnText, GraphicsLodBtnText, GraphicsSettings, GreedyMeshingBtnText,
+    GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsLodBtnText,
+    GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, GreedyMeshingBtnText,
     LodThresholdBtnText, MaxYSkipBtnText, MenuButtonAction, MeshBudgetBtnText, OptionTooltipCard,
     OptionTooltipDesc, OptionTooltipHeader, OptionTooltipImpact, OptionTooltipTitle,
     PregenMarginBtnText, ShadowsBtnText, ViewDistanceBtnText, VsyncBtnText,
@@ -58,29 +59,9 @@ pub fn update_settings_button_text_system(
                 settings.view_distance
             ));
         } else if greedy.is_some() {
-            *text = Text::new(if settings.greedy_meshing {
-                if settings.greedy_threshold == 0 {
-                    "Greedy Distance: All Chunks (0m)".to_string()
-                } else {
-                    format!(
-                        "Greedy Distance: > {} Chunks ({}m)",
-                        settings.greedy_threshold,
-                        settings.greedy_threshold * 16
-                    )
-                }
-            } else {
-                "Greedy Meshing: OFF (1x1 Voxels)".to_string()
-            });
+            *text = Text::new(settings.greedy_label());
         } else if lod.is_some() {
-            *text = Text::new(if settings.distance_lod {
-                format!(
-                    "Distant Sloped LOD: > {} Chunks ({}m)",
-                    settings.lod_threshold,
-                    settings.lod_threshold * 16
-                )
-            } else {
-                "Distant Sloped LOD: OFF (Blocky Only)".to_string()
-            });
+            *text = Text::new(settings.lod_label());
         }
     }
 }
@@ -356,3 +337,47 @@ pub fn fps_limiter_system(settings: Res<GraphicsSettings>, mut limiter: ResMut<F
         limiter.last_frame_instant = None;
     }
 }
+
+pub fn update_slider_visuals_system(
+    settings: Res<GraphicsSettings>,
+    mut query: Query<(
+        &mut Node,
+        Option<&GraphicsGreedyFill>,
+        Option<&GraphicsLodFill>,
+        Option<&GraphicsGreedyThumb>,
+        Option<&GraphicsLodThumb>,
+    )>,
+    mut last_ratios: Local<Option<(f32, f32)>>,
+) {
+    let greedy_ratio = settings.greedy_ratio();
+    let lod_ratio = settings.lod_ratio();
+    let current_ratios = (greedy_ratio, lod_ratio);
+
+    if last_ratios.is_some_and(|r| r == current_ratios) {
+        return;
+    }
+    *last_ratios = Some(current_ratios);
+
+    for (mut node, g_fill, l_fill, g_thumb, l_thumb) in &mut query {
+        if g_fill.is_some() {
+            let fill_pct = if greedy_ratio <= 0.0 {
+                0.0
+            } else {
+                (greedy_ratio * 95.0 + 5.0).min(100.0)
+            };
+            node.width = Val::Percent(fill_pct);
+        } else if l_fill.is_some() {
+            let fill_pct = if lod_ratio <= 0.0 {
+                0.0
+            } else {
+                (lod_ratio * 95.0 + 5.0).min(100.0)
+            };
+            node.width = Val::Percent(fill_pct);
+        } else if g_thumb.is_some() {
+            node.left = Val::Percent(greedy_ratio * 95.0);
+        } else if l_thumb.is_some() {
+            node.left = Val::Percent(lod_ratio * 95.0);
+        }
+    }
+}
+

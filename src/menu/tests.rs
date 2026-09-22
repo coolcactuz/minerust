@@ -71,7 +71,13 @@ fn test_get_option_description_all_actions() {
         MenuButtonAction::CycleFpsCap,
         MenuButtonAction::CycleViewDistance,
         MenuButtonAction::CycleGreedyMeshing,
+        MenuButtonAction::StepGreedyMeshingLeft,
+        MenuButtonAction::StepGreedyMeshingRight,
+        MenuButtonAction::SlideGreedyMeshing,
         MenuButtonAction::CycleDistanceLod,
+        MenuButtonAction::StepDistanceLodLeft,
+        MenuButtonAction::StepDistanceLodRight,
+        MenuButtonAction::SlideDistanceLod,
         MenuButtonAction::ToggleBackfaceCulling,
         MenuButtonAction::ToggleShadows,
         MenuButtonAction::ToggleMaxYSkip,
@@ -125,6 +131,71 @@ fn test_graphics_settings_lod_defaults() {
         gs.lod_threshold, 8,
         "default distant lod threshold should be 8 chunks (128m)"
     );
+}
+
+#[test]
+fn test_greedy_meshing_slider_steps_and_ratios() {
+    let mut gs = super::types::GraphicsSettings::default();
+
+    // Default is 2 chunks -> index 3
+    assert_eq!(gs.greedy_step_index(), 3);
+    assert!((gs.greedy_ratio() - 3.0 / 15.0).abs() < 1e-4);
+    assert_eq!(gs.greedy_label(), "Greedy Distance: > 2 Chunks (32m)");
+
+    // Step down to 1 chunk, then 0 chunks (all), then OFF
+    gs.step_greedy(-1);
+    assert_eq!(gs.greedy_step_index(), 2);
+    assert_eq!(gs.greedy_threshold, 1);
+    assert_eq!(gs.greedy_label(), "Greedy Distance: > 1 Chunk (16m)");
+
+    gs.step_greedy(-1);
+    assert_eq!(gs.greedy_step_index(), 1);
+    assert_eq!(gs.greedy_threshold, 0);
+    assert_eq!(gs.greedy_label(), "Greedy Distance: All Chunks (0m)");
+
+    gs.step_greedy(-1);
+    assert_eq!(gs.greedy_step_index(), 0);
+    assert!(!gs.greedy_meshing);
+    assert_eq!(gs.greedy_label(), "Greedy Meshing: OFF (1x1 Voxels)");
+
+    // Clamping at index 0
+    gs.step_greedy(-1);
+    assert_eq!(gs.greedy_step_index(), 0);
+
+    // Set from ratio: 1.0 (far right) -> 24 chunks
+    gs.set_greedy_from_ratio(1.0);
+    assert_eq!(gs.greedy_step_index(), 15);
+    assert!(gs.greedy_meshing);
+    assert_eq!(gs.greedy_threshold, 24);
+    assert_eq!(gs.greedy_label(), "Greedy Distance: > 24 Chunks (384m)");
+}
+
+#[test]
+fn test_distance_lod_slider_steps_and_ratios() {
+    let mut gs = super::types::GraphicsSettings::default();
+
+    // Default is 8 chunks -> index 7
+    assert_eq!(gs.lod_step_index(), 7);
+    assert!((gs.lod_ratio() - 7.0 / 15.0).abs() < 1e-4);
+    assert_eq!(gs.lod_label(), "Distant Sloped LOD: > 8 Chunks (128m)");
+
+    // Step down to 7, 6, ..., OFF
+    gs.step_lod(-1);
+    assert_eq!(gs.lod_step_index(), 6);
+    assert_eq!(gs.lod_threshold, 7);
+
+    // Set from ratio: 0.0 (OFF)
+    gs.set_lod_from_ratio(0.0);
+    assert_eq!(gs.lod_step_index(), 0);
+    assert!(!gs.distance_lod);
+    assert_eq!(gs.lod_label(), "Distant Sloped LOD: OFF (Blocky Only)");
+
+    // Set from ratio: 1.0 (far right) -> 32 chunks
+    gs.set_lod_from_ratio(1.0);
+    assert_eq!(gs.lod_step_index(), 15);
+    assert!(gs.distance_lod);
+    assert_eq!(gs.lod_threshold, 32);
+    assert_eq!(gs.lod_label(), "Distant Sloped LOD: > 32 Chunks (512m)");
 }
 
 #[test]

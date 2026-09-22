@@ -12,8 +12,9 @@ use crate::save::load_player_from_disk;
 use crate::world::{WorldGrid, WorldSeed, find_safe_surface_spawn};
 
 use super::types::{
-    DevSettings, DevSettingsMenuRoot, GraphicsSettings, MainMenuRoot, MenuButtonAction, MenuScreen,
-    MenuState, PauseMenuRoot, SeedInputBox, SeedInputState, SettingsMenuRoot,
+    DevSettings, DevSettingsMenuRoot, GraphicsGreedyTrack, GraphicsLodTrack, GraphicsSettings,
+    MainMenuRoot, MenuButtonAction, MenuScreen, MenuState, PauseMenuRoot, SeedInputBox,
+    SeedInputState, SettingsMenuRoot, SliderTrack,
 };
 
 pub fn menu_input_system(
@@ -159,7 +160,16 @@ pub fn update_menu_visibility_system(
 pub fn menu_button_hover_system(
     mut query: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
-        (Changed<Interaction>, With<Button>, Without<SeedInputBox>),
+        (
+            Changed<Interaction>,
+            With<Button>,
+            Without<SeedInputBox>,
+            Without<SliderTrack>,
+        ),
+    >,
+    mut track_query: Query<
+        (&Interaction, &mut BorderColor),
+        (Changed<Interaction>, With<SliderTrack>),
     >,
 ) {
     for (interaction, mut bg, mut border) in &mut query {
@@ -175,6 +185,17 @@ pub fn menu_button_hover_system(
             Interaction::None => {
                 *bg = BackgroundColor(Color::srgba(0.16, 0.16, 0.22, 0.9));
                 *border = BorderColor::all(Color::srgba(0.45, 0.45, 0.55, 0.8));
+            }
+        }
+    }
+
+    for (interaction, mut border) in &mut track_query {
+        match *interaction {
+            Interaction::Hovered | Interaction::Pressed => {
+                *border = BorderColor::all(Color::srgb(1.0, 0.9, 0.3));
+            }
+            Interaction::None => {
+                *border = BorderColor::all(Color::srgba(0.35, 0.40, 0.55, 0.7));
             }
         }
     }
@@ -357,38 +378,27 @@ pub fn menu_button_click_system(
                         _ => 16,
                     };
                 }
-                MenuButtonAction::CycleGreedyMeshing => {
-                    if !settings.greedy_meshing {
-                        settings.greedy_meshing = true;
-                        settings.greedy_threshold = 2;
-                    } else {
-                        match settings.greedy_threshold {
-                            2 => settings.greedy_threshold = 3,
-                            3 => settings.greedy_threshold = 4,
-                            4 => settings.greedy_threshold = 0, // All chunks
-                            0 => {
-                                settings.greedy_meshing = false;
-                                settings.greedy_threshold = 2;
-                            }
-                            _ => settings.greedy_threshold = 2,
-                        }
+                MenuButtonAction::CycleGreedyMeshing | MenuButtonAction::StepGreedyMeshingRight => {
+                    settings.step_greedy(1);
+                }
+                MenuButtonAction::StepGreedyMeshingLeft => {
+                    settings.step_greedy(-1);
+                }
+                MenuButtonAction::SlideGreedyMeshing | MenuButtonAction::SlideDistanceLod => {}
+                MenuButtonAction::CycleDistanceLod
+                | MenuButtonAction::StepDistanceLodRight
+                | MenuButtonAction::CycleLodThreshold => {
+                    settings.step_lod(1);
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.distance_lod = settings.distance_lod;
+                        dev.lod_threshold = settings.lod_threshold;
                     }
                 }
-                MenuButtonAction::CycleDistanceLod => {
-                    if !settings.distance_lod {
-                        settings.distance_lod = true;
-                        settings.lod_threshold = 8;
-                    } else {
-                        match settings.lod_threshold {
-                            8 => settings.lod_threshold = 10,
-                            10 => settings.lod_threshold = 12,
-                            12 => settings.lod_threshold = 6,
-                            6 => {
-                                settings.distance_lod = false;
-                                settings.lod_threshold = 8;
-                            }
-                            _ => settings.lod_threshold = 8,
-                        }
+                MenuButtonAction::StepDistanceLodLeft => {
+                    settings.step_lod(-1);
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.distance_lod = settings.distance_lod;
+                        dev.lod_threshold = settings.lod_threshold;
                     }
                 }
                 MenuButtonAction::ToggleBackfaceCulling => {
@@ -446,18 +456,6 @@ pub fn menu_button_click_system(
                         dev.distance_lod = settings.distance_lod;
                     }
                 }
-                MenuButtonAction::CycleLodThreshold => {
-                    settings.lod_threshold = match settings.lod_threshold {
-                        2 => 3,
-                        4 => 6,
-                        6 => 8,
-                        8 => 2,
-                        _ => 4,
-                    };
-                    if let Some(ref mut dev) = dev_settings {
-                        dev.lod_threshold = settings.lod_threshold;
-                    }
-                }
                 MenuButtonAction::CyclePregenMargin => {
                     if let Some(ref mut dev) = dev_settings {
                         if dev.dev_mode {
@@ -482,3 +480,58 @@ pub fn menu_button_click_system(
         }
     }
 }
+
+pub fn slider_interaction_system(
+    mut settings: ResMut<GraphicsSettings>,
+    mut dev_settings: Option<ResMut<DevSettings>>,
+    track_query: Query<
+        (
+            &Interaction,
+            &bevy::ui::RelativeCursorPosition,
+            Option<&GraphicsGreedyTrack>,
+            Option<&GraphicsLodTrack>,
+        ),
+        With<Button>,
+    >,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mut dragging_greedy: Local<bool>,
+    mut dragging_lod: Local<bool>,
+) {
+    let mouse_down = mouse_buttons.pressed(MouseButton::Left);
+    if !mouse_down {
+        *dragging_greedy = false;
+        *dragging_lod = false;
+    }
+
+    for (interaction, rcp, is_greedy, is_lod) in &track_query {
+        let is_pressed = *interaction == Interaction::Pressed;
+        if is_pressed {
+            if is_greedy.is_some() {
+                *dragging_greedy = true;
+            }
+            if is_lod.is_some() {
+                *dragging_lod = true;
+            }
+        }
+
+        let is_active_greedy = is_greedy.is_some() && (*dragging_greedy || is_pressed);
+        let is_active_lod = is_lod.is_some() && (*dragging_lod || is_pressed);
+
+        if (is_active_greedy || is_active_lod) && mouse_down {
+            if let Some(norm) = rcp.normalized {
+                let ratio = (norm.x + 0.5).clamp(0.0, 1.0);
+                if is_active_greedy {
+                    settings.set_greedy_from_ratio(ratio);
+                }
+                if is_active_lod {
+                    settings.set_lod_from_ratio(ratio);
+                    if let Some(ref mut dev) = dev_settings {
+                        dev.distance_lod = settings.distance_lod;
+                        dev.lod_threshold = settings.lod_threshold;
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -6,6 +6,7 @@ pub mod seed;
 pub mod sync;
 pub mod types;
 pub mod ui;
+pub mod widgets;
 
 #[cfg(test)]
 mod tests;
@@ -18,6 +19,7 @@ pub use seed::*;
 pub use sync::*;
 pub use types::*;
 pub use ui::*;
+pub use widgets::*;
 
 pub struct MenuPlugin;
 
@@ -37,6 +39,8 @@ impl Plugin for MenuPlugin {
                     update_menu_visibility_system,
                     menu_button_hover_system,
                     menu_button_click_system,
+                    slider_interaction_system,
+                    update_slider_visuals_system,
                     update_settings_button_text_system,
                     update_dev_button_text_system,
                     update_dev_settings_system,
