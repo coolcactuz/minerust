@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod benchmark;
 pub mod block;
 pub mod camera;
 pub mod chunk;
