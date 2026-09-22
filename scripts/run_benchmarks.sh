@@ -10,8 +10,8 @@ SEED=133742
 DISTANCE=1000      # 1 km standard flight trajectory
 SPEED=50           # 50 m/s (180 km/h) = 20s recording time per run
 WARMUP=2.5         # 2.5s warmup to initialize initial chunk geometry
-VIEW_DIST=16       # 16 chunks render distance
-RESULTS_DIR="benchmark_results"
+VIEW_DIST="${1:-64}" # Default to 64 chunks (max render distance) or user specified
+RESULTS_DIR="${2:-benchmark_results}"
 
 mkdir -p "$RESULTS_DIR"
 rm -f "$RESULTS_DIR"/*.json

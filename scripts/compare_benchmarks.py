@@ -35,11 +35,13 @@ def main():
         "Scenario / Preset",
         "Static FPS (Pure Render)",
         "Static Geometry",
+        "Static VRAM",
         "Static Speedup",
         "Flight Avg FPS",
         "Flight 1% Low",
         "Flight Frametime",
         "Peak RAM (RSS)",
+        "Peak GPU VRAM",
         "Flight Speedup",
     ]
 
@@ -50,25 +52,31 @@ def main():
         # Static baseline metrics
         s_fps = d.get("static_fps", d.get("avg_fps", 0.0))
         s_verts = d.get("static_vertices", d.get("peak_vertices", 0))
+        s_vram = d.get("static_vram_mb", 0.0)
         s_speedup = (s_fps / baseline_static_fps) if baseline_static_fps > 0 else 1.0
         s_verts_str = f"{s_verts / 1_000_000:.2f}M" if s_verts >= 1_000_000 else f"{s_verts:,}"
+        s_vram_str = f"{s_vram:.1f} MB" if s_vram > 0.0 else "N/A"
 
         # Dynamic flight metrics
         f_fps = d.get("flight_avg_fps", d.get("avg_fps", 0.0))
         f_p99 = d.get("flight_one_percent_low_fps", d.get("one_percent_low_fps", 0.0))
         f_ft = d.get("flight_avg_frametime_ms", d.get("avg_frametime_ms", 0.0))
         rss = d.get("flight_peak_rss_mb", d.get("peak_rss_mb", 0.0))
+        f_vram = d.get("flight_peak_vram_mb", 0.0)
+        f_vram_str = f"{f_vram:.1f} MB" if f_vram > 0.0 else "N/A"
         f_speedup = (f_fps / baseline_flight_fps) if baseline_flight_fps > 0 else 1.0
 
         rows.append([
             name,
             f"{s_fps:.1f} FPS",
             f"{s_verts_str} verts",
+            s_vram_str,
             f"{s_speedup:.2f}x" if s_speedup != 1.0 else "Baseline (1.0x)",
             f"{f_fps:.1f} FPS",
             f"{f_p99:.1f} FPS",
             f"{f_ft:.2f} ms",
             f"{rss:.1f} MB",
+            f_vram_str,
             f"{f_speedup:.2f}x" if f_speedup != 1.0 else "Baseline (1.0x)",
         ])
 

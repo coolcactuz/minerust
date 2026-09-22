@@ -168,12 +168,14 @@ pub struct BenchmarkState {
     pub static_vertices: usize,
     pub static_fps: f32,
     pub static_frametime_ms: f32,
+    pub static_vram_mb: f32,
 
     // Phase 3: Dynamic 1km flight streaming metrics
     pub frame_times_ms: Vec<f32>,
     pub vertex_samples: Vec<usize>,
     pub chunk_samples: Vec<usize>,
     pub peak_rss_mb: f32,
+    pub peak_vram_mb: f32,
     pub completed: bool,
 }
 
@@ -193,10 +195,14 @@ pub fn benchmark_runner_system(
     let dt = time.delta_secs();
     state.elapsed += dt;
 
-    // Track peak physical RAM (VmRSS) from OS
+    // Track peak physical RAM (VmRSS) and GPU VRAM from OS
     let mem = read_process_memory();
     if mem.rss_mb > state.peak_rss_mb {
         state.peak_rss_mb = mem.rss_mb;
+    }
+    let vram = crate::profile::read_gpu_vram();
+    if vram.used_mb > state.peak_vram_mb {
+        state.peak_vram_mb = vram.used_mb;
     }
 
     let Ok((mut transform, mut fps, mut physics)) = player_query.single_mut() else {
@@ -221,11 +227,13 @@ pub fn benchmark_runner_system(
             };
 
             // Print status updates while background threads generate and mesh initial spawn chunks
+            let total_needed = (2 * config.view_distance + 1) * (2 * config.view_distance + 1);
             if state.elapsed - state.last_status_print >= 0.5 {
                 state.last_status_print = state.elapsed;
                 println!(
-                    "[BENCHMARK] Initializing world around spawn... Meshed chunks: {}, Gen queue: {}, Mesh queue: {}",
+                    "[BENCHMARK] Initializing world around spawn... Meshed: {} / {} chunks | Gen queue: {}, Mesh queue: {}",
                     w.chunk_entities.len(),
+                    total_needed,
                     w.generation_queue.len(),
                     w.mesh_queue.len()
                 );
@@ -240,18 +248,23 @@ pub fn benchmark_runner_system(
             if state.elapsed >= 0.4 && queues_empty && !w.chunk_entities.is_empty() {
                 state.static_chunks = w.chunk_entities.len();
                 state.static_vertices = w.total_vertices;
+                let current_vram = crate::profile::read_gpu_vram();
+                state.static_vram_mb = current_vram.used_mb;
                 state.phase = BenchmarkPhase::StationarySettle;
                 state.stationary_timer = 0.0;
 
                 println!("\n============================================================");
                 println!("           MINERUST WORLD INITIALIZATION COMPLETE           ");
                 println!("============================================================");
-                println!("  Spawn Area Meshed    : {} chunks", state.static_chunks);
+                println!("  Spawn Area Meshed    : {} / {} chunks", state.static_chunks, total_needed);
                 println!(
                     "  Spawn Area Geometry  : {} vertices (~{} triangles)",
                     state.static_vertices,
                     state.static_vertices / 2
                 );
+                if state.static_vram_mb > 0.0 {
+                    println!("  Spawn Area GPU VRAM  : {:.1} MB", state.static_vram_mb);
+                }
                 println!("  Settling Baseline    : Measuring 1.5s of stationary render...");
                 println!("============================================================\n");
             }
@@ -388,6 +401,9 @@ fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkCon
         state.static_vertices,
         state.static_vertices / 2
     );
+    if state.static_vram_mb > 0.0 {
+        println!("  Static GPU VRAM      : {:.1} MB", state.static_vram_mb);
+    }
     println!(
         "  Static Framerate     : \x1b[1;32m{:.1} FPS\x1b[0m ({:.2} ms frametime)",
         state.static_fps, state.static_frametime_ms
@@ -415,11 +431,14 @@ fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkCon
         peak_verts / 2
     );
     println!("  Peak RAM (VmRSS)     : {:.1} MB", state.peak_rss_mb);
+    if state.peak_vram_mb > 0.0 {
+        println!("  Peak GPU VRAM        : \x1b[1;35m{:.1} MB\x1b[0m", state.peak_vram_mb);
+    }
     println!("============================================================\n");
 
     if let Some(ref path) = config.output_path {
         let json = format!(
-            "{{\n  \"preset\": \"{}\",\n  \"seed\": {},\n  \"view_distance\": {},\n  \"static_fps\": {:.2},\n  \"static_frametime_ms\": {:.3},\n  \"static_chunks\": {},\n  \"static_vertices\": {},\n  \"static_triangles\": {},\n  \"distance_meters\": {:.1},\n  \"flight_duration_secs\": {:.3},\n  \"flight_frames\": {},\n  \"flight_avg_fps\": {:.2},\n  \"flight_one_percent_low_fps\": {:.2},\n  \"flight_point_one_percent_low_fps\": {:.2},\n  \"flight_avg_frametime_ms\": {:.3},\n  \"flight_min_frametime_ms\": {:.3},\n  \"flight_max_frametime_ms\": {:.3},\n  \"flight_frametime_stdev_ms\": {:.3},\n  \"flight_avg_vertices\": {},\n  \"flight_peak_vertices\": {},\n  \"flight_peak_chunks\": {},\n  \"flight_peak_rss_mb\": {:.2}\n}}\n",
+            "{{\n  \"preset\": \"{}\",\n  \"seed\": {},\n  \"view_distance\": {},\n  \"static_fps\": {:.2},\n  \"static_frametime_ms\": {:.3},\n  \"static_chunks\": {},\n  \"static_vertices\": {},\n  \"static_triangles\": {},\n  \"static_vram_mb\": {:.2},\n  \"distance_meters\": {:.1},\n  \"flight_duration_secs\": {:.3},\n  \"flight_frames\": {},\n  \"flight_avg_fps\": {:.2},\n  \"flight_one_percent_low_fps\": {:.2},\n  \"flight_point_one_percent_low_fps\": {:.2},\n  \"flight_avg_frametime_ms\": {:.3},\n  \"flight_min_frametime_ms\": {:.3},\n  \"flight_max_frametime_ms\": {:.3},\n  \"flight_frametime_stdev_ms\": {:.3},\n  \"flight_avg_vertices\": {},\n  \"flight_peak_vertices\": {},\n  \"flight_peak_chunks\": {},\n  \"flight_peak_rss_mb\": {:.2},\n  \"flight_peak_vram_mb\": {:.2}\n}}\n",
             config.preset_name,
             config.seed,
             config.view_distance,
@@ -428,6 +447,7 @@ fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkCon
             state.static_chunks,
             state.static_vertices,
             state.static_vertices / 2,
+            state.static_vram_mb,
             state.distance_traveled,
             total_duration_secs,
             total_frames,
@@ -442,6 +462,7 @@ fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkCon
             peak_verts,
             peak_chunks,
             state.peak_rss_mb,
+            state.peak_vram_mb,
         );
         if let Ok(mut file) = File::create(path) {
             let _ = file.write_all(json.as_bytes());

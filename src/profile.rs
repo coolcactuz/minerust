@@ -12,10 +12,62 @@ pub struct ProcessMemory {
     pub virt_mb: f32,
 }
 
+/// GPU physical VRAM memory metrics read safely from the OS / GPU driver.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct GpuMemory {
+    pub used_mb: f32,
+    pub total_mb: f32,
+}
+
 /// Safely queries the current process memory footprint from `/proc/self/status` on Linux.
 /// Returns zeros on non-Linux platforms or when `/proc` is unavailable.
 pub fn read_process_memory() -> ProcessMemory {
     parse_process_memory_from_str(&std::fs::read_to_string("/proc/self/status").unwrap_or_default())
+}
+
+/// Safely queries the current GPU VRAM usage from `/sys/class/drm/card*/device/mem_info_vram_used`.
+/// On Linux with amdgpu or compatible drivers, this returns physical VRAM allocations in MB.
+/// Falls back to default (0.0) if unavailable.
+pub fn read_gpu_vram() -> GpuMemory {
+    read_gpu_vram_from_drm_path("/sys/class/drm")
+}
+
+/// Testable parser for DRM sysfs directory structure.
+pub fn read_gpu_vram_from_drm_path<P: AsRef<std::path::Path>>(drm_path: P) -> GpuMemory {
+    if let Ok(entries) = std::fs::read_dir(drm_path) {
+        let mut best_mem = GpuMemory::default();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            if name.starts_with("card") && name[4..].chars().all(|c| c.is_ascii_digit()) {
+                let dev = path.join("device");
+                let used_path = dev.join("mem_info_vram_used");
+                let tot_path = dev.join("mem_info_vram_total");
+                if let (Ok(used_str), Ok(tot_str)) = (
+                    std::fs::read_to_string(used_path),
+                    std::fs::read_to_string(tot_path),
+                ) {
+                    if let (Ok(used_bytes), Ok(tot_bytes)) = (
+                        used_str.trim().parse::<u64>(),
+                        tot_str.trim().parse::<u64>(),
+                    ) {
+                        let used_mb = (used_bytes as f64 / (1024.0 * 1024.0)) as f32;
+                        let tot_mb = (tot_bytes as f64 / (1024.0 * 1024.0)) as f32;
+                        if tot_mb > best_mem.total_mb {
+                            best_mem = GpuMemory {
+                                used_mb,
+                                total_mb: tot_mb,
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        if best_mem.total_mb > 0.0 {
+            return best_mem;
+        }
+    }
+    GpuMemory::default()
 }
 
 /// Helper to parse VmRSS and VmSize from a status buffer.
@@ -221,10 +273,27 @@ pub fn update_profiling_hud_system(
             let geom_mb = geom_bytes as f32 / (1024.0 * 1024.0);
             let total_vram_mb = geom_mb + 32.0; // ~32 MB for atlas texture, swapchain, depth buffer
 
-            let vram_str = if total_vram_mb >= 1024.0 {
+            let est_vram_str = if total_vram_mb >= 1024.0 {
                 format!("{:.2} GB", total_vram_mb / 1024.0)
             } else {
                 format!("{:.1} MB", total_vram_mb)
+            };
+
+            let gpu_vram = read_gpu_vram();
+            let vram_line = if gpu_vram.total_mb > 0.0 {
+                let used_str = if gpu_vram.used_mb >= 1024.0 {
+                    format!("{:.2} GB", gpu_vram.used_mb / 1024.0)
+                } else {
+                    format!("{:.1} MB", gpu_vram.used_mb)
+                };
+                let tot_str = if gpu_vram.total_mb >= 1024.0 {
+                    format!("{:.2} GB", gpu_vram.total_mb / 1024.0)
+                } else {
+                    format!("{:.1} MB", gpu_vram.total_mb)
+                };
+                format!("HW VRAM: {} / {} (Buffers: ~{})", used_str, tot_str, est_vram_str)
+            } else {
+                format!("Total: ~{} [Geom: {:.1} MB | Textures/FB: ~32.0 MB]", est_vram_str, geom_mb)
             };
 
             let verts_str = if total_verts >= 1_000_000 {
@@ -297,7 +366,7 @@ pub fn update_profiling_hud_system(
                 "=== MINERUST ENGINE PROFILER [F3: Toggle HUD] ===\n\
                  PERFORMANCE:  FPS: {:.0} ({:.1} ms) | 1% Low: {:.0} FPS | Min/Max: {:.1}ms / {:.1}ms\n\
                  PROCESS RAM:  {} | Cache: {} entries\n\
-                 VRAM (EST):   Total: ~{} [Geom: {:.1} MB | Textures/FB: ~32.0 MB]\n\
+                 GPU VRAM:     {}\n\
                  GEOMETRY:     Active Meshes: {} | Verts: {} | Tris: {} | Visible Quads: {}\n\
                  VOXEL WORLD:  Chunks Loaded: {} | Voxels in RAM: ~{:.2}M | Seed: {}\n\
                  STREAMING:    Gen Queue: {} | Mesh Queue: {} | Active Tasks: {}\n\
@@ -311,8 +380,7 @@ pub fn update_profiling_hud_system(
                 fps.max_frame_time_ms,
                 ram_str,
                 cache_len,
-                vram_str,
-                geom_mb,
+                vram_line,
                 meshes_active,
                 verts_str,
                 triangles,
@@ -410,5 +478,28 @@ mod tests {
             .query_filtered::<&Visibility, With<ProfilingHudRoot>>();
         let vis = query.single(app.world()).unwrap();
         assert_eq!(*vis, Visibility::Inherited);
+    }
+
+    #[test]
+    fn test_read_gpu_vram_mock_drm() {
+        let temp_dir = std::env::temp_dir().join(format!("minerust_vram_test_{}", std::process::id()));
+        let card0_dev = temp_dir.join("card0").join("device");
+        let card1_dev = temp_dir.join("card1").join("device");
+        let _ = std::fs::create_dir_all(&card0_dev);
+        let _ = std::fs::create_dir_all(&card1_dev);
+
+        // card0: 512MB total, 24MB used
+        let _ = std::fs::write(card0_dev.join("mem_info_vram_total"), "536870912\n");
+        let _ = std::fs::write(card0_dev.join("mem_info_vram_used"), "25165824\n");
+
+        // card1: 20GB total, 2GB used (should be selected as primary discrete GPU)
+        let _ = std::fs::write(card1_dev.join("mem_info_vram_total"), "21474836480\n");
+        let _ = std::fs::write(card1_dev.join("mem_info_vram_used"), "2147483648\n");
+
+        let vram = read_gpu_vram_from_drm_path(&temp_dir);
+        assert!((vram.total_mb - 20480.0).abs() < 1.0);
+        assert!((vram.used_mb - 2048.0).abs() < 1.0);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

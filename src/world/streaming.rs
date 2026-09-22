@@ -346,7 +346,7 @@ pub fn world_streaming_system(
         .as_ref()
         .is_some_and(|b| b.phase == crate::benchmark::BenchmarkPhase::InitializingWorld);
     let max_dispatch = if is_bench_initializing {
-        64
+        256
     } else {
         MAX_CHUNK_DISPATCH_PER_FRAME
     };
@@ -548,7 +548,7 @@ pub fn world_streaming_system(
         let budget_enabled = settings.dev.as_ref().is_none_or(|d| d.mesh_budget);
         let async_meshing = settings.dev.as_ref().is_none_or(|d| d.async_meshing);
         let max_meshes_per_frame = if is_bench_initializing {
-            48
+            256
         } else if budget_enabled {
             MAX_MESHES_PER_FRAME
         } else {
