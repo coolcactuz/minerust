@@ -293,11 +293,15 @@ pub fn menu_button_click_system(
                             )
                             .0;
 
+                            let max_y_skip = dev_settings.as_ref().is_none_or(|d| d.max_y_skip);
+                            let greedy = dev_settings.as_ref().is_none_or(|d| d.greedy_meshing);
                             w.pregenerate_spawn_grid(
                                 center_chunk,
                                 &mut commands,
                                 &mut meshes,
                                 &mut materials,
+                                max_y_skip,
+                                greedy,
                             );
 
                             window.title = if dev_settings.as_ref().is_some_and(|d| d.dev_mode)
@@ -371,11 +375,15 @@ pub fn menu_button_click_system(
                             )
                             .0;
 
+                            let max_y_skip = dev_settings.as_ref().is_none_or(|d| d.max_y_skip);
+                            let greedy = dev_settings.as_ref().is_none_or(|d| d.greedy_meshing);
                             w.pregenerate_spawn_grid(
                                 center_chunk,
                                 &mut commands,
                                 &mut meshes,
                                 &mut materials,
+                                max_y_skip,
+                                greedy,
                             );
 
                             window.title = if dev_settings.as_ref().is_some_and(|d| d.dev_mode)

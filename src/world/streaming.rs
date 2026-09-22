@@ -181,6 +181,7 @@ pub struct WorldSettingsParams<'w> {
     pub graphics: Option<Res<'w, GraphicsSettings>>,
     pub dev: Option<Res<'w, crate::menu::DevSettings>>,
     pub menu: Option<Res<'w, crate::menu::MenuState>>,
+    pub bench_state: Option<Res<'w, crate::benchmark::BenchmarkState>>,
 }
 
 #[derive(SystemParam)]
@@ -340,8 +341,18 @@ pub fn world_streaming_system(
     }
 
     // 1. Dispatch background chunk generation tasks across all CPU cores
+    let is_bench_initializing = settings
+        .bench_state
+        .as_ref()
+        .is_some_and(|b| b.phase == crate::benchmark::BenchmarkPhase::InitializingWorld);
+    let max_dispatch = if is_bench_initializing {
+        64
+    } else {
+        MAX_CHUNK_DISPATCH_PER_FRAME
+    };
+
     let mut dispatched = 0;
-    while dispatched < MAX_CHUNK_DISPATCH_PER_FRAME && !world.generation_queue.is_empty() {
+    while dispatched < max_dispatch && !world.generation_queue.is_empty() {
         let Some(coord) = world.generation_queue.pop() else {
             break;
         };
@@ -536,7 +547,9 @@ pub fn world_streaming_system(
         let max_y_skip = settings.dev.as_ref().is_none_or(|d| d.max_y_skip);
         let budget_enabled = settings.dev.as_ref().is_none_or(|d| d.mesh_budget);
         let async_meshing = settings.dev.as_ref().is_none_or(|d| d.async_meshing);
-        let max_meshes_per_frame = if budget_enabled {
+        let max_meshes_per_frame = if is_bench_initializing {
+            48
+        } else if budget_enabled {
             MAX_MESHES_PER_FRAME
         } else {
             usize::MAX

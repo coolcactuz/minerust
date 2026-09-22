@@ -24,6 +24,18 @@ fn test_greedy_meshing_reduces_vertices() {
 }
 
 #[test]
+fn test_procedural_chunk_greedy_reduces_vertices() {
+    let noise = crate::noise::NoiseGenerator::new(133742);
+    let chunk = crate::world::generate_chunk(0, 0, &noise, 133742);
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    let std_v = mesh_standard.count_vertices();
+    let greedy_v = mesh_greedy.count_vertices();
+    println!("PROCEDURAL CHUNK: Standard = {} verts, Greedy = {} verts", std_v, greedy_v);
+    assert!(greedy_v < std_v);
+}
+
+#[test]
 fn test_water_ocean_renders_only_on_surface() {
     let mut chunk = Chunk::new();
     // Ocean seabed: fill y = 0..=9 with Bedrock

@@ -138,13 +138,38 @@ impl Default for BenchmarkConfig {
     }
 }
 
+/// Phases of the scientific automated benchmark.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BenchmarkPhase {
+    /// Phase 1: Camera stationary at spawn while background worker threads generate and mesh all initial chunks.
+    #[default]
+    InitializingWorld,
+    /// Phase 2: World is 100% generated and meshed; camera remains stationary for 1.5s to record pure static GPU rendering.
+    StationarySettle,
+    /// Phase 3: Camera flies 1,000 meters forward along +Z at 50 m/s across terrain, recording dynamic streaming metrics.
+    FlightRecording,
+    /// Phase 4: Benchmark completed; report printed and JSON exported.
+    Completed,
+}
+
 /// Dynamic runtime state tracking benchmark progress and statistical telemetry.
 #[derive(Resource, Default)]
 pub struct BenchmarkState {
+    pub phase: BenchmarkPhase,
     pub elapsed: f32,
+    pub stationary_timer: f32,
+    pub last_status_print: f32,
     pub start_z: Option<f32>,
     pub distance_traveled: f32,
-    pub is_recording: bool,
+
+    // Phase 2: Static baseline metrics (100% loaded world, zero streaming/generation CPU load)
+    pub static_frame_times_ms: Vec<f32>,
+    pub static_chunks: usize,
+    pub static_vertices: usize,
+    pub static_fps: f32,
+    pub static_frametime_ms: f32,
+
+    // Phase 3: Dynamic 1km flight streaming metrics
     pub frame_times_ms: Vec<f32>,
     pub vertex_samples: Vec<usize>,
     pub chunk_samples: Vec<usize>,
@@ -168,70 +193,137 @@ pub fn benchmark_runner_system(
     let dt = time.delta_secs();
     state.elapsed += dt;
 
-    // 1. Move player camera deterministically along +Z axis at constant velocity
-    if let Ok((mut transform, mut fps, mut physics)) = player_query.single_mut() {
-        physics.is_flying = true;
-        physics.velocity = Vec3::ZERO;
-        fps.yaw = 0.0;
-        fps.pitch = -0.06; // Look slightly downwards across terrain
-
-        // Maintain constant altitude and advance steadily forward along +Z
-        transform.translation.x = 0.0;
-        transform.translation.y = config.flight_altitude;
-        transform.translation.z += config.flight_speed * dt;
-        transform.rotation = Quat::from_rotation_y(fps.yaw) * Quat::from_rotation_x(fps.pitch);
-
-        if state.is_recording {
-            let start = state.start_z.get_or_insert(transform.translation.z);
-            state.distance_traveled = (transform.translation.z - *start).abs();
-        }
-    }
-
-    // 2. Track peak physical RAM (VmRSS) from OS
+    // Track peak physical RAM (VmRSS) from OS
     let mem = read_process_memory();
     if mem.rss_mb > state.peak_rss_mb {
         state.peak_rss_mb = mem.rss_mb;
     }
 
-    // 3. Warmup phase: let initial chunks load before collecting metrics
-    if state.elapsed < config.warmup_duration_secs {
+    let Ok((mut transform, mut fps, mut physics)) = player_query.single_mut() else {
         return;
-    }
+    };
 
-    if !state.is_recording {
-        state.is_recording = true;
-        if let Ok((tf, _, _)) = player_query.single() {
-            state.start_z = Some(tf.translation.z);
+    physics.is_flying = true;
+    physics.velocity = Vec3::ZERO;
+    fps.yaw = 0.0;
+    fps.pitch = -0.06; // Look slightly downwards across terrain
+    transform.rotation = Quat::from_rotation_y(fps.yaw) * Quat::from_rotation_x(fps.pitch);
+    transform.translation.x = 0.0;
+    transform.translation.y = config.flight_altitude;
+
+    match state.phase {
+        BenchmarkPhase::InitializingWorld => {
+            // Keep camera stationary at spawn (Z = 0)
+            transform.translation.z = 0.0;
+
+            let Some(ref w) = world else {
+                return;
+            };
+
+            // Print status updates while background threads generate and mesh initial spawn chunks
+            if state.elapsed - state.last_status_print >= 0.5 {
+                state.last_status_print = state.elapsed;
+                println!(
+                    "[BENCHMARK] Initializing world around spawn... Meshed chunks: {}, Gen queue: {}, Mesh queue: {}",
+                    w.chunk_entities.len(),
+                    w.generation_queue.len(),
+                    w.mesh_queue.len()
+                );
+            }
+
+            let queues_empty = w.generation_queue.is_empty()
+                && w.in_progress_chunks.is_empty()
+                && w.mesh_queue.is_empty()
+                && w.in_progress_meshes.is_empty();
+
+            // Give at least 0.4s for frame 0 queues to register, then check queues empty and meshes spawned
+            if state.elapsed >= 0.4 && queues_empty && !w.chunk_entities.is_empty() {
+                state.static_chunks = w.chunk_entities.len();
+                state.static_vertices = w.total_vertices;
+                state.phase = BenchmarkPhase::StationarySettle;
+                state.stationary_timer = 0.0;
+
+                println!("\n============================================================");
+                println!("           MINERUST WORLD INITIALIZATION COMPLETE           ");
+                println!("============================================================");
+                println!("  Spawn Area Meshed    : {} chunks", state.static_chunks);
+                println!(
+                    "  Spawn Area Geometry  : {} vertices (~{} triangles)",
+                    state.static_vertices,
+                    state.static_vertices / 2
+                );
+                println!("  Settling Baseline    : Measuring 1.5s of stationary render...");
+                println!("============================================================\n");
+            }
         }
-        println!(
-            "\n[BENCHMARK] Warmup finished. Target Distance: {:.0}m ({:.2} km) at {:.1} m/s...",
-            config.target_distance_meters,
-            config.target_distance_meters / 1000.0,
-            config.flight_speed
-        );
-    }
+        BenchmarkPhase::StationarySettle => {
+            // Keep camera stationary at Z = 0
+            transform.translation.z = 0.0;
 
-    let frame_ms = dt * 1000.0;
-    state.frame_times_ms.push(frame_ms);
+            state.stationary_timer += dt;
+            let frame_ms = dt * 1000.0;
+            state.static_frame_times_ms.push(frame_ms);
 
-    if let Some(ref w) = world {
-        state.vertex_samples.push(w.total_vertices);
-        state.chunk_samples.push(w.chunks.len());
-    }
+            // Record stationary baseline for 1.5 seconds
+            if state.stationary_timer >= 1.5 {
+                let total_frames = state.static_frame_times_ms.len();
+                let total_time_ms: f32 = state.static_frame_times_ms.iter().sum();
+                state.static_fps = if total_time_ms > 0.0 {
+                    (total_frames as f32 * 1000.0) / total_time_ms
+                } else {
+                    0.0
+                };
+                state.static_frametime_ms = if total_frames > 0 {
+                    total_time_ms / total_frames as f32
+                } else {
+                    0.0
+                };
 
-    // 4. Check if exact target distance (e.g. 1000 meters) has been completed
-    if state.distance_traveled >= config.target_distance_meters {
-        state.completed = true;
-        print_and_save_benchmark_report(&state, &config);
-        exit_writer.write(AppExit::Success);
+                println!(
+                    "[BENCHMARK] Static Baseline Render: \x1b[1;32m{:.1} FPS\x1b[0m ({:.2} ms frametime)",
+                    state.static_fps, state.static_frametime_ms
+                );
+                println!(
+                    "[BENCHMARK] Starting 1km Trajectory Flight at {:.1} m/s (Target: {:.0}m)...\n",
+                    config.flight_speed, config.target_distance_meters
+                );
+
+                state.phase = BenchmarkPhase::FlightRecording;
+                state.start_z = Some(transform.translation.z);
+                state.distance_traveled = 0.0;
+            }
+        }
+        BenchmarkPhase::FlightRecording => {
+            // Advance along +Z at steady flight speed
+            transform.translation.z += config.flight_speed * dt;
+
+            let start = state.start_z.get_or_insert(0.0);
+            state.distance_traveled = (transform.translation.z - *start).abs();
+
+            let frame_ms = dt * 1000.0;
+            state.frame_times_ms.push(frame_ms);
+
+            if let Some(ref w) = world {
+                state.vertex_samples.push(w.total_vertices);
+                state.chunk_samples.push(w.chunk_entities.len());
+            }
+
+            if state.distance_traveled >= config.target_distance_meters {
+                state.phase = BenchmarkPhase::Completed;
+                state.completed = true;
+                print_and_save_benchmark_report(&state, &config);
+                exit_writer.write(AppExit::Success);
+            }
+        }
+        BenchmarkPhase::Completed => {}
     }
 }
 
-/// Analyzes collected frame latency distributions and outputs a comprehensive report.
+/// Analyzes collected frame latency distributions and outputs a comprehensive scientific report.
 fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkConfig) {
     let total_frames = state.frame_times_ms.len();
     if total_frames == 0 {
-        println!("[BENCHMARK] Error: No frames were recorded during benchmark.");
+        println!("[BENCHMARK] Error: No frames were recorded during benchmark flight.");
         return;
     }
 
@@ -256,7 +348,6 @@ fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkCon
     let max_fps = if min_frametime_ms > 0.0 { 1000.0 / min_frametime_ms } else { 0.0 };
     let min_fps = if max_frametime_ms > 0.0 { 1000.0 / max_frametime_ms } else { 0.0 };
 
-    // Sort ascending to calculate percentile latencies (1% low and 0.1% low)
     let mut sorted_times = state.frame_times_ms.clone();
     sorted_times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
@@ -268,7 +359,6 @@ fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkCon
     let p999_ms = sorted_times[p999_idx];
     let point_one_percent_low_fps = if p999_ms > 0.0 { 1000.0 / p999_ms } else { 0.0 };
 
-    // Standard deviation of frametimes (jitter metric)
     let variance = state
         .frame_times_ms
         .iter()
@@ -286,32 +376,58 @@ fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkCon
     let peak_chunks = state.chunk_samples.iter().copied().max().unwrap_or(0);
 
     println!("\n============================================================");
-    println!("             MINERUST AUTOMATED BENCHMARK REPORT             ");
+    println!("             MINERUST SCIENTIFIC BENCHMARK REPORT            ");
     println!("============================================================");
     println!("  Preset Profile       : \x1b[1;36m{}\x1b[0m", config.preset_name);
     println!("  World Seed           : {} (Render Distance: {} chunks)", config.seed, config.view_distance);
-    println!("  Distance Traveled    : \x1b[1;32m{:.1} m ({:.2} km)\x1b[0m in {:.2} s", state.distance_traveled, state.distance_traveled / 1000.0, total_duration_secs);
-    println!("  Recorded Frames      : {} frames (Speed: {:.1} m/s)", total_frames, config.flight_speed);
     println!("------------------------------------------------------------");
+    println!("  [PHASE 1: STATIC SCENE - PURE GPU RENDER (ZERO STREAMING)]");
+    println!("  Static Meshed Chunks : {} chunks", state.static_chunks);
+    println!(
+        "  Static Geometry      : {} vertices (~{} triangles)",
+        state.static_vertices,
+        state.static_vertices / 2
+    );
+    println!(
+        "  Static Framerate     : \x1b[1;32m{:.1} FPS\x1b[0m ({:.2} ms frametime)",
+        state.static_fps, state.static_frametime_ms
+    );
+    println!("------------------------------------------------------------");
+    println!("  [PHASE 2: DYNAMIC FLIGHT - 1KM TRAJECTORY STREAMING]");
+    println!(
+        "  Distance Traveled    : \x1b[1;32m{:.1} m ({:.2} km)\x1b[0m in {:.2} s (Speed: {:.1} m/s)",
+        state.distance_traveled,
+        state.distance_traveled / 1000.0,
+        total_duration_secs,
+        config.flight_speed
+    );
+    println!("  Recorded Frames      : {} frames", total_frames);
     println!("  AVERAGE FRAMERATE    : \x1b[1;32m{:.1} FPS\x1b[0m", avg_fps);
     println!("  1% LOW FRAMERATE     : \x1b[1;33m{:.1} FPS\x1b[0m (p99 latency: {:.2} ms)", one_percent_low_fps, p99_ms);
     println!("  0.1% LOW FRAMERATE   : \x1b[1;31m{:.1} FPS\x1b[0m (p99.9 latency: {:.2} ms)", point_one_percent_low_fps, p999_ms);
-    println!("------------------------------------------------------------");
-    println!("  Average Frametime    : {:.2} ms (StDev / Jitter: {:.2} ms)", avg_frametime_ms, stdev_ms);
+    println!("  Average Frametime    : {:.2} ms (Jitter StDev: {:.2} ms)", avg_frametime_ms, stdev_ms);
     println!("  Frametime Min / Max  : {:.2} ms ({:.1} FPS) / {:.2} ms ({:.1} FPS)", min_frametime_ms, max_fps, max_frametime_ms, min_fps);
-    println!("------------------------------------------------------------");
-    println!("  Peak Loaded Chunks   : {} chunks", peak_chunks);
-    println!("  Average Geometry     : {} vertices (~{} triangles)", avg_verts, avg_verts / 2);
-    println!("  Peak Geometry        : {} vertices (~{} triangles)", peak_verts, peak_verts / 2);
+    println!("  Active GPU Chunks    : Peak {} chunks", peak_chunks);
+    println!(
+        "  Active Geometry      : Avg {} verts / Peak {} verts (~{} tris)",
+        avg_verts,
+        peak_verts,
+        peak_verts / 2
+    );
     println!("  Peak RAM (VmRSS)     : {:.1} MB", state.peak_rss_mb);
     println!("============================================================\n");
 
     if let Some(ref path) = config.output_path {
         let json = format!(
-            "{{\n  \"preset\": \"{}\",\n  \"seed\": {},\n  \"view_distance\": {},\n  \"distance_meters\": {:.1},\n  \"duration_secs\": {:.3},\n  \"total_frames\": {},\n  \"avg_fps\": {:.2},\n  \"one_percent_low_fps\": {:.2},\n  \"point_one_percent_low_fps\": {:.2},\n  \"avg_frametime_ms\": {:.3},\n  \"min_frametime_ms\": {:.3},\n  \"max_frametime_ms\": {:.3},\n  \"frametime_stdev_ms\": {:.3},\n  \"avg_vertices\": {},\n  \"peak_vertices\": {},\n  \"peak_chunks\": {},\n  \"peak_rss_mb\": {:.2}\n}}\n",
+            "{{\n  \"preset\": \"{}\",\n  \"seed\": {},\n  \"view_distance\": {},\n  \"static_fps\": {:.2},\n  \"static_frametime_ms\": {:.3},\n  \"static_chunks\": {},\n  \"static_vertices\": {},\n  \"static_triangles\": {},\n  \"distance_meters\": {:.1},\n  \"flight_duration_secs\": {:.3},\n  \"flight_frames\": {},\n  \"flight_avg_fps\": {:.2},\n  \"flight_one_percent_low_fps\": {:.2},\n  \"flight_point_one_percent_low_fps\": {:.2},\n  \"flight_avg_frametime_ms\": {:.3},\n  \"flight_min_frametime_ms\": {:.3},\n  \"flight_max_frametime_ms\": {:.3},\n  \"flight_frametime_stdev_ms\": {:.3},\n  \"flight_avg_vertices\": {},\n  \"flight_peak_vertices\": {},\n  \"flight_peak_chunks\": {},\n  \"flight_peak_rss_mb\": {:.2}\n}}\n",
             config.preset_name,
             config.seed,
             config.view_distance,
+            state.static_fps,
+            state.static_frametime_ms,
+            state.static_chunks,
+            state.static_vertices,
+            state.static_vertices / 2,
             state.distance_traveled,
             total_duration_secs,
             total_frames,
@@ -341,6 +457,9 @@ impl Plugin for BenchmarkPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BenchmarkConfig>()
             .init_resource::<BenchmarkState>()
-            .add_systems(Update, benchmark_runner_system.in_set(crate::stage::VoxelStage::PlayerPhysics));
+            .add_systems(
+                Update,
+                benchmark_runner_system.in_set(crate::stage::VoxelStage::PlayerPhysics),
+            );
     }
 }

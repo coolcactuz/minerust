@@ -27,47 +27,49 @@ def main():
         print("No valid benchmark data.")
         sys.exit(1)
 
-    baseline_fps = data_list[0].get("avg_fps", 1.0)
-    baseline_verts = data_list[0].get("peak_vertices", 1)
+    baseline_static_fps = data_list[0].get("static_fps", data_list[0].get("avg_fps", 1.0))
+    baseline_static_verts = data_list[0].get("static_vertices", data_list[0].get("peak_vertices", 1))
+    baseline_flight_fps = data_list[0].get("flight_avg_fps", data_list[0].get("avg_fps", 1.0))
 
     headers = [
         "Scenario / Preset",
-        "Avg FPS",
-        "1% Low FPS",
-        "Avg Frametime",
-        "Peak Vertices",
-        "Peak Triangles",
+        "Static FPS (Pure Render)",
+        "Static Geometry",
+        "Static Speedup",
+        "Flight Avg FPS",
+        "Flight 1% Low",
+        "Flight Frametime",
         "Peak RAM (RSS)",
-        "FPS Speedup",
-        "Geometry Cut",
+        "Flight Speedup",
     ]
 
     rows = []
     for d in data_list:
         name = d.get("preset", d.get("_file", "Unknown"))
-        fps = d.get("avg_fps", 0.0)
-        p99 = d.get("one_percent_low_fps", 0.0)
-        ft = d.get("avg_frametime_ms", 0.0)
-        p_verts = d.get("peak_vertices", 0)
-        p_tris = p_verts // 2
-        rss = d.get("peak_rss_mb", 0.0)
+        
+        # Static baseline metrics
+        s_fps = d.get("static_fps", d.get("avg_fps", 0.0))
+        s_verts = d.get("static_vertices", d.get("peak_vertices", 0))
+        s_speedup = (s_fps / baseline_static_fps) if baseline_static_fps > 0 else 1.0
+        s_verts_str = f"{s_verts / 1_000_000:.2f}M" if s_verts >= 1_000_000 else f"{s_verts:,}"
 
-        speedup = (fps / baseline_fps) if baseline_fps > 0 else 1.0
-        geom_drop = (1.0 - (p_verts / baseline_verts)) * 100.0 if baseline_verts > 0 else 0.0
-
-        p_verts_str = f"{p_verts / 1_000_000:.2f}M" if p_verts >= 1_000_000 else f"{p_verts:,}"
-        p_tris_str = f"{p_tris / 1_000_000:.2f}M" if p_tris >= 1_000_000 else f"{p_tris:,}"
+        # Dynamic flight metrics
+        f_fps = d.get("flight_avg_fps", d.get("avg_fps", 0.0))
+        f_p99 = d.get("flight_one_percent_low_fps", d.get("one_percent_low_fps", 0.0))
+        f_ft = d.get("flight_avg_frametime_ms", d.get("avg_frametime_ms", 0.0))
+        rss = d.get("flight_peak_rss_mb", d.get("peak_rss_mb", 0.0))
+        f_speedup = (f_fps / baseline_flight_fps) if baseline_flight_fps > 0 else 1.0
 
         rows.append([
             name,
-            f"{fps:.1f} FPS",
-            f"{p99:.1f} FPS",
-            f"{ft:.2f} ms",
-            p_verts_str,
-            p_tris_str,
+            f"{s_fps:.1f} FPS",
+            f"{s_verts_str} verts",
+            f"{s_speedup:.2f}x" if s_speedup != 1.0 else "Baseline (1.0x)",
+            f"{f_fps:.1f} FPS",
+            f"{f_p99:.1f} FPS",
+            f"{f_ft:.2f} ms",
             f"{rss:.1f} MB",
-            f"{speedup:.2f}x" if speedup != 1.0 else "Baseline (1.0x)",
-            f"-{geom_drop:.1f}%" if geom_drop > 0 else "0.0%",
+            f"{f_speedup:.2f}x" if f_speedup != 1.0 else "Baseline (1.0x)",
         ])
 
     col_widths = [len(h) for h in headers]

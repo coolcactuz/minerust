@@ -266,6 +266,8 @@ impl WorldGrid {
         commands: &mut Commands,
         meshes: &mut Assets<Mesh>,
         materials: &mut Assets<VoxelBlockMaterial>,
+        max_y_skip: bool,
+        greedy: bool,
     ) {
         let seed = self.seed.0;
         let noise = self.noise.clone();
@@ -305,10 +307,8 @@ impl WorldGrid {
         }
 
         for coord in &initial_coords {
-            let diff = *coord - center_chunk;
-            let dist_2d = diff.x.abs().max(diff.y.abs());
-            let tier = u8::from(dist_2d >= 2);
-            update_chunk_mesh(coord, commands, self, meshes, materials, true, tier);
+            let tier = u8::from(greedy);
+            update_chunk_mesh(coord, commands, self, meshes, materials, max_y_skip, tier);
         }
     }
 }

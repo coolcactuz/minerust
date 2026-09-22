@@ -25,8 +25,10 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
+        if !app.world().contains_resource::<GraphicsSettings>() {
+            app.insert_resource(GraphicsSettings::load_or_default());
+        }
         app.init_resource::<MenuState>()
-            .insert_resource(GraphicsSettings::load_or_default())
             .init_resource::<DevSettings>()
             .init_resource::<FpsLimiter>()
             .init_resource::<SeedInputState>()

@@ -14,6 +14,7 @@ VIEW_DIST=16       # 16 chunks render distance
 RESULTS_DIR="benchmark_results"
 
 mkdir -p "$RESULTS_DIR"
+rm -f "$RESULTS_DIR"/*.json
 
 echo "======================================================================"
 echo "          MINERUST: 1KM OPTIMIZATION BENCHMARK SUITE                  "
