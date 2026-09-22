@@ -1,0 +1,185 @@
+use super::*;
+use crate::block::BlockType;
+use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
+
+#[test]
+fn test_greedy_meshing_reduces_vertices() {
+    let mut chunk = Chunk::new();
+    // Fill a 4x4 area of Stone blocks at y = 10
+    for lx in 0..4 {
+        for lz in 0..4 {
+            chunk.set(lx, 10, lz, BlockType::Stone);
+        }
+    }
+
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+
+    let std_verts = mesh_standard.count_vertices();
+    let greedy_verts = mesh_greedy.count_vertices();
+
+    assert_eq!(std_verts, 192);
+    assert_eq!(greedy_verts, 24);
+    assert!(greedy_verts < std_verts);
+}
+
+#[test]
+fn test_water_ocean_renders_only_on_surface() {
+    let mut chunk = Chunk::new();
+    // Ocean seabed: fill y = 0..=9 with Bedrock
+    for lx in 0..CHUNK_WIDTH {
+        for lz in 0..CHUNK_DEPTH {
+            for ly in 0..=9 {
+                chunk.set(lx as i32, ly, lz as i32, BlockType::Bedrock);
+            }
+        }
+    }
+    // Ocean water: fill y = 10..=20 with Water
+    for lx in 0..CHUNK_WIDTH {
+        for lz in 0..CHUNK_DEPTH {
+            for ly in 10..=20 {
+                chunk.set(lx as i32, ly, lz as i32, BlockType::Water);
+            }
+        }
+    }
+
+    // Greedy meshing of this ocean chunk
+    let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    assert_eq!(mesh.count_vertices(), 28);
+}
+
+#[test]
+fn test_waterfall_renders_sides_in_air() {
+    let mut chunk = Chunk::new();
+    // 1x1 vertical column of water (waterfall) at (5, y, 5) from y = 10 to y = 12 surrounded by Air
+    for ly in 10..=12 {
+        chunk.set(5, ly, 5, BlockType::Water);
+    }
+    let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    assert!(mesh.count_vertices() > 8);
+}
+
+#[test]
+fn test_seabed_sand_gravel_greedy_merging() {
+    let mut chunk = Chunk::new();
+    // Create an alternating checkerboard of Sand and Gravel on the seabed at y = 10, covered with Water at y = 11
+    for lx in 0..4 {
+        for lz in 0..4 {
+            let block = if (lx + lz) % 2 == 0 {
+                BlockType::Sand
+            } else {
+                BlockType::Gravel
+            };
+            chunk.set(lx, 10, lz, block);
+            chunk.set(lx, 11, lz, BlockType::Water);
+        }
+    }
+
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+
+    let std_verts = mesh_standard.count_vertices();
+    let greedy_verts = mesh_greedy.count_vertices();
+
+    assert!(greedy_verts < std_verts);
+}
+
+#[test]
+fn test_submerged_terrain_renders_against_water_no_holes() {
+    let mut chunk = Chunk::new();
+    // Sand block at y = 10, Water above it at y = 11
+    chunk.set(0, 10, 0, BlockType::Sand);
+    chunk.set(0, 11, 0, BlockType::Water);
+
+    let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+    assert_eq!(mesh.count_vertices(), 40);
+}
+
+#[test]
+fn test_simplify_block_for_lod() {
+    // All ore blocks and cobblestone must simplify to Stone
+    assert_eq!(simplify_block_for_lod(BlockType::CoalOre), BlockType::Stone);
+    assert_eq!(simplify_block_for_lod(BlockType::IronOre), BlockType::Stone);
+    assert_eq!(simplify_block_for_lod(BlockType::GoldOre), BlockType::Stone);
+    assert_eq!(
+        simplify_block_for_lod(BlockType::DiamondOre),
+        BlockType::Stone
+    );
+    assert_eq!(
+        simplify_block_for_lod(BlockType::Cobblestone),
+        BlockType::Stone
+    );
+
+    // Gravel simplifies to Sand
+    assert_eq!(simplify_block_for_lod(BlockType::Gravel), BlockType::Sand);
+
+    // Natural surface blocks preserved
+    assert_eq!(simplify_block_for_lod(BlockType::Grass), BlockType::Grass);
+    assert_eq!(simplify_block_for_lod(BlockType::Water), BlockType::Water);
+    assert_eq!(simplify_block_for_lod(BlockType::Snow), BlockType::Snow);
+}
+
+#[test]
+fn test_sloped_lod_reduces_mountain_slope_triangles() {
+    let mut chunk = Chunk::new();
+
+    // Create a 16x16 steep mountain slope where each column rises in Y
+    for lx in 0..CHUNK_WIDTH {
+        for lz in 0..CHUNK_DEPTH {
+            let height = 20 + lx + lz; // Diagonal slope reaching up to y = 50
+            for ly in 0..=height {
+                chunk.set(lx as i32, ly as i32, lz as i32, BlockType::Stone);
+            }
+        }
+    }
+
+    // Meshing at LOD 0 (detailed 3D greedy voxel steps)
+    let mesh_lod0 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 0).unwrap();
+    // Meshing at LOD 1 (sloped heightfield)
+    let mesh_lod1 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 1).unwrap();
+
+    let verts_lod0 = mesh_lod0.count_vertices();
+    let verts_lod1 = mesh_lod1.count_vertices();
+
+    // LOD 1 sloped heightfield must yield a massive reduction in vertices
+    assert!(
+        verts_lod1 < verts_lod0,
+        "LOD 1 sloped heightfield should use fewer vertices ({}) than LOD 0 stepped voxels ({})",
+        verts_lod1,
+        verts_lod0
+    );
+
+    // Expecting at least a 60% reduction in vertex count on steep diagonal mountain
+    assert!(
+        (verts_lod1 as f32) < (verts_lod0 as f32) * 0.40,
+        "Sloped LOD must reduce mountain vertices by >60%, got {} vs {}",
+        verts_lod1,
+        verts_lod0
+    );
+}
+
+#[test]
+fn test_sloped_lod_groups_ores_on_mountain() {
+    let mut chunk = Chunk::new();
+
+    // Mountain slope with exposed DiamondOre, CoalOre, and GoldOre veins
+    for lx in 0..CHUNK_WIDTH {
+        for lz in 0..CHUNK_DEPTH {
+            let height = 15 + lx;
+            let ore = match (lx + lz) % 4 {
+                0 => BlockType::DiamondOre,
+                1 => BlockType::CoalOre,
+                2 => BlockType::GoldOre,
+                _ => BlockType::Stone,
+            };
+            for ly in 0..height {
+                chunk.set(lx as i32, ly as i32, lz as i32, BlockType::Stone);
+            }
+            chunk.set(lx as i32, height as i32, lz as i32, ore);
+        }
+    }
+
+    // Meshing at LOD 1 should successfully generate a unified mesh
+    let mesh_lod1 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 1).unwrap();
+    assert!(mesh_lod1.count_vertices() > 0);
+}

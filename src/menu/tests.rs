@@ -70,6 +70,7 @@ fn test_get_option_description_all_actions() {
         MenuButtonAction::ToggleFullscreen,
         MenuButtonAction::CycleFpsCap,
         MenuButtonAction::CycleViewDistance,
+        MenuButtonAction::CycleDistanceLod,
         MenuButtonAction::ToggleBackfaceCulling,
         MenuButtonAction::ToggleShadows,
         MenuButtonAction::ToggleMaxYSkip,
@@ -102,4 +103,17 @@ fn test_get_option_description_all_actions() {
         assert!(!d.description.is_empty(), "Description must not be empty");
         assert!(!d.impact.is_empty(), "Impact must not be empty");
     }
+}
+
+#[test]
+fn test_graphics_settings_lod_defaults() {
+    let gs = super::types::GraphicsSettings::default();
+    assert!(
+        gs.distance_lod,
+        "distance LOD should default to true in graphics settings"
+    );
+    assert_eq!(
+        gs.lod_threshold, 4,
+        "default lod threshold should be 4 chunks"
+    );
 }

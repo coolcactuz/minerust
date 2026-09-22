@@ -8,7 +8,7 @@ use crate::camera::FpsCamera;
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
-use crate::mesher::build_chunk_mesh;
+use crate::mesher::build_chunk_mesh_lod;
 use crate::world::grid::WorldGrid;
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{
@@ -141,8 +141,8 @@ pub fn update_chunk_mesh(
     let east = world.chunks.get(&(*coord + IVec2::new(1, 0)));
     let west = world.chunks.get(&(*coord + IVec2::new(-1, 0)));
 
-    let lod = u8::from(greedy);
-    let new_mesh = build_chunk_mesh(chunk, north, south, east, west, max_y_skip, greedy);
+    let lod = world.chunk_lod.get(coord).copied().unwrap_or(0);
+    let new_mesh = build_chunk_mesh_lod(chunk, north, south, east, west, max_y_skip, greedy, lod);
     apply_chunk_mesh(*coord, new_mesh, lod, commands, world, meshes, materials);
 }
 
@@ -439,8 +439,8 @@ pub fn world_streaming_system(
         }
     }
 
-    let distance_lod = settings.dev.as_ref().is_none_or(|d| d.distance_lod);
-    let lod_threshold = settings.dev.as_ref().map_or(4, |d| d.lod_threshold);
+    let distance_lod = settings.graphics.as_ref().map_or(true, |g| g.distance_lod);
+    let lod_threshold = settings.graphics.as_ref().map_or(4, |g| g.lod_threshold);
     let global_greedy = settings.dev.as_ref().is_none_or(|d| d.greedy_meshing);
 
     let player_pos = cam_transform.translation;
@@ -454,11 +454,7 @@ pub fn world_streaming_system(
         let dist_2d = diff.x.abs().max(diff.y.abs());
         if dist_2d <= view_dist && world.chunk_entities.contains_key(&coord) {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-            let target_lod = if distance_lod {
-                u8::from(dist_sq > threshold_sq)
-            } else {
-                u8::from(global_greedy)
-            };
+            let target_lod = u8::from(distance_lod && dist_sq > threshold_sq);
 
             if world.chunk_lod.get(&coord) != Some(&target_lod)
                 && !world.queued_for_mesh.contains(&coord)
@@ -504,12 +500,7 @@ pub fn world_streaming_system(
                 let dist_2d = diff.x.abs().max(diff.y.abs());
                 if dist_2d <= view_dist {
                     let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-                    let target_lod = if distance_lod {
-                        u8::from(dist_sq > threshold_sq)
-                    } else {
-                        u8::from(global_greedy)
-                    };
-                    let use_greedy = target_lod == 1;
+                    let target_lod = u8::from(distance_lod && dist_sq > threshold_sq);
 
                     if async_meshing {
                         if world.in_progress_meshes.contains(&coord) {
@@ -525,14 +516,15 @@ pub fn world_streaming_system(
                         let tx = pools.mesher.tx.clone();
                         AsyncComputeTaskPool::get()
                             .spawn(async move {
-                                let mesh = build_chunk_mesh(
+                                let mesh = build_chunk_mesh_lod(
                                     &chunk,
                                     north.as_ref(),
                                     south.as_ref(),
                                     east.as_ref(),
                                     west.as_ref(),
                                     max_y_skip,
-                                    use_greedy,
+                                    global_greedy,
+                                    target_lod,
                                 );
                                 let _ = tx.send((coord, mesh, target_lod));
                             })
@@ -545,7 +537,7 @@ pub fn world_streaming_system(
                             &mut assets.meshes,
                             &mut assets.materials,
                             max_y_skip,
-                            use_greedy,
+                            global_greedy,
                         );
                     }
                     meshed += 1;

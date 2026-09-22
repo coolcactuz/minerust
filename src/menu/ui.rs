@@ -371,6 +371,17 @@ fn spawn_settings_menu(commands: &mut Commands) {
                             15.0,
                         );
 
+                        // Distant LOD Button
+                        spawn_settings_button(
+                            btn_col,
+                            "Distant LOD: ON (4 Chunks)",
+                            MenuButtonAction::CycleDistanceLod,
+                            DistanceLodBtnText,
+                            320.0,
+                            48.0,
+                            15.0,
+                        );
+
                         // Back Button
                         spawn_menu_button_sized(
                             btn_col,
@@ -384,7 +395,7 @@ fn spawn_settings_menu(commands: &mut Commands) {
                     });
 
                     // Right Info Popup Card
-                    spawn_option_tooltip_card(row, 380.0, 288.0);
+                    spawn_option_tooltip_card(row, 380.0, 348.0);
                 });
         });
 }

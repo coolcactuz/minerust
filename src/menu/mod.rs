@@ -3,6 +3,7 @@
 pub mod descriptions;
 pub mod interactions;
 pub mod seed;
+pub mod sync;
 pub mod types;
 pub mod ui;
 
@@ -14,6 +15,7 @@ use bevy::prelude::*;
 pub use descriptions::*;
 pub use interactions::*;
 pub use seed::*;
+pub use sync::*;
 pub use types::*;
 pub use ui::*;
 

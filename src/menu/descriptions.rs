@@ -70,12 +70,14 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             description: "Iteratively merges adjacent coplanar block faces sharing the same voxel type into large single rectangular quads.",
             impact: "- ON: Reduces chunk vertex and triangle counts by ~75%.\n- OFF: Emits separate 1x1 quads for every exposed block face.",
         }),
-        MenuButtonAction::ToggleDistanceLod => Some(OptionDescription {
-            header: "LOD BENCHMARK",
-            title: "Distance Level of Detail (LOD)",
-            description: "Dynamically switches chunk meshing to a 2x2 simplified voxel grid for chunks located beyond the LOD threshold distance.",
-            impact: "- ON: Reduces distant geometry complexity by another 50-75%.\n- OFF: Renders distant chunks with uniform 1:1 full-resolution geometry.",
-        }),
+        MenuButtonAction::CycleDistanceLod | MenuButtonAction::ToggleDistanceLod => {
+            Some(OptionDescription {
+                header: "DISTANCE LEVEL OF DETAIL (LOD)",
+                title: "Sloped Heightfield LOD",
+                description: "Replaces distant stepped voxel stairs on mountain slopes with smooth continuous angled surfaces and groups exposed ore veins into stone.",
+                impact: "- ON: Cuts distant geometry by up to 90%, stabilizing 60+ FPS in mountainous biomes.\n- OFF: Renders every distant block as a 1x1 voxel cube.",
+            })
+        }
         MenuButtonAction::CycleLodThreshold => Some(OptionDescription {
             header: "LOD DISTANCE TUNING",
             title: "LOD Distance Threshold",

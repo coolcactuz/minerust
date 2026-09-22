@@ -68,12 +68,14 @@ impl Default for DevSettings {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Clone, Debug)]
 pub struct GraphicsSettings {
     pub vsync: bool,
     pub fullscreen: bool,
     pub fps_cap: Option<u32>, // None = Uncapped, Some(60), Some(120), Some(144)
     pub view_distance: i32,   // 8, 16, 24, 32, 64
+    pub distance_lod: bool,   // Distant Sloped Heightfield LOD
+    pub lod_threshold: i32,   // 2, 4, 6, 8 chunks
 }
 
 impl Default for GraphicsSettings {
@@ -83,6 +85,8 @@ impl Default for GraphicsSettings {
             fullscreen: false,
             fps_cap: None,
             view_distance: 16,
+            distance_lod: true,
+            lod_threshold: 4,
         }
     }
 }
@@ -114,6 +118,7 @@ pub enum MenuButtonAction {
     ToggleFullscreen,
     CycleFpsCap,
     CycleViewDistance,
+    CycleDistanceLod,
     ToggleBackfaceCulling,
     ToggleShadows,
     ToggleMaxYSkip,

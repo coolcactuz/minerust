@@ -111,6 +111,7 @@ pub struct InteractionContext<'w> {
     pub mouse_buttons: Res<'w, ButtonInput<MouseButton>>,
     pub inventory: ResMut<'w, Inventory>,
     pub menu: Option<Res<'w, MenuState>>,
+    pub graphics_settings: Option<Res<'w, crate::menu::GraphicsSettings>>,
     pub dev_settings: Option<Res<'w, crate::menu::DevSettings>>,
 }
 
@@ -228,11 +229,15 @@ pub fn block_interaction_system(
 
             let player_pos = cam_transform.translation;
             let max_y_skip = context.dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
-            let distance_lod = context
-                .dev_settings
-                .as_ref()
-                .map_or(true, |d| d.distance_lod);
-            let lod_threshold = context.dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
+            let (distance_lod, lod_threshold) = context.graphics_settings.as_ref().map_or_else(
+                || {
+                    context
+                        .dev_settings
+                        .as_ref()
+                        .map_or((true, 4), |d| (d.distance_lod, d.lod_threshold))
+                },
+                |g| (g.distance_lod, g.lod_threshold),
+            );
             let threshold_world = (lod_threshold as f32) * 16.0;
             let threshold_sq = threshold_world * threshold_world;
             let global_greedy = context

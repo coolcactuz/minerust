@@ -180,6 +180,7 @@ pub fn fluid_simulation_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    graphics_settings: Option<Res<crate::menu::GraphicsSettings>>,
     dev_settings: Option<Res<crate::menu::DevSettings>>,
     camera_query: Query<&Transform, With<FpsCamera>>,
 ) {
@@ -200,8 +201,14 @@ pub fn fluid_simulation_system(
             .ok()
             .map_or(Vec3::ZERO, |t| t.translation);
         let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
-        let distance_lod = dev_settings.as_ref().map_or(true, |d| d.distance_lod);
-        let lod_threshold = dev_settings.as_ref().map_or(4, |d| d.lod_threshold);
+        let (distance_lod, lod_threshold) = graphics_settings.as_ref().map_or_else(
+            || {
+                dev_settings
+                    .as_ref()
+                    .map_or((true, 4), |d| (d.distance_lod, d.lod_threshold))
+            },
+            |g| (g.distance_lod, g.lod_threshold),
+        );
         let threshold_world = (lod_threshold as f32) * 16.0;
         let threshold_sq = threshold_world * threshold_world;
         let global_greedy = dev_settings.as_ref().map_or(true, |d| d.greedy_meshing);
