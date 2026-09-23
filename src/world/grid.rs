@@ -32,12 +32,6 @@ pub struct WorldGrid {
     pub total_vertices: usize,
     pub chunk_vertices: HashMap<IVec2, usize>,
     pub chunk_lod: HashMap<IVec2, u8>,
-    pub cluster_lod: bool,
-    pub cluster_size: i32,
-    pub distant_chunk_meshes: HashMap<IVec2, Mesh>,
-    pub region_entities: HashMap<IVec2, Entity>,
-    pub region_vertices: HashMap<IVec2, usize>,
-    pub dirty_regions: HashSet<IVec2>,
 }
 
 impl Default for WorldGrid {
@@ -68,28 +62,7 @@ impl WorldGrid {
             total_vertices: 0,
             chunk_vertices: HashMap::default(),
             chunk_lod: HashMap::default(),
-            cluster_lod: false,
-            cluster_size: 2,
-            distant_chunk_meshes: HashMap::default(),
-            region_entities: HashMap::default(),
-            region_vertices: HashMap::default(),
-            dirty_regions: HashSet::default(),
         }
-    }
-
-    #[inline]
-    pub fn is_chunk_meshed(&self, coord: &IVec2) -> bool {
-        self.chunk_entities.contains_key(coord) || self.distant_chunk_meshes.contains_key(coord)
-    }
-
-    #[inline]
-    pub fn total_meshed_chunks(&self) -> usize {
-        self.chunk_entities.len() + self.distant_chunk_meshes.len()
-    }
-
-    #[inline]
-    pub fn total_mesh_entities(&self) -> usize {
-        self.chunk_entities.len() + self.region_entities.len()
     }
 
     #[inline]
@@ -242,15 +215,9 @@ impl WorldGrid {
         for (_, entity) in self.chunk_entities.drain() {
             commands.entity(entity).despawn();
         }
-        for (_, entity) in self.region_entities.drain() {
-            commands.entity(entity).despawn();
-        }
         self.chunks.clear();
         self.chunk_lod.clear();
         self.chunk_vertices.clear();
-        self.distant_chunk_meshes.clear();
-        self.region_vertices.clear();
-        self.dirty_regions.clear();
         self.total_vertices = 0;
         self.in_progress_chunks.clear();
         self.in_progress_meshes.clear();

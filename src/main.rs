@@ -106,7 +106,7 @@ impl CliOptions {
           -d, --dev, --debug             Enable Developer Mode (benchmarks & debug settings)\n  \
           -p, --profile                  Enable Real-time Performance Profiler HUD\n  \
           -q, --quickstart               Start directly in-game bypassing the main menu\n  \
-          -b, --benchmark [PRESET]       Run automated benchmark (baseline, culling, greedy, sloped_lod, regional, production)\n      \
+          -b, --benchmark [PRESET]       Run automated benchmark (baseline, culling, greedy, sloped_lod, production)\n      \
               --view-distance <chunks>   Render distance (4 to 64 chunks)\n  \
           -o, --output <path>            JSON output file for benchmark results\n  \
           -h, --help                     Print help information"

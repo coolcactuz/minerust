@@ -11,9 +11,6 @@ use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
 use crate::mesher::build_chunk_mesh_lod;
 use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
-use crate::world::cluster::{
-    chunk_offset_in_region, chunk_to_region_coord, merge_chunk_meshes, region_to_world_pos,
-};
 use crate::world::grid::WorldGrid;
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{
@@ -77,7 +74,7 @@ pub fn chunk_distance_sq_to_player(coord: IVec2, player_pos: Vec3, chunk: Option
 pub fn apply_chunk_mesh(
     coord: IVec2,
     new_mesh: Option<Mesh>,
-    tier: u8,
+    lod: u8,
     commands: &mut Commands,
     world: &mut WorldGrid,
     meshes: &mut Assets<Mesh>,
@@ -89,8 +86,8 @@ pub fn apply_chunk_mesh(
         (coord.y * CHUNK_DEPTH as i32) as f32,
     );
 
-    // Track vertex counts and LOD tier
-    world.chunk_lod.insert(coord, tier);
+    // Track vertex counts and LOD
+    world.chunk_lod.insert(coord, lod);
     let new_vert_count = new_mesh.as_ref().map_or(0, Mesh::count_vertices);
     let old_vert_count = world
         .chunk_vertices
@@ -98,30 +95,8 @@ pub fn apply_chunk_mesh(
         .unwrap_or(0);
     world.total_vertices = world.total_vertices.saturating_sub(old_vert_count) + new_vert_count;
 
-    // Distant LOD chunk clustering (Regional Merging):
-    // Distant Tier 2 meshes are aggregated into regional cluster entities rather than separate individual entities
-    if world.cluster_lod && tier >= 2 {
-        if let Some(entity) = world.chunk_entities.remove(&coord) {
-            commands.entity(entity).despawn();
-        }
-        if let Some(mesh) = new_mesh {
-            world.distant_chunk_meshes.insert(coord, mesh);
-        } else {
-            world.distant_chunk_meshes.remove(&coord);
-        }
-        let region = chunk_to_region_coord(coord, world.cluster_size.max(1));
-        world.dirty_regions.insert(region);
-        return;
-    }
-
-    // Near chunk or unclustered: transition out of distant chunk meshes if present
-    if world.cluster_lod && world.distant_chunk_meshes.remove(&coord).is_some() {
-        let region = chunk_to_region_coord(coord, world.cluster_size.max(1));
-        world.dirty_regions.insert(region);
-    }
-
     let material = world.block_material.clone().unwrap_or_else(|| {
-        let mat = materials.add(ExtendedMaterial {
+        materials.add(ExtendedMaterial {
             base: StandardMaterial {
                 cull_mode: Some(bevy::render::render_resource::Face::Back),
                 perceptual_roughness: 0.85,
@@ -131,9 +106,7 @@ pub fn apply_chunk_mesh(
             extension: VoxelExtension {
                 array_texture: Handle::default(),
             },
-        });
-        world.block_material = Some(mat.clone());
-        mat
+        })
     });
 
     if let Some(&entity) = world.chunk_entities.get(&coord) {
@@ -256,31 +229,6 @@ pub fn world_streaming_system(
     let gen_dist = view_dist + pregen_margin;
     let unload_dist = gen_dist + 2;
 
-    let (cluster_lod, cluster_size) = settings.graphics.as_ref().map_or_else(
-        || {
-            settings
-                .dev
-                .as_ref()
-                .map_or((false, 2), |d| (d.cluster_lod, d.cluster_size))
-        },
-        |g| (g.cluster_lod, g.cluster_size),
-    );
-
-    if world.cluster_lod != cluster_lod || world.cluster_size != cluster_size {
-        for (_, entity) in world.region_entities.drain() {
-            commands.entity(entity).despawn();
-        }
-        world.region_vertices.clear();
-        world.dirty_regions.clear();
-        let distant_coords: Vec<IVec2> = world.distant_chunk_meshes.keys().copied().collect();
-        world.distant_chunk_meshes.clear();
-        for c in distant_coords {
-            world.queue_mesh(c);
-        }
-        world.cluster_lod = cluster_lod;
-        world.cluster_size = cluster_size;
-    }
-
     let settings_changed = settings.graphics.as_ref().is_some_and(|s| s.is_changed());
     let dev_changed = settings.dev.as_ref().is_some_and(|d| d.is_changed());
 
@@ -322,10 +270,10 @@ pub fn world_streaming_system(
         for (&coord, _) in &world.chunks {
             let diff = coord - player_chunk;
             if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
-                if !world.is_chunk_meshed(&coord) {
+                if !world.chunk_entities.contains_key(&coord) {
                     chunks_to_queue.push(coord);
                 }
-            } else if world.is_chunk_meshed(&coord) {
+            } else if world.chunk_entities.contains_key(&coord) {
                 chunks_to_demesh.push(coord);
             }
         }
@@ -337,10 +285,6 @@ pub fn world_streaming_system(
         for coord in chunks_to_demesh {
             if let Some(entity) = world.chunk_entities.remove(&coord) {
                 commands.entity(entity).despawn();
-            }
-            if world.distant_chunk_meshes.remove(&coord).is_some() {
-                let region = chunk_to_region_coord(coord, world.cluster_size.max(1));
-                world.dirty_regions.insert(region);
             }
             if let Some(old_v) = world.chunk_vertices.remove(&coord) {
                 world.total_vertices = world.total_vertices.saturating_sub(old_v);
@@ -378,10 +322,6 @@ pub fn world_streaming_system(
             // Despawn 3D mesh entity from GPU
             if let Some(entity) = world.chunk_entities.remove(&coord) {
                 commands.entity(entity).despawn();
-            }
-            if world.distant_chunk_meshes.remove(&coord).is_some() {
-                let region = chunk_to_region_coord(coord, world.cluster_size.max(1));
-                world.dirty_regions.insert(region);
             }
 
             // If the chunk was modified by the player, persist it to disk
@@ -499,7 +439,7 @@ pub fn world_streaming_system(
                 let n_diff = neighbor_coord - player_chunk;
                 if n_diff.x.abs() <= view_dist
                     && n_diff.y.abs() <= view_dist
-                    && world.is_chunk_meshed(&neighbor_coord)
+                    && world.chunk_entities.contains_key(&neighbor_coord)
                 {
                     world.queue_mesh(neighbor_coord);
                 }
@@ -524,10 +464,6 @@ pub fn world_streaming_system(
             if diff.x.abs() > view_dist || diff.y.abs() > view_dist {
                 if let Some(entity) = world.chunk_entities.remove(&coord) {
                     commands.entity(entity).despawn();
-                }
-                if world.distant_chunk_meshes.remove(&coord).is_some() {
-                    let region = chunk_to_region_coord(coord, world.cluster_size.max(1));
-                    world.dirty_regions.insert(region);
                 }
                 if let Some(old_v) = world.chunk_vertices.remove(&coord) {
                     world.total_vertices = world.total_vertices.saturating_sub(old_v);
@@ -578,7 +514,7 @@ pub fn world_streaming_system(
     for (&coord, chunk) in &world.chunks {
         let diff = coord - player_chunk;
         let dist_2d = diff.x.abs().max(diff.y.abs());
-        if dist_2d <= view_dist && world.is_chunk_meshed(&coord) {
+        if dist_2d <= view_dist && world.chunk_entities.contains_key(&coord) {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
             let (target_tier, _, _) = determine_chunk_tier(
                 dist_sq,
@@ -690,72 +626,6 @@ pub fn world_streaming_system(
                 }
             }
         }
-    }
-
-    // 5. Process dirty regions for clustered distant LOD (Regional Merging)
-    if world.cluster_lod && !world.dirty_regions.is_empty() {
-        let dirty: Vec<IVec2> = world.dirty_regions.drain().collect();
-        let cluster_size = world.cluster_size.max(1);
-
-        for region_coord in dirty {
-            let min_cx = region_coord.x * cluster_size;
-            let max_cx = min_cx + cluster_size;
-            let min_cy = region_coord.y * cluster_size;
-            let max_cy = min_cy + cluster_size;
-
-            let mut region_meshes = Vec::new();
-            for cx in min_cx..max_cx {
-                for cy in min_cy..max_cy {
-                    let chunk_coord = IVec2::new(cx, cy);
-                    if let Some(mesh) = world.distant_chunk_meshes.get(&chunk_coord) {
-                        let offset = chunk_offset_in_region(chunk_coord, cluster_size);
-                        region_meshes.push((mesh, offset));
-                    }
-                }
-            }
-
-            if let Some(merged_mesh) = merge_chunk_meshes(region_meshes) {
-                let world_pos = region_to_world_pos(region_coord, cluster_size);
-                let vert_count = merged_mesh.count_vertices();
-                world.region_vertices.insert(region_coord, vert_count);
-
-                let material = world.block_material.clone().unwrap_or_else(|| {
-                    let mat = assets.materials.add(ExtendedMaterial {
-                        base: StandardMaterial {
-                            cull_mode: Some(bevy::render::render_resource::Face::Back),
-                            perceptual_roughness: 0.85,
-                            reflectance: 0.15,
-                            ..default()
-                        },
-                        extension: VoxelExtension {
-                            array_texture: Handle::default(),
-                        },
-                    });
-                    world.block_material = Some(mat.clone());
-                    mat
-                });
-
-                if let Some(&entity) = world.region_entities.get(&region_coord) {
-                    commands.entity(entity).insert(Mesh3d(assets.meshes.add(merged_mesh)));
-                } else {
-                    let entity = commands
-                        .spawn((
-                            Mesh3d(assets.meshes.add(merged_mesh)),
-                            MeshMaterial3d(material),
-                            Transform::from_translation(world_pos),
-                        ))
-                        .id();
-                    world.region_entities.insert(region_coord, entity);
-                }
-            } else {
-                if let Some(entity) = world.region_entities.remove(&region_coord) {
-                    commands.entity(entity).despawn();
-                }
-                world.region_vertices.remove(&region_coord);
-            }
-        }
-    } else if !world.dirty_regions.is_empty() {
-        world.dirty_regions.clear();
     }
 }
 

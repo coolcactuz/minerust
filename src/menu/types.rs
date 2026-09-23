@@ -46,8 +46,6 @@ pub struct DevSettings {
     pub greedy_meshing: bool,
     pub distance_lod: bool,
     pub lod_threshold: i32,
-    pub cluster_lod: bool,
-    pub cluster_size: i32,
     pub show_debug_hud: bool,
     pub pregen_margin: i32,
 }
@@ -66,8 +64,6 @@ impl Default for DevSettings {
             greedy_meshing: true,
             distance_lod: true,
             lod_threshold: 4,
-            cluster_lod: true,
-            cluster_size: 2,
             show_debug_hud: false,
             pregen_margin: 2,
         }
@@ -85,8 +81,6 @@ pub struct GraphicsSettings {
     pub greedy_threshold: i32, // Distance threshold in chunks: 2 (32m), 3 (48m), 4 (64m), 0 (all)
     pub distance_lod: bool,   // Distant Sloped Heightfield LOD
     pub lod_threshold: i32,   // 2 to 32 chunks
-    pub cluster_lod: bool,    // Regional Chunk Clustering for distant LOD
-    pub cluster_size: i32,    // 2 (2x2 chunks) or 4 (4x4 chunks)
 }
 
 impl Default for GraphicsSettings {
@@ -101,8 +95,6 @@ impl Default for GraphicsSettings {
             greedy_threshold: 2,
             distance_lod: true,
             lod_threshold: 8,
-            cluster_lod: true,
-            cluster_size: 2,
         }
     }
 }

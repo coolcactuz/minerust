@@ -64,11 +64,8 @@ run_scenario "greedy" "$RESULTS_DIR/3_greedy.json" "3. Greedy Meshing (Coplanar 
 # 4. Sloped LOD: Greedy Meshing + 3D Sloped Heightfield LOD
 run_scenario "sloped_lod" "$RESULTS_DIR/4_sloped_lod.json" "4. Sloped LOD (Greedy + 3D Heightfield LOD)"
 
-# 5. Regional LOD: Greedy + Sloped LOD + Regional Chunk Clustering
-run_scenario "regional" "$RESULTS_DIR/5_regional.json" "5. Regional LOD (Greedy + Sloped LOD + Regional Merging)"
-
-# 6. Full Production: All optimizations ON (Fog OFF)
-run_scenario "production" "$RESULTS_DIR/6_production.json" "6. Full Production (All Optimizations)"
+# 5. Full Production: All optimizations ON (Fog OFF)
+run_scenario "production" "$RESULTS_DIR/5_production.json" "5. Full Production (All Optimizations)"
 
 # Run comparative analysis
 python3 scripts/compare_benchmarks.py "$RESULTS_DIR"

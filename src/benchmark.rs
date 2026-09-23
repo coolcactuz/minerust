@@ -21,19 +21,16 @@ pub enum BenchmarkPreset {
     Greedy,
     /// Greedy Meshing + 3D Sloped Heightfield LOD active.
     SlopedLod,
-    /// Greedy + Sloped LOD + Regional Merging (Chunk Clustering) for distant chunks.
-    Regional,
-    /// Full production pipeline: All optimizations enabled.
+    /// Full production pipeline: Greedy + Sloped LOD + Culling + Max-Y.
     Production,
 }
 
 impl BenchmarkPreset {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 5] = [
         Self::Baseline,
         Self::Culling,
         Self::Greedy,
         Self::SlopedLod,
-        Self::Regional,
         Self::Production,
     ];
 
@@ -43,7 +40,6 @@ impl BenchmarkPreset {
             "culling" | "cull" => Some(Self::Culling),
             "greedy" => Some(Self::Greedy),
             "sloped" | "lod" | "sloped_lod" => Some(Self::SlopedLod),
-            "regional" | "cluster" | "clustering" => Some(Self::Regional),
             "production" | "full" | "all" => Some(Self::Production),
             _ => None,
         }
@@ -55,7 +51,6 @@ impl BenchmarkPreset {
             Self::Culling => "culling",
             Self::Greedy => "greedy",
             Self::SlopedLod => "sloped_lod",
-            Self::Regional => "regional",
             Self::Production => "production",
         }
     }
@@ -66,7 +61,6 @@ impl BenchmarkPreset {
             Self::Culling => "Backface Culling & Max-Y Skip",
             Self::Greedy => "Greedy Meshing",
             Self::SlopedLod => "Greedy + Sloped Heightfield LOD",
-            Self::Regional => "Greedy + Sloped LOD + Regional Merging",
             Self::Production => "Full Production (All Optimizations)",
         }
     }
@@ -82,7 +76,7 @@ impl BenchmarkPreset {
 /// parameters needed to execute a deterministic and reproducible benchmark.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BenchmarkScenario {
-    /// Machine-readable identifier (e.g. "baseline", "culling", "greedy", "sloped_lod", "regional", "production")
+    /// Machine-readable identifier (e.g. "baseline", "culling", "greedy", "sloped_lod", "production")
     pub id: &'static str,
     /// Human-readable display name for reports and logs
     pub name: &'static str,
@@ -104,10 +98,6 @@ pub struct BenchmarkScenario {
     pub lod: bool,
     /// Distance threshold in chunks for distant sloped LOD
     pub lod_threshold: i32,
-    /// Enable regional chunk clustering for distant chunks
-    pub cluster_lod: bool,
-    /// Regional cluster size (e.g. 2 for 2x2, 4 for 4x4)
-    pub cluster_size: i32,
     /// Enable GPU backface culling
     pub culling: bool,
     /// Enable skipping empty atmosphere scans
@@ -125,7 +115,6 @@ impl BenchmarkScenario {
     pub const DEFAULT_WARMUP_SECS: f32 = 2.5;
     pub const DEFAULT_GREEDY_THRESHOLD: i32 = 24;
     pub const DEFAULT_LOD_THRESHOLD: i32 = 32;
-    pub const DEFAULT_CLUSTER_SIZE: i32 = 2;
 
     pub fn baseline(view_distance: i32) -> Self {
         Self {
@@ -140,8 +129,6 @@ impl BenchmarkScenario {
             greedy_threshold: Self::DEFAULT_GREEDY_THRESHOLD,
             lod: false,
             lod_threshold: Self::DEFAULT_LOD_THRESHOLD,
-            cluster_lod: false,
-            cluster_size: Self::DEFAULT_CLUSTER_SIZE,
             culling: false,
             max_y_skip: false,
             distance_fog: false,
@@ -181,28 +168,9 @@ impl BenchmarkScenario {
             greedy_threshold: Self::DEFAULT_GREEDY_THRESHOLD,
             lod: true,
             lod_threshold: Self::DEFAULT_LOD_THRESHOLD,
-            cluster_lod: false,
-            cluster_size: Self::DEFAULT_CLUSTER_SIZE,
             culling: true,
             max_y_skip: true,
             output_path: Some("benchmark_results/4_sloped_lod.json".to_string()),
-            ..Self::baseline(view_distance)
-        }
-    }
-
-    pub fn regional(view_distance: i32) -> Self {
-        Self {
-            id: "regional",
-            name: "Greedy + Sloped LOD + Regional Merging",
-            greedy: true,
-            greedy_threshold: Self::DEFAULT_GREEDY_THRESHOLD,
-            lod: true,
-            lod_threshold: Self::DEFAULT_LOD_THRESHOLD,
-            cluster_lod: true,
-            cluster_size: Self::DEFAULT_CLUSTER_SIZE,
-            culling: true,
-            max_y_skip: true,
-            output_path: Some("benchmark_results/5_regional.json".to_string()),
             ..Self::baseline(view_distance)
         }
     }
@@ -215,12 +183,10 @@ impl BenchmarkScenario {
             greedy_threshold: Self::DEFAULT_GREEDY_THRESHOLD,
             lod: true,
             lod_threshold: Self::DEFAULT_LOD_THRESHOLD,
-            cluster_lod: true,
-            cluster_size: Self::DEFAULT_CLUSTER_SIZE,
             culling: true,
             max_y_skip: true,
             distance_fog: false,
-            output_path: Some("benchmark_results/6_production.json".to_string()),
+            output_path: Some("benchmark_results/5_production.json".to_string()),
             ..Self::baseline(view_distance)
         }
     }
@@ -231,7 +197,6 @@ impl BenchmarkScenario {
             BenchmarkPreset::Culling => Self::culling(view_distance),
             BenchmarkPreset::Greedy => Self::greedy(view_distance),
             BenchmarkPreset::SlopedLod => Self::sloped_lod(view_distance),
-            BenchmarkPreset::Regional => Self::regional(view_distance),
             BenchmarkPreset::Production => Self::production(view_distance),
         }
     }
@@ -256,11 +221,6 @@ impl BenchmarkScenario {
         graphics.lod_threshold = self.lod_threshold;
         dev.distance_lod = self.lod;
         dev.lod_threshold = self.lod_threshold;
-
-        graphics.cluster_lod = self.cluster_lod;
-        graphics.cluster_size = self.cluster_size;
-        dev.cluster_lod = self.cluster_lod;
-        dev.cluster_size = self.cluster_size;
 
         dev.backface_culling = self.culling;
         dev.max_y_skip = self.max_y_skip;
@@ -399,10 +359,9 @@ pub fn benchmark_runner_system(
             if state.elapsed - state.last_status_print >= 0.5 {
                 state.last_status_print = state.elapsed;
                 println!(
-                    "[BENCHMARK] Initializing world around spawn... Meshed: {} / {} chunks (Entities: {}) | Gen queue: {}, Mesh queue: {}",
-                    w.total_meshed_chunks(),
+                    "[BENCHMARK] Initializing world around spawn... Meshed: {} / {} chunks | Gen queue: {}, Mesh queue: {}",
+                    w.chunk_entities.len(),
                     total_needed,
-                    w.total_mesh_entities(),
                     w.generation_queue.len(),
                     w.mesh_queue.len()
                 );
@@ -414,8 +373,8 @@ pub fn benchmark_runner_system(
                 && w.in_progress_meshes.is_empty();
 
             // Give at least 0.4s for frame 0 queues to register, then check queues empty and meshes spawned
-            if state.elapsed >= 0.4 && queues_empty && w.total_meshed_chunks() > 0 {
-                state.static_chunks = w.total_meshed_chunks();
+            if state.elapsed >= 0.4 && queues_empty && !w.chunk_entities.is_empty() {
+                state.static_chunks = w.chunk_entities.len();
                 state.static_vertices = w.total_vertices;
                 let current_vram = crate::profile::read_gpu_vram();
                 state.static_vram_mb = current_vram.used_mb;
@@ -487,7 +446,7 @@ pub fn benchmark_runner_system(
 
             if let Some(ref w) = world {
                 state.vertex_samples.push(w.total_vertices);
-                state.chunk_samples.push(w.total_mesh_entities());
+                state.chunk_samples.push(w.chunk_entities.len());
             }
 
             if state.distance_traveled >= config.scenario.flight_distance {
@@ -592,7 +551,7 @@ fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkCon
     println!("  0.1% LOW FRAMERATE   : \x1b[1;31m{:.1} FPS\x1b[0m (p99.9 latency: {:.2} ms)", point_one_percent_low_fps, p999_ms);
     println!("  Average Frametime    : {:.2} ms (Jitter StDev: {:.2} ms)", avg_frametime_ms, stdev_ms);
     println!("  Frametime Min / Max  : {:.2} ms ({:.1} FPS) / {:.2} ms ({:.1} FPS)", min_frametime_ms, max_fps, max_frametime_ms, min_fps);
-    println!("  Active GPU Meshes    : Peak {} entities", peak_chunks);
+    println!("  Active GPU Chunks    : Peak {} chunks", peak_chunks);
     println!(
         "  Active Geometry      : Avg {} verts / Peak {} verts (~{} tris)",
         avg_verts,
@@ -668,15 +627,13 @@ mod tests {
         let culling = BenchmarkScenario::culling(64);
         let greedy = BenchmarkScenario::greedy(64);
         let sloped_lod = BenchmarkScenario::sloped_lod(64);
-        let regional = BenchmarkScenario::regional(64);
         let prod = BenchmarkScenario::production(64);
 
-        assert!(!baseline.culling && !baseline.greedy && !baseline.lod && !baseline.cluster_lod);
-        assert!(culling.culling && !culling.greedy && !culling.lod && !culling.cluster_lod);
-        assert!(greedy.culling && greedy.greedy && !greedy.lod && !greedy.cluster_lod);
-        assert!(sloped_lod.culling && sloped_lod.greedy && sloped_lod.lod && !sloped_lod.cluster_lod);
-        assert!(regional.culling && regional.greedy && regional.lod && regional.cluster_lod);
-        assert!(prod.culling && prod.greedy && prod.lod && prod.cluster_lod);
+        assert!(!baseline.culling && !baseline.greedy && !baseline.lod);
+        assert!(culling.culling && !culling.greedy && !culling.lod);
+        assert!(greedy.culling && greedy.greedy && !greedy.lod);
+        assert!(sloped_lod.culling && sloped_lod.greedy && sloped_lod.lod);
+        assert!(prod.culling && prod.greedy && prod.lod);
     }
 
     #[test]
@@ -697,9 +654,9 @@ mod tests {
     }
 
     #[test]
-    fn test_benchmark_suite_standard_contains_six_scenarios() {
+    fn test_benchmark_suite_standard_contains_five_scenarios() {
         let suite = BenchmarkSuite::standard(32);
-        assert_eq!(suite.scenarios.len(), 6);
+        assert_eq!(suite.scenarios.len(), 5);
         assert_eq!(suite.seed, BenchmarkSuite::DEFAULT_SEED);
         for s in &suite.scenarios {
             assert_eq!(s.view_distance, 32);
@@ -724,14 +681,6 @@ mod tests {
         assert_eq!(
             BenchmarkPreset::from_str_name("sloped_lod"),
             Some(BenchmarkPreset::SlopedLod)
-        );
-        assert_eq!(
-            BenchmarkPreset::from_str_name("regional"),
-            Some(BenchmarkPreset::Regional)
-        );
-        assert_eq!(
-            BenchmarkPreset::from_str_name("cluster"),
-            Some(BenchmarkPreset::Regional)
         );
         assert_eq!(
             BenchmarkPreset::from_str_name("production"),
