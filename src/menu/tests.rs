@@ -280,6 +280,8 @@ fn test_graphics_settings_serialization_roundtrip() {
         greedy_threshold: 4,
         distance_lod: false,
         lod_threshold: 16,
+        cluster_lod: true,
+        cluster_size: 2,
     };
 
     let json = serde_json::to_string(&original).expect("Serialization failed");

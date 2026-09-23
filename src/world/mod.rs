@@ -1,6 +1,7 @@
 //! Voxel world management, procedural terrain generation, chunk storage,
 //! and background multi-threaded mesh/generation streaming.
 
+pub mod cluster;
 pub mod grid;
 pub mod spawn;
 pub mod streaming;
@@ -10,6 +11,7 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
+pub use cluster::*;
 pub use grid::WorldGrid;
 pub use spawn::find_safe_surface_spawn;
 pub use streaming::{

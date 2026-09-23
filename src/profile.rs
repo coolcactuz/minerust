@@ -352,7 +352,7 @@ pub fn update_profiling_hud_system(
             ) = if let Some(ref w) = world {
                 (
                     w.chunks.len(),
-                    w.chunk_entities.len(),
+                    w.total_mesh_entities(),
                     w.generation_queue.len(),
                     w.mesh_queue.len(),
                     w.total_vertices,
@@ -449,7 +449,7 @@ pub fn update_profiling_hud_system(
             let fluid_queue_len = fluid_sim.as_ref().map_or(0, |f| f.queue.len());
 
             // Optimizations status
-            let (cull, max_y, budget, async_m, greedy, lod) = if let Some(ref dev) = dev_settings {
+            let (cull, max_y, budget, async_m, greedy, lod, cluster) = if let Some(ref dev) = dev_settings {
                 (
                     if dev.backface_culling { "ON" } else { "OFF" },
                     if dev.max_y_skip { "ON" } else { "OFF" },
@@ -465,6 +465,11 @@ pub fn update_profiling_hud_system(
                     } else {
                         "OFF".to_string()
                     },
+                    if dev.cluster_lod {
+                        format!("ON ({}x{})", dev.cluster_size, dev.cluster_size)
+                    } else {
+                        "OFF".to_string()
+                    },
                 )
             } else {
                 (
@@ -474,6 +479,7 @@ pub fn update_profiling_hud_system(
                     "ON",
                     "ON (~75% drop)",
                     "ON (4ch)".to_string(),
+                    "ON (2x2)".to_string(),
                 )
             };
 
@@ -487,7 +493,7 @@ pub fn update_profiling_hud_system(
                  STREAMING:    Gen Queue: {} | Mesh Queue: {} | Active Tasks: {}\n\
                  FLUID ENGINE: Water Queue: {} | Tick Rate: 1.0s batch\n\
                  PLAYER POS:   {} | Biome: {}\n\
-                 OPTIMIZATION: [Greedy: {}] [LOD: {}] [Max-Y: {}] [Cull: {}] [Async: {}] [Budget: {}] [Direct-GPU: ON]",
+                 OPTIMIZATION: [Greedy: {}] [LOD: {}] [Regional: {}] [Max-Y: {}] [Cull: {}] [Async: {}] [Budget: {}] [Direct-GPU: ON]",
                 fps.fps,
                 fps.frame_time_ms,
                 fps.one_percent_low_fps,
@@ -511,6 +517,7 @@ pub fn update_profiling_hud_system(
                 biome_str,
                 greedy,
                 lod,
+                cluster,
                 max_y,
                 cull,
                 async_m,

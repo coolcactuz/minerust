@@ -468,3 +468,83 @@ fn test_determine_chunk_tier_near_mid_distant() {
     assert!(greedy);
     assert_eq!(lod, 0);
 }
+
+#[test]
+fn test_regional_clustering_lifecycle_and_transition() {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::mesh::{Indices, PrimitiveTopology};
+    use crate::voxel_material::VoxelBlockMaterial;
+
+    let mut world = WorldGrid {
+        cluster_lod: true,
+        cluster_size: 2,
+        ..Default::default()
+    };
+
+    let c00 = IVec2::new(0, 0);
+    let c10 = IVec2::new(1, 0);
+
+    let create_test_mesh = || {
+        let mut m = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+        m.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 0.0]]);
+        m.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 1.0, 0.0]; 3]);
+        m.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0, 0.0]; 3]);
+        m.insert_attribute(Mesh::ATTRIBUTE_UV_1, vec![[0.0, 0.0]; 3]);
+        m.insert_attribute(Mesh::ATTRIBUTE_COLOR, vec![[1.0, 1.0, 1.0, 1.0]; 3]);
+        m.insert_indices(Indices::U32(vec![0, 1, 2]));
+        m
+    };
+
+    let test_world = World::new();
+    let mut commands_queue = bevy::ecs::world::CommandQueue::default();
+    let mut commands = Commands::new(&mut commands_queue, &test_world);
+    let mut meshes = Assets::<Mesh>::default();
+    let mut materials = Assets::<VoxelBlockMaterial>::default();
+
+    // 1. Apply Tier 2 (distant) chunk mesh for (0, 0)
+    apply_chunk_mesh(
+        c00,
+        Some(create_test_mesh()),
+        2, // Tier 2 = distant LOD
+        &mut commands,
+        &mut world,
+        &mut meshes,
+        &mut materials,
+    );
+
+    // Should NOT create an individual chunk_entity; should store in distant_chunk_meshes
+    assert!(world.chunk_entities.get(&c00).is_none());
+    assert!(world.distant_chunk_meshes.contains_key(&c00));
+    assert!(world.is_chunk_meshed(&c00));
+    assert!(world.dirty_regions.contains(&IVec2::new(0, 0)));
+
+    // 2. Apply Tier 2 for (1, 0) - same region (0, 0)
+    apply_chunk_mesh(
+        c10,
+        Some(create_test_mesh()),
+        2,
+        &mut commands,
+        &mut world,
+        &mut meshes,
+        &mut materials,
+    );
+    assert_eq!(world.total_meshed_chunks(), 2);
+    assert_eq!(world.chunk_entities.len(), 0);
+
+    // 3. Transition (0, 0) from Tier 2 to Tier 0 (near detailed voxel)
+    apply_chunk_mesh(
+        c00,
+        Some(create_test_mesh()),
+        0, // Tier 0 = near
+        &mut commands,
+        &mut world,
+        &mut meshes,
+        &mut materials,
+    );
+
+    // (0, 0) should now be an individual entity, and removed from distant_chunk_meshes
+    assert!(world.chunk_entities.contains_key(&c00));
+    assert!(!world.distant_chunk_meshes.contains_key(&c00));
+    assert!(world.distant_chunk_meshes.contains_key(&c10));
+    assert!(world.dirty_regions.contains(&IVec2::new(0, 0)));
+}
