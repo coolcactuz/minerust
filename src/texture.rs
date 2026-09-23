@@ -319,9 +319,9 @@ pub fn create_texture_array() -> Image {
         for y in 0..16 {
             let wave = (x + y * 2) % 6 == 0;
             let col = if wave {
-                [65, 135, 240, 225]
+                [65, 135, 240, 190]
             } else {
-                [42, 100, 215, 225]
+                [38, 95, 210, 160]
             };
             set_px(TextureId::Water, x, y, col);
         }

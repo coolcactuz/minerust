@@ -255,6 +255,15 @@ pub fn update_dev_settings_system(
                 };
             }
         }
+        if let Some(ref mat_handle) = world.water_material {
+            if let Some(mut mat) = materials.get_mut(mat_handle) {
+                mat.base.cull_mode = if dev.backface_culling {
+                    Some(bevy::render::render_resource::Face::Back)
+                } else {
+                    None
+                };
+            }
+        }
 
         // 4. Update Directional Light Shadows in real-time
         for mut light in &mut dir_lights {

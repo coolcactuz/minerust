@@ -1,8 +1,5 @@
-use bevy::asset::RenderAssetUsages;
-use bevy::prelude::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology};
-
-use super::helpers::{add_quad, add_triangle, simplify_block_for_lod, triangle_normal};
+use super::helpers::{add_quad, add_triangle, simplify_block_for_lod, triangle_normal, MeshBuffers};
+use super::ChunkMeshes;
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::texture::{block_texture, quad_uvs};
@@ -28,7 +25,7 @@ pub fn build_chunk_mesh_sloped_lod(
     east: Option<&Chunk>,
     west: Option<&Chunk>,
     max_y: usize,
-) -> Option<Mesh> {
+) -> ChunkMeshes {
     // 1. Sample the top solid/visible block and surface height for each of the 16x16 columns
     let mut col_heights = [[0.0f32; CHUNK_WIDTH]; CHUNK_DEPTH];
     let mut col_blocks = [[BlockType::Air; CHUNK_WIDTH]; CHUNK_DEPTH];
@@ -51,7 +48,7 @@ pub fn build_chunk_mesh_sloped_lod(
     }
 
     if !has_any_surface {
-        return None;
+        return ChunkMeshes::default();
     }
 
     // Helper to sample height at (cx, cz), checking neighbors if outside [0..16, 0..16]
@@ -147,11 +144,8 @@ pub fn build_chunk_mesh_sloped_lod(
     }
 
     // 3. Generate mesh geometry using 2x2 macro-cells (8x8 cells across chunk)
-    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(512);
-    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(512);
-    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(512);
-    let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(512);
-    let mut indices: Vec<u16> = Vec::with_capacity(1024);
+    let mut solid = MeshBuffers::with_capacity(512, 1024);
+    let mut water = MeshBuffers::default();
 
     let cells_x = CHUNK_WIDTH / CELL_SIZE; // 8
     let cells_z = CHUNK_DEPTH / CELL_SIZE; // 8
@@ -200,11 +194,7 @@ pub fn build_chunk_mesh_sloped_lod(
                 let layer = block_texture(BlockType::Water, BlockFace::Top).layer();
                 let water_uvs = quad_uvs(CELL_SIZE as f32, CELL_SIZE as f32);
                 add_quad(
-                    &mut positions,
-                    &mut normals,
-                    &mut uvs,
-                    &mut uvs_1,
-                    &mut indices,
+                    &mut water,
                     [
                         [fx0, water_y, fz0],
                         [fx0, water_y, fz1],
@@ -219,11 +209,7 @@ pub fn build_chunk_mesh_sloped_lod(
 
                 // Downward face for underwater viewing
                 add_quad(
-                    &mut positions,
-                    &mut normals,
-                    &mut uvs,
-                    &mut uvs_1,
-                    &mut indices,
+                    &mut water,
                     [
                         [fx0, water_y, fz0],
                         [fx1, water_y, fz0],
@@ -270,11 +256,7 @@ pub fn build_chunk_mesh_sloped_lod(
             let norm_1 = triangle_normal(p0, p1, p2);
             let shade_1 = 0.75 + 0.25 * norm_1[1].clamp(0.0, 1.0);
             add_triangle(
-                &mut positions,
-                &mut normals,
-                &mut uvs,
-                &mut uvs_1,
-                &mut indices,
+                &mut solid,
                 [p0, p1, p2],
                 norm_1,
                 [[0.0, 0.0], [0.0, f_size], [f_size, f_size]],
@@ -286,11 +268,7 @@ pub fn build_chunk_mesh_sloped_lod(
             let norm_2 = triangle_normal(p0, p2, p3);
             let shade_2 = 0.75 + 0.25 * norm_2[1].clamp(0.0, 1.0);
             add_triangle(
-                &mut positions,
-                &mut normals,
-                &mut uvs,
-                &mut uvs_1,
-                &mut indices,
+                &mut solid,
                 [p0, p2, p3],
                 norm_2,
                 [[0.0, 0.0], [f_size, f_size], [f_size, 0.0]],
@@ -313,11 +291,7 @@ pub fn build_chunk_mesh_sloped_lod(
         if b != BlockType::Air && !b.is_water() {
             let layer = block_texture(b, BlockFace::South).layer();
             add_quad(
-                &mut positions,
-                &mut normals,
-                &mut uvs,
-                &mut uvs_1,
-                &mut indices,
+                &mut solid,
                 [
                     [lx1, y1, 0.0],
                     [lx1, y1 - SKIRT_DROP, 0.0],
@@ -342,11 +316,7 @@ pub fn build_chunk_mesh_sloped_lod(
         if b != BlockType::Air && !b.is_water() {
             let layer = block_texture(b, BlockFace::North).layer();
             add_quad(
-                &mut positions,
-                &mut normals,
-                &mut uvs,
-                &mut uvs_1,
-                &mut indices,
+                &mut solid,
                 [
                     [lx0, y0, 16.0],
                     [lx0, y0 - SKIRT_DROP, 16.0],
@@ -371,11 +341,7 @@ pub fn build_chunk_mesh_sloped_lod(
         if b != BlockType::Air && !b.is_water() {
             let layer = block_texture(b, BlockFace::West).layer();
             add_quad(
-                &mut positions,
-                &mut normals,
-                &mut uvs,
-                &mut uvs_1,
-                &mut indices,
+                &mut solid,
                 [
                     [0.0, y0, lz0],
                     [0.0, y0 - SKIRT_DROP, lz0],
@@ -400,11 +366,7 @@ pub fn build_chunk_mesh_sloped_lod(
         if b != BlockType::Air && !b.is_water() {
             let layer = block_texture(b, BlockFace::East).layer();
             add_quad(
-                &mut positions,
-                &mut normals,
-                &mut uvs,
-                &mut uvs_1,
-                &mut indices,
+                &mut solid,
                 [
                     [16.0, y1, lz1],
                     [16.0, y1 - SKIRT_DROP, lz1],
@@ -419,19 +381,8 @@ pub fn build_chunk_mesh_sloped_lod(
         }
     }
 
-    if positions.is_empty() {
-        return None;
+    ChunkMeshes {
+        solid: solid.to_mesh(),
+        water: water.to_mesh(),
     }
-
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
-    mesh.insert_indices(Indices::U16(indices));
-
-    Some(mesh)
 }

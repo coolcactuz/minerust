@@ -12,11 +12,11 @@ fn test_greedy_meshing_reduces_vertices() {
         }
     }
 
-    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
-    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    let meshes_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false);
+    let meshes_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true);
 
-    let std_verts = mesh_standard.count_vertices();
-    let greedy_verts = mesh_greedy.count_vertices();
+    let std_verts = meshes_standard.total_vertices();
+    let greedy_verts = meshes_greedy.total_vertices();
 
     assert_eq!(std_verts, 192);
     assert_eq!(greedy_verts, 24);
@@ -27,10 +27,10 @@ fn test_greedy_meshing_reduces_vertices() {
 fn test_procedural_chunk_greedy_reduces_vertices() {
     let noise = crate::noise::NoiseGenerator::new(133742);
     let chunk = crate::world::generate_chunk(0, 0, &noise, 133742);
-    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
-    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
-    let std_v = mesh_standard.count_vertices();
-    let greedy_v = mesh_greedy.count_vertices();
+    let meshes_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false);
+    let meshes_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true);
+    let std_v = meshes_standard.total_vertices();
+    let greedy_v = meshes_greedy.total_vertices();
     println!("PROCEDURAL CHUNK: Standard = {} verts, Greedy = {} verts", std_v, greedy_v);
     assert!(greedy_v < std_v);
 }
@@ -56,8 +56,10 @@ fn test_water_ocean_renders_only_on_surface() {
     }
 
     // Greedy meshing of this ocean chunk
-    let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
-    assert_eq!(mesh.count_vertices(), 28);
+    let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, true);
+    assert!(meshes.solid.is_some());
+    assert!(meshes.water.is_some());
+    assert_eq!(meshes.total_vertices(), 28);
 }
 
 #[test]
@@ -67,8 +69,9 @@ fn test_waterfall_renders_sides_in_air() {
     for ly in 10..=12 {
         chunk.set(5, ly, 5, BlockType::Water);
     }
-    let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
-    assert!(mesh.count_vertices() > 8);
+    let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, true);
+    let water_mesh = meshes.water.expect("Water mesh must exist for waterfall");
+    assert!(water_mesh.count_vertices() > 8);
 }
 
 #[test]
@@ -87,11 +90,11 @@ fn test_seabed_sand_gravel_greedy_merging() {
         }
     }
 
-    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
-    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    let meshes_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false);
+    let meshes_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true);
 
-    let std_verts = mesh_standard.count_vertices();
-    let greedy_verts = mesh_greedy.count_vertices();
+    let std_verts = meshes_standard.total_vertices();
+    let greedy_verts = meshes_greedy.total_vertices();
 
     assert!(greedy_verts < std_verts);
 }
@@ -103,8 +106,25 @@ fn test_submerged_terrain_renders_against_water_no_holes() {
     chunk.set(0, 10, 0, BlockType::Sand);
     chunk.set(0, 11, 0, BlockType::Water);
 
-    let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
-    assert_eq!(mesh.count_vertices(), 40);
+    let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, false);
+    assert_eq!(meshes.total_vertices(), 40);
+    assert!(meshes.solid.is_some());
+    assert!(meshes.water.is_some());
+}
+
+#[test]
+fn test_two_pass_water_and_solid_mesh_separation() {
+    let mut chunk = Chunk::new();
+    chunk.set(0, 10, 0, BlockType::Stone);
+    chunk.set(1, 10, 0, BlockType::Water);
+
+    let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, true);
+    assert!(meshes.solid.is_some(), "Solid mesh must exist for stone block");
+    assert!(meshes.water.is_some(), "Water mesh must exist for water block");
+    let solid_mesh = meshes.solid.unwrap();
+    let water_mesh = meshes.water.unwrap();
+    assert!(solid_mesh.count_vertices() > 0);
+    assert!(water_mesh.count_vertices() > 0);
 }
 
 #[test]
@@ -146,12 +166,12 @@ fn test_sloped_lod_reduces_mountain_slope_triangles() {
     }
 
     // Meshing at LOD 0 (detailed 3D greedy voxel steps)
-    let mesh_lod0 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 0).unwrap();
+    let meshes_lod0 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 0);
     // Meshing at LOD 1 (sloped heightfield)
-    let mesh_lod1 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 1).unwrap();
+    let meshes_lod1 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 1);
 
-    let verts_lod0 = mesh_lod0.count_vertices();
-    let verts_lod1 = mesh_lod1.count_vertices();
+    let verts_lod0 = meshes_lod0.total_vertices();
+    let verts_lod1 = meshes_lod1.total_vertices();
 
     // LOD 1 sloped heightfield must yield a massive reduction in vertices
     assert!(
@@ -192,13 +212,13 @@ fn test_sloped_lod_groups_ores_on_mountain() {
     }
 
     // Meshing at LOD 1 should successfully generate a unified mesh
-    let mesh_lod1 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 1).unwrap();
-    assert!(mesh_lod1.count_vertices() > 0);
+    let meshes_lod1 = build_chunk_mesh_lod(&chunk, None, None, None, None, true, true, 1);
+    assert!(meshes_lod1.total_vertices() > 0);
 }
 
 #[test]
 fn test_texture_array_properties_and_repeat_mode() {
-    use crate::texture::{LAYER_COUNT, TILE_SIZE, create_texture_array};
+    use crate::texture::{create_texture_array, LAYER_COUNT, TILE_SIZE};
     use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler};
     use bevy::render::render_resource::TextureDimension;
 
@@ -224,7 +244,7 @@ fn test_texture_array_properties_and_repeat_mode() {
 #[test]
 fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
     use crate::block::BlockFace;
-    use crate::texture::{TextureId, block_texture};
+    use crate::texture::{block_texture, TextureId};
     use bevy::render::mesh::VertexAttributeValues;
 
     let mut chunk = Chunk::new();
@@ -235,7 +255,8 @@ fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
         }
     }
 
-    let mesh = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, true);
+    let mesh = meshes.solid.expect("Solid mesh must exist");
 
     // Verify ATTRIBUTE_UV_0 (repeating coordinates from 0..w and 0..h)
     let uv0_values = mesh.attribute(Mesh::ATTRIBUTE_UV_0).expect("ATTRIBUTE_UV_0 must exist");
@@ -274,13 +295,13 @@ fn test_all_meshers_use_u16_indices() {
     let mut chunk = Chunk::new();
     chunk.set(0, 10, 0, BlockType::Stone);
 
-    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).solid.unwrap();
     assert!(matches!(mesh_standard.indices(), Some(Indices::U16(_))));
 
-    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).solid.unwrap();
     assert!(matches!(mesh_greedy.indices(), Some(Indices::U16(_))));
 
-    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).unwrap();
+    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).solid.unwrap();
     assert!(matches!(mesh_lod.indices(), Some(Indices::U16(_))));
 }
 
@@ -291,25 +312,24 @@ fn test_all_meshers_omit_attribute_color_and_pack_shade() {
     let mut chunk = Chunk::new();
     chunk.set(0, 10, 0, BlockType::Stone);
 
-    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).solid.unwrap();
     assert!(mesh_standard.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
     let uv1_std = mesh_standard.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv1_std {
         assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
     }
 
-    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).solid.unwrap();
     assert!(mesh_greedy.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
     let uv1_greedy = mesh_greedy.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv1_greedy {
         assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
     }
 
-    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).unwrap();
+    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).solid.unwrap();
     assert!(mesh_lod.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
     let uv1_lod = mesh_lod.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv1_lod {
         assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
     }
 }
-

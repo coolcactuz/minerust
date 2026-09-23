@@ -285,10 +285,24 @@ fn setup(
             ..default()
         },
         extension: VoxelExtension {
-            array_texture: array_handle,
+            array_texture: array_handle.clone(),
         },
     });
     world.block_material = Some(block_mat);
+
+    let water_mat = materials.add(ExtendedMaterial {
+        base: StandardMaterial {
+            perceptual_roughness: 0.08,
+            reflectance: 0.5,
+            cull_mode,
+            alpha_mode: AlphaMode::Blend,
+            ..default()
+        },
+        extension: VoxelExtension {
+            array_texture: array_handle,
+        },
+    });
+    world.water_material = Some(water_mat);
 
     if menu_state.world_active {
         let center_chunk = WorldGrid::world_to_chunk_coord(0, 0).0;

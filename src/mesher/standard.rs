@@ -1,8 +1,5 @@
-use bevy::asset::RenderAssetUsages;
-use bevy::prelude::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology};
-
-use super::helpers::{add_quad, should_render_face};
+use super::helpers::{add_quad, should_render_face, MeshBuffers};
+use super::ChunkMeshes;
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
 use crate::texture::{block_texture, quad_uvs};
@@ -15,12 +12,9 @@ pub fn build_chunk_mesh_standard(
     east: Option<&Chunk>,
     west: Option<&Chunk>,
     max_y: usize,
-) -> Option<Mesh> {
-    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(2048);
-    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(2048);
-    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(2048);
-    let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(2048);
-    let mut indices: Vec<u16> = Vec::with_capacity(3072);
+) -> ChunkMeshes {
+    let mut solid = MeshBuffers::with_capacity(2048, 3072);
+    let mut water = MeshBuffers::default();
 
     let unit_uvs = quad_uvs(1.0, 1.0);
 
@@ -44,12 +38,9 @@ pub fn build_chunk_mesh_standard(
                 };
                 if should_render_face(block, top_neighbor, BlockFace::Top) {
                     let layer = block_texture(block, BlockFace::Top).layer();
+                    let target = if block.is_water() { &mut water } else { &mut solid };
                     add_quad(
-                        &mut positions,
-                        &mut normals,
-                        &mut uvs,
-                        &mut uvs_1,
-                        &mut indices,
+                        target,
                         [
                             [fx, fy + 1.0, fz],
                             [fx, fy + 1.0, fz + 1.0],
@@ -65,11 +56,7 @@ pub fn build_chunk_mesh_standard(
                     // For surface water, also render downward-facing ceiling quad for underwater viewing
                     if block.is_water() {
                         add_quad(
-                            &mut positions,
-                            &mut normals,
-                            &mut uvs,
-                            &mut uvs_1,
-                            &mut indices,
+                            &mut water,
                             [
                                 [fx, fy + 1.0, fz],
                                 [fx + 1.0, fy + 1.0, fz],
@@ -92,12 +79,9 @@ pub fn build_chunk_mesh_standard(
                 };
                 if should_render_face(block, bottom_neighbor, BlockFace::Bottom) {
                     let layer = block_texture(block, BlockFace::Bottom).layer();
+                    let target = if block.is_water() { &mut water } else { &mut solid };
                     add_quad(
-                        &mut positions,
-                        &mut normals,
-                        &mut uvs,
-                        &mut uvs_1,
-                        &mut indices,
+                        target,
                         [
                             [fx, fy, fz + 1.0],
                             [fx, fy, fz],
@@ -123,12 +107,9 @@ pub fn build_chunk_mesh_standard(
                 };
                 if should_render_face(block, north_neighbor, BlockFace::North) {
                     let layer = block_texture(block, BlockFace::North).layer();
+                    let target = if block.is_water() { &mut water } else { &mut solid };
                     add_quad(
-                        &mut positions,
-                        &mut normals,
-                        &mut uvs,
-                        &mut uvs_1,
-                        &mut indices,
+                        target,
                         [
                             [fx, fy + 1.0, fz + 1.0],
                             [fx, fy, fz + 1.0],
@@ -154,12 +135,9 @@ pub fn build_chunk_mesh_standard(
                 };
                 if should_render_face(block, south_neighbor, BlockFace::South) {
                     let layer = block_texture(block, BlockFace::South).layer();
+                    let target = if block.is_water() { &mut water } else { &mut solid };
                     add_quad(
-                        &mut positions,
-                        &mut normals,
-                        &mut uvs,
-                        &mut uvs_1,
-                        &mut indices,
+                        target,
                         [
                             [fx + 1.0, fy + 1.0, fz],
                             [fx + 1.0, fy, fz],
@@ -185,12 +163,9 @@ pub fn build_chunk_mesh_standard(
                 };
                 if should_render_face(block, east_neighbor, BlockFace::East) {
                     let layer = block_texture(block, BlockFace::East).layer();
+                    let target = if block.is_water() { &mut water } else { &mut solid };
                     add_quad(
-                        &mut positions,
-                        &mut normals,
-                        &mut uvs,
-                        &mut uvs_1,
-                        &mut indices,
+                        target,
                         [
                             [fx + 1.0, fy + 1.0, fz + 1.0],
                             [fx + 1.0, fy, fz + 1.0],
@@ -216,12 +191,9 @@ pub fn build_chunk_mesh_standard(
                 };
                 if should_render_face(block, west_neighbor, BlockFace::West) {
                     let layer = block_texture(block, BlockFace::West).layer();
+                    let target = if block.is_water() { &mut water } else { &mut solid };
                     add_quad(
-                        &mut positions,
-                        &mut normals,
-                        &mut uvs,
-                        &mut uvs_1,
-                        &mut indices,
+                        target,
                         [
                             [fx, fy + 1.0, fz],
                             [fx, fy, fz],
@@ -238,19 +210,8 @@ pub fn build_chunk_mesh_standard(
         }
     }
 
-    if positions.is_empty() {
-        return None;
+    ChunkMeshes {
+        solid: solid.to_mesh(),
+        water: water.to_mesh(),
     }
-
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
-    mesh.insert_indices(Indices::U16(indices));
-
-    Some(mesh)
 }

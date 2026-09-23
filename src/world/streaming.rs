@@ -9,7 +9,7 @@ use crate::camera::FpsCamera;
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
-use crate::mesher::build_chunk_mesh_lod;
+use crate::mesher::{build_chunk_mesh_lod, ChunkMeshes};
 use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
 use crate::world::grid::WorldGrid;
 use crate::world::terrain::generate_chunk;
@@ -35,8 +35,8 @@ impl Default for ChunkGeneratorPool {
 
 #[derive(Resource)]
 pub struct ChunkMesherPool {
-    pub tx: Sender<(IVec2, Option<Mesh>, u8)>,
-    pub rx: Mutex<Receiver<(IVec2, Option<Mesh>, u8)>>,
+    pub tx: Sender<(IVec2, ChunkMeshes, u8)>,
+    pub rx: Mutex<Receiver<(IVec2, ChunkMeshes, u8)>>,
 }
 
 impl Default for ChunkMesherPool {
@@ -70,10 +70,10 @@ pub fn chunk_distance_sq_to_player(coord: IVec2, player_pos: Vec3, chunk: Option
     dx * dx + dy * dy + dz * dz
 }
 
-/// Applies or despawns a chunk mesh on the GPU
+/// Applies or despawns chunk meshes (solid terrain and water) on the GPU
 pub fn apply_chunk_mesh(
     coord: IVec2,
-    new_mesh: Option<Mesh>,
+    meshes_res: ChunkMeshes,
     lod: u8,
     commands: &mut Commands,
     world: &mut WorldGrid,
@@ -88,14 +88,14 @@ pub fn apply_chunk_mesh(
 
     // Track vertex counts and LOD
     world.chunk_lod.insert(coord, lod);
-    let new_vert_count = new_mesh.as_ref().map_or(0, Mesh::count_vertices);
+    let new_vert_count = meshes_res.total_vertices();
     let old_vert_count = world
         .chunk_vertices
         .insert(coord, new_vert_count)
         .unwrap_or(0);
     world.total_vertices = world.total_vertices.saturating_sub(old_vert_count) + new_vert_count;
 
-    let material = world.block_material.clone().unwrap_or_else(|| {
+    let solid_material = world.block_material.clone().unwrap_or_else(|| {
         materials.add(ExtendedMaterial {
             base: StandardMaterial {
                 cull_mode: Some(bevy::render::render_resource::Face::Back),
@@ -109,23 +109,57 @@ pub fn apply_chunk_mesh(
         })
     });
 
+    let water_material = world.water_material.clone().unwrap_or_else(|| {
+        materials.add(ExtendedMaterial {
+            base: StandardMaterial {
+                alpha_mode: AlphaMode::Blend,
+                cull_mode: Some(bevy::render::render_resource::Face::Back),
+                perceptual_roughness: 0.08,
+                reflectance: 0.5,
+                ..default()
+            },
+            extension: VoxelExtension {
+                array_texture: Handle::default(),
+            },
+        })
+    });
+
+    // Solid terrain mesh entity
     if let Some(&entity) = world.chunk_entities.get(&coord) {
-        if let Some(mesh) = new_mesh {
+        if let Some(mesh) = meshes_res.solid {
             commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
         } else {
             commands.entity(entity).despawn();
             world.chunk_entities.remove(&coord);
         }
-    } else if let Some(mesh) = new_mesh {
+    } else if let Some(mesh) = meshes_res.solid {
         let entity = commands
             .spawn((
                 Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(material),
+                MeshMaterial3d(solid_material),
                 Transform::from_translation(world_pos),
             ))
             .id();
-
         world.chunk_entities.insert(coord, entity);
+    }
+
+    // Water surface mesh entity
+    if let Some(&entity) = world.water_entities.get(&coord) {
+        if let Some(mesh) = meshes_res.water {
+            commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+        } else {
+            commands.entity(entity).despawn();
+            world.water_entities.remove(&coord);
+        }
+    } else if let Some(mesh) = meshes_res.water {
+        let entity = commands
+            .spawn((
+                Mesh3d(meshes.add(mesh)),
+                MeshMaterial3d(water_material),
+                Transform::from_translation(world_pos),
+            ))
+            .id();
+        world.water_entities.insert(coord, entity);
     }
 }
 
@@ -270,10 +304,10 @@ pub fn world_streaming_system(
         for (&coord, _) in &world.chunks {
             let diff = coord - player_chunk;
             if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
-                if !world.chunk_entities.contains_key(&coord) {
+                if !world.chunk_entities.contains_key(&coord) && !world.water_entities.contains_key(&coord) {
                     chunks_to_queue.push(coord);
                 }
-            } else if world.chunk_entities.contains_key(&coord) {
+            } else if world.chunk_entities.contains_key(&coord) || world.water_entities.contains_key(&coord) {
                 chunks_to_demesh.push(coord);
             }
         }
@@ -284,6 +318,9 @@ pub fn world_streaming_system(
 
         for coord in chunks_to_demesh {
             if let Some(entity) = world.chunk_entities.remove(&coord) {
+                commands.entity(entity).despawn();
+            }
+            if let Some(entity) = world.water_entities.remove(&coord) {
                 commands.entity(entity).despawn();
             }
             if let Some(old_v) = world.chunk_vertices.remove(&coord) {
@@ -319,8 +356,11 @@ pub fn world_streaming_system(
             if let Some(old_v) = world.chunk_vertices.remove(&coord) {
                 world.total_vertices = world.total_vertices.saturating_sub(old_v);
             }
-            // Despawn 3D mesh entity from GPU
+            // Despawn 3D mesh entities from GPU
             if let Some(entity) = world.chunk_entities.remove(&coord) {
+                commands.entity(entity).despawn();
+            }
+            if let Some(entity) = world.water_entities.remove(&coord) {
                 commands.entity(entity).despawn();
             }
 
@@ -439,7 +479,8 @@ pub fn world_streaming_system(
                 let n_diff = neighbor_coord - player_chunk;
                 if n_diff.x.abs() <= view_dist
                     && n_diff.y.abs() <= view_dist
-                    && world.chunk_entities.contains_key(&neighbor_coord)
+                    && (world.chunk_entities.contains_key(&neighbor_coord)
+                        || world.water_entities.contains_key(&neighbor_coord))
                 {
                     world.queue_mesh(neighbor_coord);
                 }
@@ -449,7 +490,7 @@ pub fn world_streaming_system(
 
     // 3. Receive finished asynchronous meshes from background threads
     if let Ok(rx) = pools.mesher.rx.lock() {
-        while let Ok((coord, mesh, lod)) = rx.try_recv() {
+        while let Ok((coord, meshes_res, lod)) = rx.try_recv() {
             world.in_progress_meshes.remove(&coord);
 
             // If chunk was unloaded while meshing, ignore
@@ -465,6 +506,9 @@ pub fn world_streaming_system(
                 if let Some(entity) = world.chunk_entities.remove(&coord) {
                     commands.entity(entity).despawn();
                 }
+                if let Some(entity) = world.water_entities.remove(&coord) {
+                    commands.entity(entity).despawn();
+                }
                 if let Some(old_v) = world.chunk_vertices.remove(&coord) {
                     world.total_vertices = world.total_vertices.saturating_sub(old_v);
                 }
@@ -474,7 +518,7 @@ pub fn world_streaming_system(
 
             apply_chunk_mesh(
                 coord,
-                mesh,
+                meshes_res,
                 lod,
                 &mut commands,
                 &mut world,
@@ -514,7 +558,9 @@ pub fn world_streaming_system(
     for (&coord, chunk) in &world.chunks {
         let diff = coord - player_chunk;
         let dist_2d = diff.x.abs().max(diff.y.abs());
-        if dist_2d <= view_dist && world.chunk_entities.contains_key(&coord) {
+        if dist_2d <= view_dist
+            && (world.chunk_entities.contains_key(&coord) || world.water_entities.contains_key(&coord))
+        {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
             let (target_tier, _, _) = determine_chunk_tier(
                 dist_sq,

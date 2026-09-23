@@ -239,7 +239,15 @@ fn test_zombie_mesh_prevention_and_streaming_cleanup() {
         bevy::render::mesh::PrimitiveTopology::TriangleList,
         bevy::asset::RenderAssetUsages::RENDER_WORLD,
     );
-    tx.send((distant_coord, Some(dummy_mesh), 0)).unwrap();
+    tx.send((
+        distant_coord,
+        crate::mesher::ChunkMeshes {
+            solid: Some(dummy_mesh),
+            water: None,
+        },
+        0,
+    ))
+    .unwrap();
 
     // Run streaming update
     app.update();
@@ -249,6 +257,10 @@ fn test_zombie_mesh_prevention_and_streaming_cleanup() {
     assert!(
         !world.chunk_entities.contains_key(&distant_coord),
         "Distant chunk outside view_dist must not spawn zombie entity"
+    );
+    assert!(
+        !world.water_entities.contains_key(&distant_coord),
+        "Distant chunk outside view_dist must not spawn zombie water entity"
     );
     assert_eq!(
         world

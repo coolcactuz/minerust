@@ -17,6 +17,7 @@ pub struct WorldGrid {
     pub chunks: HashMap<IVec2, Chunk>,
     pub chunk_cache: quick_cache::sync::Cache<IVec2, Chunk>,
     pub chunk_entities: HashMap<IVec2, Entity>,
+    pub water_entities: HashMap<IVec2, Entity>,
     pub modified_chunks: HashSet<IVec2>,
     pub in_progress_chunks: HashSet<IVec2>,
     pub in_progress_meshes: HashSet<IVec2>,
@@ -29,6 +30,7 @@ pub struct WorldGrid {
     pub seed: WorldSeed,
     pub noise: NoiseGenerator,
     pub block_material: Option<Handle<VoxelBlockMaterial>>,
+    pub water_material: Option<Handle<VoxelBlockMaterial>>,
     pub total_vertices: usize,
     pub chunk_vertices: HashMap<IVec2, usize>,
     pub chunk_lod: HashMap<IVec2, u8>,
@@ -47,6 +49,7 @@ impl WorldGrid {
             chunks: HashMap::default(),
             chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
             chunk_entities: HashMap::default(),
+            water_entities: HashMap::default(),
             modified_chunks: HashSet::default(),
             dirty_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
@@ -59,6 +62,7 @@ impl WorldGrid {
             seed,
             noise,
             block_material: None,
+            water_material: None,
             total_vertices: 0,
             chunk_vertices: HashMap::default(),
             chunk_lod: HashMap::default(),
@@ -213,6 +217,9 @@ impl WorldGrid {
     /// Despawns all active chunk meshes and clears loaded chunks and internal queues.
     pub fn despawn_all_chunks(&mut self, commands: &mut Commands) {
         for (_, entity) in self.chunk_entities.drain() {
+            commands.entity(entity).despawn();
+        }
+        for (_, entity) in self.water_entities.drain() {
             commands.entity(entity).despawn();
         }
         self.chunks.clear();
