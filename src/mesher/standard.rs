@@ -21,7 +21,7 @@ pub fn build_chunk_mesh_standard(
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(2048);
     let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(2048);
     let mut colors: Vec<[f32; 4]> = Vec::with_capacity(2048);
-    let mut indices: Vec<u32> = Vec::with_capacity(3072);
+    let mut indices: Vec<u16> = Vec::with_capacity(3072);
 
     let unit_uvs = quad_uvs(1.0, 1.0);
 
@@ -259,7 +259,7 @@ pub fn build_chunk_mesh_standard(
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
-    mesh.insert_indices(Indices::U32(indices));
+    mesh.insert_indices(Indices::U16(indices));
 
     Some(mesh)
 }

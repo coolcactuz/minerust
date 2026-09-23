@@ -383,8 +383,8 @@ pub fn update_profiling_hud_system(
             };
 
             // Geometry & VRAM Estimation:
-            // 48 bytes vertex attributes + 6 bytes index buffer per vertex = 54 bytes
-            let geom_bytes = total_verts * 54;
+            // 56 bytes vertex attributes + 3 bytes index buffer per vertex (U16) = 59 bytes
+            let geom_bytes = total_verts * 59;
             let geom_mb = geom_bytes as f32 / (1024.0 * 1024.0);
             let total_vram_mb = geom_mb + 32.0; // ~32 MB for atlas texture, swapchain, depth buffer
 

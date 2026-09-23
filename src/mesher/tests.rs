@@ -266,3 +266,21 @@ fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
         panic!("Expected Float32x2 for ATTRIBUTE_UV_1");
     }
 }
+
+#[test]
+fn test_all_meshers_use_u16_indices() {
+    use bevy::render::mesh::Indices;
+
+    let mut chunk = Chunk::new();
+    chunk.set(0, 10, 0, BlockType::Stone);
+
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+    assert!(matches!(mesh_standard.indices(), Some(Indices::U16(_))));
+
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    assert!(matches!(mesh_greedy.indices(), Some(Indices::U16(_))));
+
+    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).unwrap();
+    assert!(matches!(mesh_lod.indices(), Some(Indices::U16(_))));
+}
+

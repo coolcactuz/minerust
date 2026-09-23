@@ -20,7 +20,7 @@ pub fn build_chunk_mesh_greedy(
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(1024);
     let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(1024);
     let mut colors: Vec<[f32; 4]> = Vec::with_capacity(1024);
-    let mut indices: Vec<u32> = Vec::with_capacity(1536);
+    let mut indices: Vec<u16> = Vec::with_capacity(1536);
 
     // 1. TOP (+Y) Faces: horizontal slices (X = 0..16, Z = 0..16)
     let mut top_mask = [None; CHUNK_WIDTH * CHUNK_DEPTH];
@@ -583,7 +583,7 @@ pub fn build_chunk_mesh_greedy(
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
-    mesh.insert_indices(Indices::U32(indices));
+    mesh.insert_indices(Indices::U16(indices));
 
     Some(mesh)
 }

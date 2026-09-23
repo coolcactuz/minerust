@@ -44,14 +44,15 @@ pub fn add_quad(
     uvs: &mut Vec<[f32; 2]>,
     uvs_1: &mut Vec<[f32; 2]>,
     colors: &mut Vec<[f32; 4]>,
-    indices: &mut Vec<u32>,
+    indices: &mut Vec<u16>,
     verts: [[f32; 3]; 4],
     norm: [f32; 3],
     quad_uvs: [[f32; 2]; 4],
     layer: f32,
     shade: f32,
 ) {
-    let start_idx = positions.len() as u32;
+    debug_assert!(positions.len() <= (u16::MAX - 4) as usize, "Chunk vertex count exceeds u16::MAX");
+    let start_idx = positions.len() as u16;
 
     positions.extend_from_slice(&verts);
     normals.extend_from_slice(&[norm; 4]);
@@ -77,14 +78,15 @@ pub fn add_triangle(
     uvs: &mut Vec<[f32; 2]>,
     uvs_1: &mut Vec<[f32; 2]>,
     colors: &mut Vec<[f32; 4]>,
-    indices: &mut Vec<u32>,
+    indices: &mut Vec<u16>,
     verts: [[f32; 3]; 3],
     norm: [f32; 3],
     tri_uvs: [[f32; 2]; 3],
     layer: f32,
     shade: f32,
 ) {
-    let start_idx = positions.len() as u32;
+    debug_assert!(positions.len() <= (u16::MAX - 3) as usize, "Chunk vertex count exceeds u16::MAX");
+    let start_idx = positions.len() as u16;
 
     positions.extend_from_slice(&verts);
     normals.extend_from_slice(&[norm; 3]);

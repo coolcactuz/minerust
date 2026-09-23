@@ -152,7 +152,7 @@ pub fn build_chunk_mesh_sloped_lod(
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(512);
     let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(512);
     let mut colors: Vec<[f32; 4]> = Vec::with_capacity(512);
-    let mut indices: Vec<u32> = Vec::with_capacity(1024);
+    let mut indices: Vec<u16> = Vec::with_capacity(1024);
 
     let cells_x = CHUNK_WIDTH / CELL_SIZE; // 8
     let cells_z = CHUNK_DEPTH / CELL_SIZE; // 8
@@ -441,7 +441,7 @@ pub fn build_chunk_mesh_sloped_lod(
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
-    mesh.insert_indices(Indices::U32(indices));
+    mesh.insert_indices(Indices::U16(indices));
 
     Some(mesh)
 }
