@@ -151,7 +151,6 @@ pub fn build_chunk_mesh_sloped_lod(
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(512);
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(512);
     let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(512);
-    let mut colors: Vec<[f32; 4]> = Vec::with_capacity(512);
     let mut indices: Vec<u16> = Vec::with_capacity(1024);
 
     let cells_x = CHUNK_WIDTH / CELL_SIZE; // 8
@@ -205,7 +204,6 @@ pub fn build_chunk_mesh_sloped_lod(
                     &mut normals,
                     &mut uvs,
                     &mut uvs_1,
-                    &mut colors,
                     &mut indices,
                     [
                         [fx0, water_y, fz0],
@@ -225,7 +223,6 @@ pub fn build_chunk_mesh_sloped_lod(
                     &mut normals,
                     &mut uvs,
                     &mut uvs_1,
-                    &mut colors,
                     &mut indices,
                     [
                         [fx0, water_y, fz0],
@@ -277,7 +274,6 @@ pub fn build_chunk_mesh_sloped_lod(
                 &mut normals,
                 &mut uvs,
                 &mut uvs_1,
-                &mut colors,
                 &mut indices,
                 [p0, p1, p2],
                 norm_1,
@@ -294,7 +290,6 @@ pub fn build_chunk_mesh_sloped_lod(
                 &mut normals,
                 &mut uvs,
                 &mut uvs_1,
-                &mut colors,
                 &mut indices,
                 [p0, p2, p3],
                 norm_2,
@@ -322,7 +317,6 @@ pub fn build_chunk_mesh_sloped_lod(
                 &mut normals,
                 &mut uvs,
                 &mut uvs_1,
-                &mut colors,
                 &mut indices,
                 [
                     [lx1, y1, 0.0],
@@ -352,7 +346,6 @@ pub fn build_chunk_mesh_sloped_lod(
                 &mut normals,
                 &mut uvs,
                 &mut uvs_1,
-                &mut colors,
                 &mut indices,
                 [
                     [lx0, y0, 16.0],
@@ -382,7 +375,6 @@ pub fn build_chunk_mesh_sloped_lod(
                 &mut normals,
                 &mut uvs,
                 &mut uvs_1,
-                &mut colors,
                 &mut indices,
                 [
                     [0.0, y0, lz0],
@@ -412,7 +404,6 @@ pub fn build_chunk_mesh_sloped_lod(
                 &mut normals,
                 &mut uvs,
                 &mut uvs_1,
-                &mut colors,
                 &mut indices,
                 [
                     [16.0, y1, lz1],
@@ -440,7 +431,6 @@ pub fn build_chunk_mesh_sloped_lod(
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     mesh.insert_indices(Indices::U16(indices));
 
     Some(mesh)

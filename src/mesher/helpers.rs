@@ -43,7 +43,6 @@ pub fn add_quad(
     normals: &mut Vec<[f32; 3]>,
     uvs: &mut Vec<[f32; 2]>,
     uvs_1: &mut Vec<[f32; 2]>,
-    colors: &mut Vec<[f32; 4]>,
     indices: &mut Vec<u16>,
     verts: [[f32; 3]; 4],
     norm: [f32; 3],
@@ -56,8 +55,7 @@ pub fn add_quad(
 
     positions.extend_from_slice(&verts);
     normals.extend_from_slice(&[norm; 4]);
-    colors.extend_from_slice(&[[shade, shade, shade, 1.0]; 4]);
-    uvs_1.extend_from_slice(&[[layer, 0.0]; 4]);
+    uvs_1.extend_from_slice(&[[layer, shade]; 4]);
     uvs.extend_from_slice(&quad_uvs);
 
     // Standard Bevy Cuboid CCW winding: 0, 1, 2, 2, 3, 0
@@ -77,7 +75,6 @@ pub fn add_triangle(
     normals: &mut Vec<[f32; 3]>,
     uvs: &mut Vec<[f32; 2]>,
     uvs_1: &mut Vec<[f32; 2]>,
-    colors: &mut Vec<[f32; 4]>,
     indices: &mut Vec<u16>,
     verts: [[f32; 3]; 3],
     norm: [f32; 3],
@@ -90,8 +87,7 @@ pub fn add_triangle(
 
     positions.extend_from_slice(&verts);
     normals.extend_from_slice(&[norm; 3]);
-    colors.extend_from_slice(&[[shade, shade, shade, 1.0]; 3]);
-    uvs_1.extend_from_slice(&[[layer, 0.0]; 3]);
+    uvs_1.extend_from_slice(&[[layer, shade]; 3]);
     uvs.extend_from_slice(&tri_uvs);
 
     indices.extend_from_slice(&[start_idx, start_idx + 1, start_idx + 2]);

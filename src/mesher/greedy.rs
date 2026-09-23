@@ -19,7 +19,6 @@ pub fn build_chunk_mesh_greedy(
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(1024);
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(1024);
     let mut uvs_1: Vec<[f32; 2]> = Vec::with_capacity(1024);
-    let mut colors: Vec<[f32; 4]> = Vec::with_capacity(1024);
     let mut indices: Vec<u16> = Vec::with_capacity(1536);
 
     // 1. TOP (+Y) Faces: horizontal slices (X = 0..16, Z = 0..16)
@@ -90,7 +89,6 @@ pub fn build_chunk_mesh_greedy(
                         &mut normals,
                         &mut uvs,
                         &mut uvs_1,
-                        &mut colors,
                         &mut indices,
                         [
                             [fx, fy + 1.0, fz],
@@ -111,7 +109,6 @@ pub fn build_chunk_mesh_greedy(
                             &mut normals,
                             &mut uvs,
                             &mut uvs_1,
-                            &mut colors,
                             &mut indices,
                             [
                                 [fx, fy + 1.0, fz],
@@ -192,7 +189,6 @@ pub fn build_chunk_mesh_greedy(
                         &mut normals,
                         &mut uvs,
                         &mut uvs_1,
-                        &mut colors,
                         &mut indices,
                         [
                             [fx, fy, fz + fh],
@@ -285,7 +281,6 @@ pub fn build_chunk_mesh_greedy(
                         &mut normals,
                         &mut uvs,
                         &mut uvs_1,
-                        &mut colors,
                         &mut indices,
                         [
                             [fx, fy + fh, fz + 1.0],
@@ -374,7 +369,6 @@ pub fn build_chunk_mesh_greedy(
                         &mut normals,
                         &mut uvs,
                         &mut uvs_1,
-                        &mut colors,
                         &mut indices,
                         [
                             [fx + fw, fy + fh, fz],
@@ -463,7 +457,6 @@ pub fn build_chunk_mesh_greedy(
                         &mut normals,
                         &mut uvs,
                         &mut uvs_1,
-                        &mut colors,
                         &mut indices,
                         [
                             [fx + 1.0, fy + fh, fz + fw],
@@ -552,7 +545,6 @@ pub fn build_chunk_mesh_greedy(
                         &mut normals,
                         &mut uvs,
                         &mut uvs_1,
-                        &mut colors,
                         &mut indices,
                         [
                             [fx, fy + fh, fz],
@@ -582,7 +574,6 @@ pub fn build_chunk_mesh_greedy(
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uvs_1);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     mesh.insert_indices(Indices::U16(indices));
 
     Some(mesh)

@@ -284,3 +284,32 @@ fn test_all_meshers_use_u16_indices() {
     assert!(matches!(mesh_lod.indices(), Some(Indices::U16(_))));
 }
 
+#[test]
+fn test_all_meshers_omit_attribute_color_and_pack_shade() {
+    use bevy::render::mesh::VertexAttributeValues;
+
+    let mut chunk = Chunk::new();
+    chunk.set(0, 10, 0, BlockType::Stone);
+
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).unwrap();
+    assert!(mesh_standard.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
+    let uv1_std = mesh_standard.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
+    if let VertexAttributeValues::Float32x2(uvs) = uv1_std {
+        assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
+    }
+
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).unwrap();
+    assert!(mesh_greedy.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
+    let uv1_greedy = mesh_greedy.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
+    if let VertexAttributeValues::Float32x2(uvs) = uv1_greedy {
+        assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
+    }
+
+    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).unwrap();
+    assert!(mesh_lod.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
+    let uv1_lod = mesh_lod.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
+    if let VertexAttributeValues::Float32x2(uvs) = uv1_lod {
+        assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
+    }
+}
+

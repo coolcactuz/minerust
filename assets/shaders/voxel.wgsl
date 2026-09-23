@@ -35,8 +35,10 @@ fn fragment(
 
 #ifdef VERTEX_UVS_B
     let layer = i32(round(in.uv_b.x));
+    let shade = in.uv_b.y;
 #else
     let layer = 0;
+    let shade = 1.0;
 #endif
 
     let tex_color = textureSample(voxel_texture, voxel_sampler, uv, layer);
@@ -44,7 +46,7 @@ fn fragment(
 #ifdef VERTEX_COLORS
     pbr_input.material.base_color = tex_color * in.color;
 #else
-    pbr_input.material.base_color = tex_color;
+    pbr_input.material.base_color = tex_color * vec4<f32>(shade, shade, shade, 1.0);
 #endif
 
     pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
