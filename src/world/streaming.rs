@@ -1,4 +1,5 @@
 use bevy::ecs::system::SystemParam;
+use bevy::light::NotShadowCaster;
 use bevy::pbr::ExtendedMaterial;
 use bevy::prelude::*;
 use bevy::tasks::AsyncComputeTaskPool;
@@ -157,6 +158,7 @@ pub fn apply_chunk_mesh(
                 Mesh3d(meshes.add(mesh)),
                 MeshMaterial3d(water_material),
                 Transform::from_translation(world_pos),
+                NotShadowCaster,
             ))
             .id();
         world.water_entities.insert(coord, entity);

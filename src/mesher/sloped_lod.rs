@@ -29,18 +29,29 @@ pub fn build_chunk_mesh_sloped_lod(
     // 1. Sample the top solid/visible block and surface height for each of the 16x16 columns
     let mut col_heights = [[0.0f32; CHUNK_WIDTH]; CHUNK_DEPTH];
     let mut col_blocks = [[BlockType::Air; CHUNK_WIDTH]; CHUNK_DEPTH];
+    let mut col_seabed_heights = [[56.0f32; CHUNK_WIDTH]; CHUNK_DEPTH];
+    let mut col_seabed_blocks = [[BlockType::Sand; CHUNK_WIDTH]; CHUNK_DEPTH];
     let mut has_any_surface = false;
 
     for lz in 0..CHUNK_DEPTH {
         for lx in 0..CHUNK_WIDTH {
+            let mut surface_found = false;
             for ly in (0..=max_y).rev() {
                 let raw_b = chunk.get_fast(lx, ly, lz);
-                if raw_b != BlockType::Air {
-                    let simplified = simplify_block_for_lod(raw_b);
-                    let h = (ly as f32) + 1.0;
+                if raw_b == BlockType::Air {
+                    continue;
+                }
+                let simplified = simplify_block_for_lod(raw_b);
+                let h = (ly as f32) + 1.0;
+                if !surface_found {
                     col_heights[lz][lx] = h;
                     col_blocks[lz][lx] = simplified;
                     has_any_surface = true;
+                    surface_found = true;
+                }
+                if raw_b != BlockType::Water {
+                    col_seabed_heights[lz][lx] = h;
+                    col_seabed_blocks[lz][lx] = simplified;
                     break;
                 }
             }
@@ -220,6 +231,28 @@ pub fn build_chunk_mesh_sloped_lod(
                     water_uvs,
                     layer,
                     0.7,
+                );
+
+                // Render solid seabed under water so distant water doesn't expose the sky void
+                let seabed_y = (col_seabed_heights[lz0][lx0]
+                    + col_seabed_heights[lz0][lx0 + 1]
+                    + col_seabed_heights[lz0 + 1][lx0]
+                    + col_seabed_heights[lz0 + 1][lx0 + 1])
+                    * 0.25;
+                let seabed_block = col_seabed_blocks[lz0][lx0];
+                let seabed_layer = block_texture(seabed_block, BlockFace::Top).layer();
+                add_quad(
+                    &mut solid,
+                    [
+                        [fx0, seabed_y, fz0],
+                        [fx0, seabed_y, fz1],
+                        [fx1, seabed_y, fz1],
+                        [fx1, seabed_y, fz0],
+                    ],
+                    [0.0, 1.0, 0.0],
+                    water_uvs,
+                    seabed_layer,
+                    0.85,
                 );
                 continue;
             }
