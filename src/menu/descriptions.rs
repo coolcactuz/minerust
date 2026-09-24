@@ -52,6 +52,26 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             description: "Sets the horizontal radius of chunks loaded and rendered around the player (4 to 64 chunks = 64m to 1024m).",
             impact: "- 16 Chunks (256m): Recommended balance of horizon view and performance.\n- 32-64 Chunks: Sweeping vistas; higher RAM/VRAM load.",
         }),
+        MenuButtonAction::CycleGreedyMeshing
+        | MenuButtonAction::StepGreedyMeshingLeft
+        | MenuButtonAction::StepGreedyMeshingRight
+        | MenuButtonAction::SlideGreedyMeshing
+        | MenuButtonAction::ToggleGreedyMeshing => Some(OptionDescription {
+            header: "GEOMETRY OPTIMIZATION",
+            title: "Greedy Quad Meshing",
+            description: "Merges adjacent coplanar block faces into larger single quads beyond the specified chunk threshold (or across all chunks).",
+            impact: "- Reduces chunk vertex and triangle counts by up to 75%.\n- OFF: Emits separate 1x1 quads for every exposed block face.",
+        }),
+        MenuButtonAction::CycleDistanceLod
+        | MenuButtonAction::StepDistanceLodLeft
+        | MenuButtonAction::StepDistanceLodRight
+        | MenuButtonAction::SlideDistanceLod
+        | MenuButtonAction::ToggleDistanceLod => Some(OptionDescription {
+            header: "DISTANCE LEVEL OF DETAIL (LOD)",
+            title: "Distant Sloped Heightfield LOD",
+            description: "Replaces distant stepped voxel stairs on mountain slopes with smooth continuous angled surfaces and groups exposed ore veins into stone.",
+            impact: "- ON (2-32 Chunks): Cuts distant geometry by up to 90%, stabilizing 60+ FPS.\n- OFF: Preserves 1x1 voxel blocks all the way to the horizon.",
+        }),
         MenuButtonAction::BackFromSettings => Some(OptionDescription {
             header: "NAVIGATION",
             title: "Back / Done",

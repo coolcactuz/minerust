@@ -170,15 +170,22 @@ pub const GREEDY_THRESHOLD_SQ: f32 = GREEDY_THRESHOLD_WORLD * GREEDY_THRESHOLD_W
 pub const LOD_THRESHOLD_WORLD: f32 = 128.0; // 8 chunks = 128m
 pub const LOD_THRESHOLD_SQ: f32 = LOD_THRESHOLD_WORLD * LOD_THRESHOLD_WORLD; // 16384.0
 
-/// Determines the chunk mesh tier and meshing parameters based on distance to player.
-/// - Distance < 32m: Tier 0 (Standard 1x1 Voxel Meshing)
-/// - 32m <= Distance <= 128m: Tier 1 (Greedy Voxel Meshing)
-/// - Distance > 128m: Tier 2 (Sloped Heightfield LOD)
+/// Determines the chunk mesh tier and meshing parameters based on distance to player and user graphics settings.
+/// - Tier 0: Standard 1x1 Voxel Meshing
+/// - Tier 1: Greedy Voxel Meshing
+/// - Tier 2: Sloped Heightfield LOD
 #[inline]
-pub fn determine_chunk_tier(dist_sq: f32) -> (u8, bool, u8) {
-    if dist_sq > LOD_THRESHOLD_SQ {
+pub fn determine_chunk_tier(
+    dist_sq: f32,
+    distance_lod: bool,
+    lod_threshold_sq: f32,
+    greedy_meshing: bool,
+    greedy_threshold: i32,
+    greedy_threshold_sq: f32,
+) -> (u8, bool, u8) {
+    if distance_lod && dist_sq > lod_threshold_sq {
         (2, false, 1) // Tier 2: Sloped Heightfield LOD
-    } else if dist_sq >= GREEDY_THRESHOLD_SQ {
+    } else if greedy_meshing && (greedy_threshold <= 0 || dist_sq >= greedy_threshold_sq) {
         (1, true, 0) // Tier 1: Greedy Voxel Meshing
     } else {
         (0, false, 0) // Tier 0: Standard 1x1 Voxel Meshing
@@ -531,6 +538,19 @@ pub fn world_streaming_system(
 
     let player_pos = cam_transform.translation;
 
+    let (distance_lod, lod_threshold_sq, greedy_meshing, greedy_threshold, greedy_threshold_sq) =
+        if let Some(ref g) = settings.graphics {
+            let l_sq = (g.lod_threshold as f32 * 16.0).powi(2);
+            let g_sq = if g.greedy_threshold <= 0 {
+                0.0
+            } else {
+                (g.greedy_threshold as f32 * 16.0).powi(2)
+            };
+            (g.distance_lod, l_sq, g.greedy_meshing, g.greedy_threshold, g_sq)
+        } else {
+            (true, 128.0 * 128.0, true, 2, 32.0 * 32.0)
+        };
+
     // Dynamic 3D LOD transitions: check if any active chunks need to change mesh tier as player moves in 3D
     let mut chunks_needing_lod_update = Vec::new();
     for (&coord, chunk) in &world.chunks {
@@ -540,7 +560,14 @@ pub fn world_streaming_system(
             && (world.chunk_entities.contains_key(&coord) || world.water_entities.contains_key(&coord))
         {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-            let (target_tier, _, _) = determine_chunk_tier(dist_sq);
+            let (target_tier, _, _) = determine_chunk_tier(
+                dist_sq,
+                distance_lod,
+                lod_threshold_sq,
+                greedy_meshing,
+                greedy_threshold,
+                greedy_threshold_sq,
+            );
 
             if world.chunk_lod.get(&coord) != Some(&target_tier)
                 && !world.queued_for_mesh.contains(&coord)
@@ -587,7 +614,14 @@ pub fn world_streaming_system(
                 let dist_2d = diff.x.abs().max(diff.y.abs());
                 if dist_2d <= view_dist {
                     let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-                    let (target_tier, chunk_greedy, chunk_lod) = determine_chunk_tier(dist_sq);
+                    let (target_tier, chunk_greedy, chunk_lod) = determine_chunk_tier(
+                        dist_sq,
+                        distance_lod,
+                        lod_threshold_sq,
+                        greedy_meshing,
+                        greedy_threshold,
+                        greedy_threshold_sq,
+                    );
 
                     if world.in_progress_meshes.contains(&coord) {
                         continue;

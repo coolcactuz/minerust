@@ -3,9 +3,11 @@ use bevy::text::FontSize;
 
 use super::types::{
     DebugHudBtnText, DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsCapTrack,
-    FullscreenBtnText, GraphicsSettings, MainMenuRoot, MenuButtonAction, PauseMenuRoot,
-    ProfilerState, SeedInputBox, SeedInputState, SeedInputText, SettingsMenuRoot, ShadowsBtnText,
-    ViewDistanceBtnText, ViewDistanceFill, ViewDistanceThumb, ViewDistanceTrack, VsyncBtnText,
+    FullscreenBtnText, GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb,
+    GraphicsGreedyTrack, GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsLodTrack,
+    GraphicsSettings, MainMenuRoot, MenuButtonAction, PauseMenuRoot, ProfilerState, SeedInputBox,
+    SeedInputState, SeedInputText, SettingsMenuRoot, ShadowsBtnText, ViewDistanceBtnText,
+    ViewDistanceFill, ViewDistanceThumb, ViewDistanceTrack, VsyncBtnText,
 };
 use super::widgets::{
     spawn_menu_button, spawn_menu_button_sized, spawn_option_tooltip_card, spawn_settings_button,
@@ -268,6 +270,14 @@ fn spawn_settings_menu(
         || ("Render Distance: 16 Chunks (256m)".to_string(), 6.0 / 15.0),
         |g| (g.view_distance_label(), g.view_distance_ratio()),
     );
+    let (greedy_label, greedy_ratio) = graphics_settings.map_or_else(
+        || ("Greedy Distance: > 2 Chunks (32m)".to_string(), 0.6),
+        |g| (g.greedy_label(), g.greedy_ratio()),
+    );
+    let (lod_label, lod_ratio) = graphics_settings.map_or_else(
+        || ("Distant Sloped LOD: > 8 Chunks (128m)".to_string(), 7.0 / 15.0),
+        |g| (g.lod_label(), g.lod_ratio()),
+    );
     let fog_label = graphics_settings.map_or_else(
         || "Distance Fog: ON (Blended)".to_string(),
         |g| {
@@ -451,7 +461,41 @@ fn spawn_settings_menu(
                             &dist_label,
                             dist_ratio,
                             320.0,
-                            46.0,
+                            42.0,
+                        );
+
+                        // Greedy Meshing Distance Slider
+                        spawn_slider_setting(
+                            btn_col,
+                            GraphicsGreedyBtnText,
+                            GraphicsGreedyTrack,
+                            GraphicsGreedyFill,
+                            GraphicsGreedyThumb,
+                            MenuButtonAction::StepGreedyMeshingLeft,
+                            MenuButtonAction::StepGreedyMeshingRight,
+                            MenuButtonAction::SlideGreedyMeshing,
+                            MenuButtonAction::CycleGreedyMeshing,
+                            &greedy_label,
+                            greedy_ratio,
+                            320.0,
+                            42.0,
+                        );
+
+                        // Distant Sloped LOD Slider
+                        spawn_slider_setting(
+                            btn_col,
+                            GraphicsLodBtnText,
+                            GraphicsLodTrack,
+                            GraphicsLodFill,
+                            GraphicsLodThumb,
+                            MenuButtonAction::StepDistanceLodLeft,
+                            MenuButtonAction::StepDistanceLodRight,
+                            MenuButtonAction::SlideDistanceLod,
+                            MenuButtonAction::CycleDistanceLod,
+                            &lod_label,
+                            lod_ratio,
+                            320.0,
+                            42.0,
                         );
 
                         // Back Button
@@ -461,8 +505,8 @@ fn spawn_settings_menu(
                             MenuButtonAction::BackFromSettings,
                             true,
                             320.0,
-                            38.0,
-                            14.5,
+                            34.0,
+                            14.0,
                         );
                     });
 

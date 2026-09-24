@@ -46,6 +46,10 @@ pub struct GraphicsSettings {
     pub shadows: bool,        // Directional light shadow maps
     pub fps_cap: Option<u32>, // None = Uncapped, Some(30)..Some(240)
     pub view_distance: i32,   // 4 to 64 chunks (64m to 1024m)
+    pub greedy_meshing: bool, // Greedy coplanar quad merging beyond greedy threshold
+    pub greedy_threshold: i32, // Distance threshold in chunks: 2 (32m), 3 (48m), 4 (64m), 0 (all)
+    pub distance_lod: bool,   // Distant Sloped Heightfield LOD
+    pub lod_threshold: i32,   // 2 to 32 chunks
 }
 
 impl Default for GraphicsSettings {
@@ -57,6 +61,10 @@ impl Default for GraphicsSettings {
             shadows: true,
             fps_cap: None,
             view_distance: 16,
+            greedy_meshing: true,
+            greedy_threshold: 2,
+            distance_lod: true,
+            lod_threshold: 8,
         }
     }
 }
@@ -180,7 +188,173 @@ impl GraphicsSettings {
             self.view_distance * 16
         )
     }
+
+    #[must_use]
+    pub fn greedy_step_index(&self) -> usize {
+        if !self.greedy_meshing {
+            return 0;
+        }
+        GREEDY_MESHING_STEPS
+            .iter()
+            .position(|&(enabled, thresh)| enabled && thresh == self.greedy_threshold)
+            .unwrap_or_else(|| {
+                let mut best_idx = 3;
+                let mut best_diff = i32::MAX;
+                for (idx, &(enabled, thresh)) in GREEDY_MESHING_STEPS.iter().enumerate() {
+                    if enabled {
+                        let diff = (thresh - self.greedy_threshold).abs();
+                        if diff < best_diff {
+                            best_diff = diff;
+                            best_idx = idx;
+                        }
+                    }
+                }
+                best_idx
+            })
+    }
+
+    #[must_use]
+    pub fn greedy_ratio(&self) -> f32 {
+        let idx = self.greedy_step_index();
+        idx as f32 / (GREEDY_MESHING_STEPS.len() - 1) as f32
+    }
+
+    pub fn set_greedy_from_ratio(&mut self, ratio: f32) {
+        let max_idx = GREEDY_MESHING_STEPS.len() - 1;
+        let idx = (ratio * max_idx as f32).round().clamp(0.0, max_idx as f32) as usize;
+        let (enabled, thresh) = GREEDY_MESHING_STEPS[idx];
+        self.greedy_meshing = enabled;
+        self.greedy_threshold = thresh;
+    }
+
+    pub fn step_greedy(&mut self, delta: i32) {
+        let cur_idx = self.greedy_step_index() as i32;
+        let max_idx = (GREEDY_MESHING_STEPS.len() - 1) as i32;
+        let new_idx = (cur_idx + delta).clamp(0, max_idx) as usize;
+        let (enabled, thresh) = GREEDY_MESHING_STEPS[new_idx];
+        self.greedy_meshing = enabled;
+        self.greedy_threshold = thresh;
+    }
+
+    pub fn cycle_greedy(&mut self) {
+        let cur_idx = self.greedy_step_index();
+        let next_idx = (cur_idx + 1) % GREEDY_MESHING_STEPS.len();
+        let (enabled, thresh) = GREEDY_MESHING_STEPS[next_idx];
+        self.greedy_meshing = enabled;
+        self.greedy_threshold = thresh;
+    }
+
+    #[must_use]
+    pub fn greedy_label(&self) -> String {
+        if !self.greedy_meshing {
+            "Greedy Meshing: OFF (1x1 Quads)".to_string()
+        } else if self.greedy_threshold <= 0 {
+            "Greedy Distance: All Chunks (0m)".to_string()
+        } else {
+            format!(
+                "Greedy Distance: > {} Chunks ({}m)",
+                self.greedy_threshold,
+                self.greedy_threshold * 16
+            )
+        }
+    }
+
+    #[must_use]
+    pub fn lod_step_index(&self) -> usize {
+        if !self.distance_lod {
+            return 0;
+        }
+        DISTANCE_LOD_STEPS
+            .iter()
+            .position(|&(enabled, thresh)| enabled && thresh == self.lod_threshold)
+            .unwrap_or_else(|| {
+                let mut best_idx = 7;
+                let mut best_diff = i32::MAX;
+                for (idx, &(enabled, thresh)) in DISTANCE_LOD_STEPS.iter().enumerate() {
+                    if enabled {
+                        let diff = (thresh - self.lod_threshold).abs();
+                        if diff < best_diff {
+                            best_diff = diff;
+                            best_idx = idx;
+                        }
+                    }
+                }
+                best_idx
+            })
+    }
+
+    #[must_use]
+    pub fn lod_ratio(&self) -> f32 {
+        let idx = self.lod_step_index();
+        idx as f32 / (DISTANCE_LOD_STEPS.len() - 1) as f32
+    }
+
+    pub fn set_lod_from_ratio(&mut self, ratio: f32) {
+        let max_idx = DISTANCE_LOD_STEPS.len() - 1;
+        let idx = (ratio * max_idx as f32).round().clamp(0.0, max_idx as f32) as usize;
+        let (enabled, thresh) = DISTANCE_LOD_STEPS[idx];
+        self.distance_lod = enabled;
+        self.lod_threshold = thresh;
+    }
+
+    pub fn step_lod(&mut self, delta: i32) {
+        let cur_idx = self.lod_step_index() as i32;
+        let max_idx = (DISTANCE_LOD_STEPS.len() - 1) as i32;
+        let new_idx = (cur_idx + delta).clamp(0, max_idx) as usize;
+        let (enabled, thresh) = DISTANCE_LOD_STEPS[new_idx];
+        self.distance_lod = enabled;
+        self.lod_threshold = thresh;
+    }
+
+    pub fn cycle_lod(&mut self) {
+        let cur_idx = self.lod_step_index();
+        let next_idx = (cur_idx + 1) % DISTANCE_LOD_STEPS.len();
+        let (enabled, thresh) = DISTANCE_LOD_STEPS[next_idx];
+        self.distance_lod = enabled;
+        self.lod_threshold = thresh;
+    }
+
+    #[must_use]
+    pub fn lod_label(&self) -> String {
+        if !self.distance_lod {
+            "Distant Sloped LOD: OFF".to_string()
+        } else {
+            format!(
+                "Distant Sloped LOD: > {} Chunks ({}m)",
+                self.lod_threshold,
+                self.lod_threshold * 16
+            )
+        }
+    }
 }
+
+pub const GREEDY_MESHING_STEPS: &[(bool, i32)] = &[
+    (false, 2), // Index 0: OFF
+    (true, 0),  // Index 1: All Chunks (0m)
+    (true, 1),  // Index 2: 1 Chunk (16m)
+    (true, 2),  // Index 3: 2 Chunks (32m) - Default
+    (true, 3),  // Index 4: 3 Chunks (48m)
+    (true, 4),  // Index 5: 4 Chunks (64m)
+];
+
+pub const DISTANCE_LOD_STEPS: &[(bool, i32)] = &[
+    (false, 8), // Index 0: OFF
+    (true, 2),  // Index 1: 2 Chunks (32m)
+    (true, 3),  // Index 2: 3 Chunks (48m)
+    (true, 4),  // Index 3: 4 Chunks (64m)
+    (true, 5),  // Index 4: 5 Chunks (80m)
+    (true, 6),  // Index 5: 6 Chunks (96m)
+    (true, 7),  // Index 6: 7 Chunks (112m)
+    (true, 8),  // Index 7: 8 Chunks (128m) - Default
+    (true, 9),  // Index 8: 9 Chunks (144m)
+    (true, 10), // Index 9: 10 Chunks (160m)
+    (true, 12), // Index 10: 12 Chunks (192m)
+    (true, 14), // Index 11: 14 Chunks (224m)
+    (true, 16), // Index 12: 16 Chunks (256m)
+    (true, 20), // Index 13: 20 Chunks (320m)
+    (true, 24), // Index 14: 24 Chunks (384m)
+    (true, 32), // Index 15: 32 Chunks (512m)
+];
 
 #[derive(Resource, Default)]
 pub struct FpsLimiter {
@@ -218,6 +392,16 @@ pub enum MenuButtonAction {
     StepViewDistanceLeft,
     StepViewDistanceRight,
     SlideViewDistance,
+    CycleGreedyMeshing,
+    StepGreedyMeshingLeft,
+    StepGreedyMeshingRight,
+    SlideGreedyMeshing,
+    ToggleGreedyMeshing,
+    CycleDistanceLod,
+    StepDistanceLodLeft,
+    StepDistanceLodRight,
+    SlideDistanceLod,
+    ToggleDistanceLod,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -266,6 +450,12 @@ pub struct FpsCapBtnText;
 pub struct ViewDistanceBtnText;
 
 #[derive(Component)]
+pub struct GraphicsGreedyBtnText;
+
+#[derive(Component)]
+pub struct GraphicsLodBtnText;
+
+#[derive(Component)]
 pub struct OptionTooltipCard;
 
 #[derive(Component)]
@@ -300,3 +490,21 @@ pub struct ViewDistanceFill;
 
 #[derive(Component)]
 pub struct ViewDistanceThumb;
+
+#[derive(Component)]
+pub struct GraphicsGreedyTrack;
+
+#[derive(Component)]
+pub struct GraphicsGreedyFill;
+
+#[derive(Component)]
+pub struct GraphicsGreedyThumb;
+
+#[derive(Component)]
+pub struct GraphicsLodTrack;
+
+#[derive(Component)]
+pub struct GraphicsLodFill;
+
+#[derive(Component)]
+pub struct GraphicsLodThumb;

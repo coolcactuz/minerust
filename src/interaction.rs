@@ -5,7 +5,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use crate::block::BlockType;
 use crate::camera::FpsCamera;
 use crate::inventory::Inventory;
-use crate::menu::MenuState;
+use crate::menu::{GraphicsSettings, MenuState};
 use crate::voxel_material::VoxelBlockMaterial;
 use crate::world::{
     WorldGrid, chunk_distance_sq_to_player, determine_chunk_tier, update_chunk_mesh,
@@ -114,6 +114,7 @@ pub struct InteractionContext<'w> {
     pub mouse_buttons: Res<'w, ButtonInput<MouseButton>>,
     pub inventory: ResMut<'w, Inventory>,
     pub menu: Option<Res<'w, MenuState>>,
+    pub graphics: Option<Res<'w, GraphicsSettings>>,
 }
 
 pub fn block_interaction_system(
@@ -230,10 +231,30 @@ pub fn block_interaction_system(
 
             let player_pos = cam_transform.translation;
 
+            let (distance_lod, lod_threshold_sq, greedy_meshing, greedy_threshold, greedy_threshold_sq) =
+                if let Some(ref g) = context.graphics {
+                    let l_sq = (g.lod_threshold as f32 * 16.0).powi(2);
+                    let g_sq = if g.greedy_threshold <= 0 {
+                        0.0
+                    } else {
+                        (g.greedy_threshold as f32 * 16.0).powi(2)
+                    };
+                    (g.distance_lod, l_sq, g.greedy_meshing, g.greedy_threshold, g_sq)
+                } else {
+                    (true, 128.0 * 128.0, true, 2, 32.0 * 32.0)
+                };
+
             for coord in dirty_coords {
                 let chunk_opt = world.chunks.get(&coord);
                 let dist_sq = chunk_distance_sq_to_player(coord, player_pos, chunk_opt);
-                let (tier, _, _) = determine_chunk_tier(dist_sq);
+                let (tier, _, _) = determine_chunk_tier(
+                    dist_sq,
+                    distance_lod,
+                    lod_threshold_sq,
+                    greedy_meshing,
+                    greedy_threshold,
+                    greedy_threshold_sq,
+                );
                 update_chunk_mesh(
                     &coord,
                     &mut commands,

@@ -313,6 +313,7 @@ pub fn update_profiling_hud_system(
     mut fps: Local<ProfilerFpsTracker>,
     world: Option<Res<WorldGrid>>,
     profiler_state: Option<Res<ProfilerState>>,
+    graphics_settings: Option<Res<crate::menu::GraphicsSettings>>,
     fluid_sim: Option<Res<FluidSimulation>>,
     camera_query: Query<&Transform, With<crate::camera::FpsCamera>>,
     mut text_query: Query<&mut Text, With<ProfilingHudText>>,
@@ -448,6 +449,27 @@ pub fn update_profiling_hud_system(
             // Fluid simulation status
             let fluid_queue_len = fluid_sim.as_ref().map_or(0, |f| f.queue.len());
 
+            let greedy_str = if let Some(ref g) = graphics_settings {
+                if !g.greedy_meshing {
+                    "OFF".to_string()
+                } else if g.greedy_threshold <= 0 {
+                    "All".to_string()
+                } else {
+                    format!(">{}m", g.greedy_threshold * 16)
+                }
+            } else {
+                ">32m".to_string()
+            };
+            let lod_str = if let Some(ref g) = graphics_settings {
+                if !g.distance_lod {
+                    "OFF".to_string()
+                } else {
+                    format!(">{}m", g.lod_threshold * 16)
+                }
+            } else {
+                ">128m".to_string()
+            };
+
             *text = Text::new(format!(
                 "=== MINERUST ENGINE PROFILER [F3: Toggle HUD] ===\n\
                  PERFORMANCE:  FPS: {:.0} ({:.1} ms) | 1% Low: {:.0} FPS | Min/Max: {:.1}ms / {:.1}ms\n\
@@ -458,7 +480,7 @@ pub fn update_profiling_hud_system(
                  STREAMING:    Gen Queue: {} | Mesh Queue: {} | Active Tasks: {}\n\
                  FLUID ENGINE: Water Queue: {} | Tick Rate: 1.0s batch\n\
                  PLAYER POS:   {} | Biome: {}\n\
-                 OPTIMIZATION: [Greedy: Built-in (>32m)] [LOD: Built-in (>128m)] [Max-Y: Built-in] [Cull: Built-in] [Async: Built-in] [Budget: Built-in (32/fr)] [Two-Pass Water: Built-in]",
+                 OPTIMIZATION: [Greedy: {}] [LOD: {}] [Max-Y: Built-in] [Cull: Built-in] [Async: Built-in] [Budget: Built-in (32/fr)] [Two-Pass Water: Built-in]",
                 fps.fps,
                 fps.frame_time_ms,
                 fps.one_percent_low_fps,
@@ -480,6 +502,8 @@ pub fn update_profiling_hud_system(
                 fluid_queue_len,
                 pos_str,
                 biome_str,
+                greedy_str,
+                lod_str,
             ));
         }
     }

@@ -184,6 +184,7 @@ pub fn fluid_simulation_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<VoxelBlockMaterial>>,
     camera_query: Query<&Transform, With<FpsCamera>>,
+    graphics_settings: Option<Res<crate::menu::GraphicsSettings>>,
 ) {
     fluid_sim.timer.tick(time.delta());
     if !fluid_sim.timer.just_finished() || fluid_sim.queue.is_empty() {
@@ -202,10 +203,30 @@ pub fn fluid_simulation_system(
             .ok()
             .map_or(Vec3::ZERO, |t| t.translation);
 
+        let (distance_lod, lod_threshold_sq, greedy_meshing, greedy_threshold, greedy_threshold_sq) =
+            if let Some(ref g) = graphics_settings {
+                let l_sq = (g.lod_threshold as f32 * 16.0).powi(2);
+                let g_sq = if g.greedy_threshold <= 0 {
+                    0.0
+                } else {
+                    (g.greedy_threshold as f32 * 16.0).powi(2)
+                };
+                (g.distance_lod, l_sq, g.greedy_meshing, g.greedy_threshold, g_sq)
+            } else {
+                (true, 128.0 * 128.0, true, 2, 32.0 * 32.0)
+            };
+
         for coord in dirty_coords {
             let chunk_opt = world.chunks.get(&coord);
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, chunk_opt);
-            let (tier, _, _) = determine_chunk_tier(dist_sq);
+            let (tier, _, _) = determine_chunk_tier(
+                dist_sq,
+                distance_lod,
+                lod_threshold_sq,
+                greedy_meshing,
+                greedy_threshold,
+                greedy_threshold_sq,
+            );
             update_chunk_mesh(
                 &coord,
                 &mut commands,

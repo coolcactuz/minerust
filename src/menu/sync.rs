@@ -3,9 +3,11 @@ use bevy::prelude::*;
 use super::descriptions::get_option_description;
 use super::types::{
     DebugHudBtnText, DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsLimiter,
-    FullscreenBtnText, GraphicsSettings, MenuButtonAction, OptionTooltipCard, OptionTooltipDesc,
-    OptionTooltipHeader, OptionTooltipImpact, OptionTooltipTitle, ProfilerState, ShadowsBtnText,
-    ViewDistanceBtnText, ViewDistanceFill, ViewDistanceThumb, VsyncBtnText,
+    FullscreenBtnText, GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb,
+    GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, MenuButtonAction,
+    OptionTooltipCard, OptionTooltipDesc, OptionTooltipHeader, OptionTooltipImpact,
+    OptionTooltipTitle, ProfilerState, ShadowsBtnText, ViewDistanceBtnText, ViewDistanceFill,
+    ViewDistanceThumb, VsyncBtnText,
 };
 
 pub fn update_settings_button_text_system(
@@ -20,11 +22,13 @@ pub fn update_settings_button_text_system(
         Option<&DebugHudBtnText>,
         Option<&FpsCapBtnText>,
         Option<&ViewDistanceBtnText>,
+        Option<&GraphicsGreedyBtnText>,
+        Option<&GraphicsLodBtnText>,
     )>,
 ) {
     let hud_visible = profiler_state.as_ref().is_some_and(|p| p.visible);
 
-    for (mut text, vsync, fs, shadows, fog, hud, fps, dist) in &mut query {
+    for (mut text, vsync, fs, shadows, fog, hud, fps, dist, greedy, lod) in &mut query {
         if vsync.is_some() {
             *text = Text::new(format!(
                 "VSync: {}",
@@ -58,6 +62,10 @@ pub fn update_settings_button_text_system(
             *text = Text::new(settings.fps_cap_label());
         } else if dist.is_some() {
             *text = Text::new(settings.view_distance_label());
+        } else if greedy.is_some() {
+            *text = Text::new(settings.greedy_label());
+        } else if lod.is_some() {
+            *text = Text::new(settings.lod_label());
         }
     }
 }
@@ -188,19 +196,25 @@ pub fn update_slider_visuals_system(
         Option<&FpsCapThumb>,
         Option<&ViewDistanceFill>,
         Option<&ViewDistanceThumb>,
+        Option<&GraphicsGreedyFill>,
+        Option<&GraphicsLodFill>,
+        Option<&GraphicsGreedyThumb>,
+        Option<&GraphicsLodThumb>,
     )>,
-    mut last_ratios: Local<Option<(f32, f32)>>,
+    mut last_ratios: Local<Option<(f32, f32, f32, f32)>>,
 ) {
     let fps_ratio = settings.fps_cap_ratio();
     let dist_ratio = settings.view_distance_ratio();
-    let current_ratios = (fps_ratio, dist_ratio);
+    let greedy_ratio = settings.greedy_ratio();
+    let lod_ratio = settings.lod_ratio();
+    let current_ratios = (fps_ratio, dist_ratio, greedy_ratio, lod_ratio);
 
     if last_ratios.is_some_and(|r| r == current_ratios) {
         return;
     }
     *last_ratios = Some(current_ratios);
 
-    for (mut node, fps_f, fps_t, dist_f, dist_t) in &mut query {
+    for (mut node, fps_f, fps_t, dist_f, dist_t, greedy_f, lod_f, greedy_t, lod_t) in &mut query {
         if fps_f.is_some() {
             let fill_pct = if fps_ratio <= 0.0 {
                 0.0
@@ -219,6 +233,24 @@ pub fn update_slider_visuals_system(
             node.width = Val::Percent(fill_pct);
         } else if dist_t.is_some() {
             node.left = Val::Percent(dist_ratio * 95.0);
+        } else if greedy_f.is_some() {
+            let fill_pct = if greedy_ratio <= 0.0 {
+                0.0
+            } else {
+                (greedy_ratio * 95.0 + 5.0).min(100.0)
+            };
+            node.width = Val::Percent(fill_pct);
+        } else if greedy_t.is_some() {
+            node.left = Val::Percent(greedy_ratio * 95.0);
+        } else if lod_f.is_some() {
+            let fill_pct = if lod_ratio <= 0.0 {
+                0.0
+            } else {
+                (lod_ratio * 95.0 + 5.0).min(100.0)
+            };
+            node.width = Val::Percent(fill_pct);
+        } else if lod_t.is_some() {
+            node.left = Val::Percent(lod_ratio * 95.0);
         }
     }
 }

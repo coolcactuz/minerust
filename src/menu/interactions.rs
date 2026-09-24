@@ -9,9 +9,9 @@ use crate::voxel_material::VoxelBlockMaterial;
 use crate::world::{find_safe_surface_spawn, WorldGrid, WorldSeed};
 
 use super::types::{
-    FpsCapTrack, GraphicsSettings, MainMenuRoot, MenuButtonAction, MenuScreen, MenuState,
-    PauseMenuRoot, ProfilerState, SeedInputBox, SeedInputState, SettingsMenuRoot, SliderTrack,
-    ViewDistanceTrack,
+    FpsCapTrack, GraphicsGreedyTrack, GraphicsLodTrack, GraphicsSettings, MainMenuRoot,
+    MenuButtonAction, MenuScreen, MenuState, PauseMenuRoot, ProfilerState, SeedInputBox,
+    SeedInputState, SettingsMenuRoot, SliderTrack, ViewDistanceTrack,
 };
 
 pub fn menu_input_system(
@@ -424,7 +424,28 @@ pub fn menu_button_click_system(
                 MenuButtonAction::StepViewDistanceLeft => {
                     settings.step_view_distance(-1);
                 }
-                MenuButtonAction::SlideFpsCap | MenuButtonAction::SlideViewDistance => {}
+                MenuButtonAction::CycleGreedyMeshing | MenuButtonAction::StepGreedyMeshingRight => {
+                    settings.step_greedy(1);
+                }
+                MenuButtonAction::StepGreedyMeshingLeft => {
+                    settings.step_greedy(-1);
+                }
+                MenuButtonAction::ToggleGreedyMeshing => {
+                    settings.greedy_meshing = !settings.greedy_meshing;
+                }
+                MenuButtonAction::CycleDistanceLod | MenuButtonAction::StepDistanceLodRight => {
+                    settings.step_lod(1);
+                }
+                MenuButtonAction::StepDistanceLodLeft => {
+                    settings.step_lod(-1);
+                }
+                MenuButtonAction::ToggleDistanceLod => {
+                    settings.distance_lod = !settings.distance_lod;
+                }
+                MenuButtonAction::SlideFpsCap
+                | MenuButtonAction::SlideViewDistance
+                | MenuButtonAction::SlideGreedyMeshing
+                | MenuButtonAction::SlideDistanceLod => {}
             }
         }
     }
@@ -438,20 +459,26 @@ pub fn slider_interaction_system(
             &bevy::ui::RelativeCursorPosition,
             Option<&FpsCapTrack>,
             Option<&ViewDistanceTrack>,
+            Option<&GraphicsGreedyTrack>,
+            Option<&GraphicsLodTrack>,
         ),
         With<Button>,
     >,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut dragging_fps: Local<bool>,
     mut dragging_dist: Local<bool>,
+    mut dragging_greedy: Local<bool>,
+    mut dragging_lod: Local<bool>,
 ) {
     let mouse_down = mouse_buttons.pressed(MouseButton::Left);
     if !mouse_down {
         *dragging_fps = false;
         *dragging_dist = false;
+        *dragging_greedy = false;
+        *dragging_lod = false;
     }
 
-    for (interaction, rcp, is_fps, is_dist) in &track_query {
+    for (interaction, rcp, is_fps, is_dist, is_greedy, is_lod) in &track_query {
         let is_pressed = *interaction == Interaction::Pressed;
         if is_pressed {
             if is_fps.is_some() {
@@ -460,12 +487,20 @@ pub fn slider_interaction_system(
             if is_dist.is_some() {
                 *dragging_dist = true;
             }
+            if is_greedy.is_some() {
+                *dragging_greedy = true;
+            }
+            if is_lod.is_some() {
+                *dragging_lod = true;
+            }
         }
 
         let is_active_fps = is_fps.is_some() && (*dragging_fps || is_pressed);
         let is_active_dist = is_dist.is_some() && (*dragging_dist || is_pressed);
+        let is_active_greedy = is_greedy.is_some() && (*dragging_greedy || is_pressed);
+        let is_active_lod = is_lod.is_some() && (*dragging_lod || is_pressed);
 
-        if (is_active_fps || is_active_dist) && mouse_down {
+        if (is_active_fps || is_active_dist || is_active_greedy || is_active_lod) && mouse_down {
             if let Some(norm) = rcp.normalized {
                 let ratio = (norm.x + 0.5).clamp(0.0, 1.0);
                 if is_active_fps {
@@ -473,6 +508,12 @@ pub fn slider_interaction_system(
                 }
                 if is_active_dist {
                     settings.set_view_distance_from_ratio(ratio);
+                }
+                if is_active_greedy {
+                    settings.set_greedy_from_ratio(ratio);
+                }
+                if is_active_lod {
+                    settings.set_lod_from_ratio(ratio);
                 }
             }
         }
