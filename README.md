@@ -3,67 +3,49 @@
 <div align="center">
 
 [![Rust](https://img.shields.io/badge/Rust-2024_Edition-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Engine](https://img.shields.io/badge/Engine-Bevy_0.15%2F0.19-blue?logo=bevy&logoColor=white)](https://bevyengine.org/)
+[![Engine](https://img.shields.io/badge/Engine-Bevy-blue?logo=bevy&logoColor=white)](https://bevyengine.org/)
 [![Safety](https://img.shields.io/badge/Safety-%23!%5Bforbid(unsafe__code)%5D-brightgreen)](https://doc.rust-lang.org/nomicon/safe-unsafe-meaning.html)
-[![Tests](https://img.shields.io/badge/Tests-44%20Passing-success?logo=github-actions&logoColor=white)](https://github.com/)
-[![Performance](https://img.shields.io/badge/Framerate-60%2B%20FPS-purple)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT%2FApache_2.0-blue)](#-license)
 
-**A high-performance, multi-threaded Minecraft-like voxel sandbox game built in pure Rust powered by the Bevy engine.**
-
-[Quick Start](#-quick-start) • [Features](#-features-at-a-glance) • [Controls](#-controls) • [Architecture Deep Dive](ARCHITECTURE.md) • [Benchmarks](#-performance--benchmarks)
+**A 3D voxel sandbox engine built in pure Rust with Bevy, exploring game development fundamentals and real-time graphics optimization.**
 
 </div>
 
 ---
 
-## 🌟 Overview
+## 💡 About the Project
 
-**MineRust** is a modern, high-performance Minecraft-like voxel sandbox game built in pure Rust and powered by the **Bevy** game engine. It was created to explore the frontiers of data-oriented systems programming, procedural world generation, and real-time voxel graphics.
+**MineRust** is a personal learning project created to explore and understand the practical challenges of **game development** and **real-time computer graphics optimization**.
 
-Engineered with an uncompromising commitment to **zero unsafe code** (`#![forbid(unsafe_code)]`), MineRust achieves smooth 60+ FPS gameplay with multi-threaded terrain generation, asymptotic greedy meshing quad reduction, GPU-direct memory streaming, realistic continuous-slope terrain, and real-time cellular automaton fluid dynamics.
+Building a voxel game from scratch offers a hands-on playground to encounter and solve the classic bottlenecks of 3D engines: handling massive amounts of dynamic geometry, streaming continuous open-world terrain, managing GPU memory, and keeping frame times consistent and smooth.
 
-Whether you are exploring rolling foothills and soaring alpine peaks, digging into subterranean caverns, swimming up waterfalls, or benchmarking rendering performance with the in-game telemetry HUD, MineRust showcases the raw power and ergonomics of Rust and Bevy in voxel game development.
+Rather than relying on ready-made high-level game features, the goal of this project is to dive under the hood and learn how game engines tackle:
+- **Geometry scalability**: How to render huge procedural landscapes without choking the GPU.
+- **Multithreading & streaming**: Keeping the main loop stutter-free while generating and meshing worlds in the background.
+- **Rendering pipelines**: Balancing opaque passes, semi-transparent materials (like water), shaders, and lighting.
+- **Game mechanics**: Implementing first-person physics, procedural world generation, voxel mining/placing, and fluid simulations.
 
 ---
 
-## 🚀 Features at a Glance
+## 🔍 Key Areas of Exploration
 
-### 🌍 Procedural Infinite World
-- **Deterministic 64-bit Seeds**: Driven by `SplitMix64` and a 512-permutation Fisher-Yates shuffle for reproducible world generation.
-- **Natural Continuous Slopes**: Hermite $C^1$-smooth terrain shaping with gentle rolling foothills, realistic mountain slopes, and snow-capped alpine peaks (no unnatural vertical cliff walls).
-- **Safe Dry-Land Surface Spawn**: Smart procedural spawn finder that places players safely on top of dry surface ground under the open sky (never stranded or submerged in water).
-- **Dynamic Biomes**: Distinct ecosystems including Plains, dense Forests, Deserts with cacti, Snowy Tundras with pine trees, steep Mountains with alpine trees, sandy Beaches, and Oceans.
-- **Subterranean 3D Caves**: Volumetric 3D noise networks carving out winding tunnels and cavernous underground halls.
-- **Geological Ore Strata**: Realistic vertical distributions for Coal, Iron, Gold, and Diamond veins down to indestructible Bedrock.
-- **Interactive Seed Picker**: New games roll a fresh random seed automatically, with an in-menu alphanumeric input box and seed randomizer.
+### 1. Graphics & Geometry Optimization
+- **Voxel Meshing Strategies**: Implementing techniques like *Greedy Meshing* to merge adjacent coplanar block faces into larger quads, significantly reducing polygon and vertex counts compared to naive meshing.
+- **Level of Detail (LOD)**: Reducing geometry density for distant chunks with continuous heightfield approximations, keeping the horizon visible while preserving close-up block detail.
+- **Transparent Rendering (Two-Pass Water)**: Decoupling opaque terrain from transparent water into separate rendering passes, allowing smooth alpha blending without depth-fighting artifacts or early-Z culling penalties.
+- **Texture Arrays & Custom Shaders**: Using 2D texture arrays in custom WGSL shaders to tile textures seamlessly across merged surfaces without texture-bleeding artifacts.
 
-### ⚡ Cutting-Edge Voxel Performance
-- **Multi-Threaded Greedy Meshing**: Merges coplanar adjacent voxel faces into unified rectangular quads, slashing vertex counts by **~75%** and speeding up meshing by **2.5x**.
-- **0ms Main-Thread Meshing**: Terrain generation and mesh synthesis execute completely in the background via Bevy's `AsyncComputeTaskPool`.
-- **GPU-Direct Memory Streaming**: Mesh buffers utilize `RenderAssetUsages::RENDER_WORLD` to deallocate CPU vertex copies upon GPU upload, eliminating RAM bloat even at expansive 64-chunk render distances.
-- **Two-Tier Lookahead Streaming**: Pre-generates voxel data in RAM ahead of the camera's visual view distance to completely eliminate traversal stutters.
-- **Dynamic 3D Distance LOD**: Adapts geometry density using real-time 3D Euclidean distance calculations, ensuring fluid performance during vertical creative flight.
-- **Max-Y Atmosphere Skip**: Skips empty airspace scanning during meshing for a 2x throughput boost.
+### 2. World Streaming & Concurrency
+- **Asynchronous Background Processing**: Generating procedural terrain and generating chunk meshes concurrently on background worker threads using Bevy's task pool, ensuring 0ms blocking on the main render thread.
+- **Lookahead & Chunks Lifecycle**: Loading and unloading terrain smoothly as the player moves across the world, maintaining memory stability and avoiding sudden traversal hitches.
 
-### 🌊 Cellular Automata Fluid Dynamics
-- **Real-Time Water Physics**: Non-blocking cellular automaton simulation managing downward cascading waterfalls, lateral canal expansion, and seabed void filling.
-- **Buoyancy Mechanics**: Realistic drag, water resistance, vertical swimming thrust (`Space`), and diving controls (`Shift`).
+### 3. Procedural Generation & Simulation
+- **Continuous Terrain**: Generating diverse biomes (plains, forests, deserts, mountains, oceans) and 3D subterranean cave networks using deterministic noise functions.
+- **Voxel Physics & Cellular Fluids**: Simple discrete collision detection, raymarching for block interactions, and real-time cellular automata for spreading water and waterfalls.
 
-### ⛏️ Survival Gameplay Loop & Inventory
-- **Authentic Progression**: Players spawn with empty slots, gathering raw materials directly from the environment.
-- **Block Mining & Item Drops**: Mining targeted blocks routes items directly into the player's 9-slot Hotbar, then overflows into the 27-slot Main Storage.
-- **Full Inventory Modal (`E`)**: Interactive UI supporting slot swapping, item transfer, and active hotbar management.
-- **Anti-Self-Trapping Placement**: Raymarching verification prevents accidental player suffocation when placing solid voxels.
-
-### 📊 Real-Time In-Game Profiler & Telemetry HUD (`F3`)
-- **Live Process RAM**: Safely tracks resident physical memory (`VmRSS`) and virtual memory (`VmSize`) directly from the OS to detect memory growth in real time.
-- **Estimated VRAM Footprint**: Computes exact GPU memory allocated for vertex buffers ($54\text{ bytes/vertex}$), index buffers, texture atlas, and framebuffers.
-- **Geometry & Voxel Statistics**: Displays active 3D chunk meshes, total vertices, triangles, visible surface quads, and total voxels held in memory.
-- **Frame Pacing & 1% Low FPS**: Tracks average FPS, frame times, and 99th percentile (1% low) frame latency to identify micro-stutters.
-- **Streaming Pipeline Queues**: Real-time counters for generation queue, meshing queue, active background worker tasks, and in-memory LRU cache.
-- **Coordinate & Biome Tracking**: Continuous player world position, chunk coordinate, local block index, and current environmental biome.
-- **Universal In-Game Access**: Toggle the profiler on/off at any time with **`F3`**, or launch directly via `--profile` or `--dev`.
+### 4. Performance Telemetry & Profiling
+- **In-Game Telemetry (`F3`)**: An integrated real-time debug overlay monitoring FPS, 1% low frame latency, active chunk counts, vertex memory, and system RAM/VRAM usage.
+- **Benchmarking Suite**: Automated, reproducible benchmark scenarios to objectively measure the impact of each architectural optimization.
 
 ---
 
@@ -71,130 +53,56 @@ Whether you are exploring rolling foothills and soaring alpine peaks, digging in
 
 | Key / Input | Action |
 | :--- | :--- |
-| **`W` `A` `S` `D`** | First-person movement with ground friction & inertia |
-| **Mouse** | Camera look (Left Click in window to capture mouse / `ESC` to release) |
-| **`Space`** | Jump / Swim upward in water / Ascend in Flight Mode |
-| **`Shift`** | Sneak (crouch with cliff-edge protection) / Dive / Descend in Flight |
+| **`W` `A` `S` `D`** | Movement (walk / run) |
+| **Mouse** | Look around (click window to capture mouse, `ESC` to release) |
+| **`Space`** | Jump / Swim upward / Fly upward |
+| **`Shift`** | Sneak (crouch with ledge protection) / Dive / Fly downward |
 | **`Ctrl`** | Sprint |
-| **`F`** | Toggle **Flight Mode** (Creative No-Clip) |
-| **Left Click** | Mine targeted voxel block |
+| **`F`** | Toggle Flight Mode (Creative no-clip) |
+| **Left Click** | Mine targeted block |
 | **Right Click** | Place active block |
-| **`1` – `9` / Scroll** | Select active Hotbar slot |
-| **`E`** | Open / Close Inventory Screen |
-| **`F3`** | Toggle Real-Time Performance & Profiler HUD |
-| **`ESC`** | Pause Game / Return to Menu |
+| **`1` – `9` / Scroll** | Select hotbar slot |
+| **`E`** | Open / Close Inventory |
+| **`F3`** | Toggle Performance & Profiler HUD |
+| **`ESC`** | Pause menu / Options |
 
 ---
 
-## 🏁 Quick Start
+## 🚀 Getting Started
 
 ### Prerequisites
-- [Rust 2024 Edition or latest stable toolchain](https://www.rust-lang.org/)
-- Modern graphics drivers supporting Vulkan, DirectX 12, or Metal (via WGPU)
+- [Rust toolchain](https://www.rust-lang.org/) (stable, 2024 edition supported)
+- A GPU with drivers supporting Vulkan, DirectX 12, or Metal (via WGPU)
 
-### Running the Game
+### Running
 
 ```bash
-# 1. Clone the repository
+# Clone the repository
 git clone https://github.com/coolcactuz/minerust.git
 cd minerust
 
-# 2. Run in Production Mode (All optimizations enabled by default)
+# Run in optimized release mode
 cargo run --release
 
-# 3. Run in Real-Time Profiling Mode (Displays comprehensive performance telemetry)
+# Run with real-time performance profiler enabled
 cargo run --release -- --profile
-# Or shorthand: cargo run --release -- -p
 
-# 4. Run in Developer & Benchmark Mode (Enables F3 HUD & Dev Settings menu)
-cargo run --release -- --dev
-# Or shorthand: cargo run --release -- -d
-
-# 5. Launch with a custom world seed (string or integer)
-cargo run --release -- --seed "linkedin_showcase"
-cargo run --release -- -s 133742
+# Run with a custom seed
+cargo run --release -- --seed "my_custom_seed"
 ```
 
 ---
 
-## 📈 Performance & Benchmarks
+## 📖 Further Reading
 
-Benchmarked using [`criterion`](https://github.com/bheisler/criterion.rs) on Linux 6.x / AMD Ryzen:
-
-```
-chunk_mesher/greedy_meshing_active
-                        time:   [112.18 µs 112.51 µs 112.87 µs]
-chunk_mesher/naive_meshing_fallback
-                        time:   [284.92 µs 285.73 µs 286.60 µs]
---> Performance Gain: 2.54x faster meshing, ~75% fewer vertices sent to GPU
-
-generate_chunk_procedural
-                        time:   [183.91 µs 184.22 µs 184.60 µs]
---> Generation Throughput: >5,400 chunks/second per CPU core
-```
-
-### Visualizing Greedy Meshing Quad Reduction
-
-```
-Naive Face Meshing (16 Quads / 32 Triangles):
-+---+---+---+---+
-|   |   |   |   |
-+---+---+---+---+
-|   |   |   |   |
-+---+---+---+---+
-|   |   |   |   |
-+---+---+---+---+
-|   |   |   |   |
-+---+---+---+---+
-
-Greedy Merged Quad (1 Quad / 2 Triangles):
-+---------------+
-|               |
-|    ~75%       |
-|  Vertex Drop  |
-|               |
-+---------------+
-```
-
----
-
-## 🏛️ Architecture & Technical Deep Dive
-
-Curious about how MineRust works under the hood?
-
-Read our comprehensive [**ARCHITECTURE.md**](ARCHITECTURE.md) for in-depth engineering documentation, including:
-- **Semantic Coordinate Newtypes** (`BlockPos`, `ChunkPos`, `LocalBlockPos`)
-- **GPU-Direct Memory Purge** (`RenderAssetUsages::RENDER_WORLD`)
-- **Two-Tier Lookahead Streaming & LRU Caching**
-- **Cellular Automaton Fluid Mechanics**
-- **Discrete AABB Physics & Edge Raymarching**
-- **Binary Delta LZ4 Chunk Serialization**
-
----
-
-## 🛡️ Code Quality & Verification
-
-Every commit is verified against rigorous production standards:
-
-```bash
-# Run complete test suite (44 unit, integration, and property tests)
-cargo test
-
-# Enforce strict zero-warning pedantic clippy compliance
-cargo clippy --all-targets -- -D warnings
-
-# Check code formatting
-cargo fmt --check
-
-# Execute Criterion microbenchmarks
-cargo bench
-```
+For those interested in technical implementation details and architectural specifics:
+- [**ARCHITECTURE.md**](ARCHITECTURE.md) — Detailed breakdown of coordinate systems, data structures, and streaming pipelines.
 
 ---
 
 ## 📄 License
 
-This project is licensed under either of:
+Dual-licensed under either:
 - **MIT License** ([LICENSE-MIT](LICENSE-MIT) or [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT))
 - **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE) or [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
 
