@@ -221,7 +221,7 @@ pub struct BenchmarkState {
     pub elapsed: f32,
     pub stationary_timer: f32,
     pub last_status_print: f32,
-    pub start_z: Option<f32>,
+    pub start_pos: Option<Vec3>,
     pub distance_traveled: f32,
 
     // Phase 2: Static baseline metrics (100% loaded world, zero streaming/generation CPU load)
@@ -368,7 +368,7 @@ pub fn benchmark_runner_system(
                 );
 
                 state.phase = BenchmarkPhase::FlightRecording;
-                state.start_z = Some(transform.translation.z);
+                state.start_pos = Some(transform.translation);
                 state.distance_traveled = 0.0;
             }
         }
@@ -379,8 +379,9 @@ pub fn benchmark_runner_system(
             let forward = forward.normalize_or_zero();
             transform.translation += forward * config.scenario.flight_speed * dt;
 
-            let start = state.start_z.get_or_insert(0.0);
-            state.distance_traveled = (transform.translation.z - *start).abs();
+            let start = state.start_pos.get_or_insert(transform.translation);
+            let diff = transform.translation - *start;
+            state.distance_traveled = Vec2::new(diff.x, diff.z).length();
 
             let frame_ms = dt * 1000.0;
             state.frame_times_ms.push(frame_ms);

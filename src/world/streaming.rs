@@ -339,10 +339,10 @@ pub fn world_streaming_system(
         for (&coord, _) in &world.chunks {
             let diff = coord - player_chunk;
             if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
-                if !world.has_chunk_mesh(&coord) {
+                if !world.chunk_lod.contains_key(&coord) {
                     chunks_to_queue.push(coord);
                 }
-            } else if world.has_chunk_mesh(&coord) {
+            } else if world.chunk_lod.contains_key(&coord) {
                 chunks_to_demesh.push(coord);
             }
         }
@@ -522,7 +522,7 @@ pub fn world_streaming_system(
                 let n_diff = neighbor_coord - player_chunk;
                 if n_diff.x.abs() <= view_dist
                     && n_diff.y.abs() <= view_dist
-                    && world.has_chunk_mesh(&neighbor_coord)
+                    && (world.has_chunk_mesh(&neighbor_coord) || world.chunk_lod.contains_key(&neighbor_coord))
                 {
                     world.queue_mesh(neighbor_coord);
                 }
@@ -595,7 +595,7 @@ pub fn world_streaming_system(
         let diff = coord - player_chunk;
         let dist_2d = diff.x.abs().max(diff.y.abs());
         if dist_2d <= view_dist
-            && world.has_chunk_mesh(&coord)
+            && world.chunk_lod.contains_key(&coord)
         {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
             let (target_tier, _, _) = determine_chunk_tier(
