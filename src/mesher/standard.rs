@@ -1,5 +1,8 @@
 use super::helpers::{add_quad, should_render_face, MeshBuffers};
-use super::{ChunkMeshes, SectionMeshes, CHUNK_SECTIONS, SECTION_HEIGHT};
+use super::{
+    compute_section_connectivity, ChunkMeshes, SectionConnectivity, SectionMeshes,
+    CHUNK_SECTIONS, SECTION_HEIGHT,
+};
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
 use crate::texture::{block_texture, quad_uvs};
@@ -234,8 +237,10 @@ pub fn build_chunk_mesh_standard(
     max_y: usize,
 ) -> ChunkMeshes {
     let mut sections: [SectionMeshes; CHUNK_SECTIONS] = Default::default();
+    let mut connectivity: [SectionConnectivity; CHUNK_SECTIONS] = Default::default();
     for (sy, section) in sections.iter_mut().enumerate() {
         *section = build_section_mesh_standard(chunk, north, south, east, west, sy, max_y);
+        connectivity[sy] = compute_section_connectivity(chunk, sy);
     }
-    ChunkMeshes { sections }
+    ChunkMeshes { sections, connectivity }
 }

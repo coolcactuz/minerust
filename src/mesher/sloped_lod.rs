@@ -1,5 +1,5 @@
 use super::helpers::{add_quad, add_triangle, simplify_block_for_lod, triangle_normal, MeshBuffers};
-use super::{ChunkMeshes, SectionMeshes, CHUNK_SECTIONS};
+use super::{ChunkMeshes, SectionConnectivity, SectionMeshes, CHUNK_SECTIONS};
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::texture::{block_texture, quad_uvs};
@@ -415,9 +415,11 @@ pub fn build_chunk_mesh_sloped_lod(
     }
 
     let mut sections: [SectionMeshes; CHUNK_SECTIONS] = Default::default();
+    let mut connectivity: [SectionConnectivity; CHUNK_SECTIONS] = Default::default();
     sections[0] = SectionMeshes {
         solid: solid.to_mesh(),
         water: water.to_mesh(),
     };
-    ChunkMeshes { sections }
+    connectivity[0] = SectionConnectivity::full();
+    ChunkMeshes { sections, connectivity }
 }

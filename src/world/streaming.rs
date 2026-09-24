@@ -87,8 +87,9 @@ pub fn apply_chunk_mesh(
         (coord.y * CHUNK_DEPTH as i32) as f32,
     );
 
-    // Track vertex counts and LOD
+    // Track vertex counts, LOD and connectivity
     world.chunk_lod.insert(coord, lod);
+    world.chunk_connectivity.insert(coord, meshes_res.connectivity);
     let new_vert_count = meshes_res.total_vertices();
     let old_vert_count = world
         .chunk_vertices
@@ -366,6 +367,7 @@ pub fn world_streaming_system(
                 world.total_vertices = world.total_vertices.saturating_sub(old_v);
             }
             world.chunk_lod.remove(&coord);
+            world.chunk_connectivity.remove(&coord);
             world.queued_for_mesh.remove(&coord);
             world.in_progress_meshes.remove(&coord);
         }
@@ -392,6 +394,7 @@ pub fn world_streaming_system(
             world.queued_for_mesh.remove(&coord);
             world.in_progress_meshes.remove(&coord);
             world.chunk_lod.remove(&coord);
+            world.chunk_connectivity.remove(&coord);
             if let Some(old_v) = world.chunk_vertices.remove(&coord) {
                 world.total_vertices = world.total_vertices.saturating_sub(old_v);
             }
@@ -559,6 +562,7 @@ pub fn world_streaming_system(
                     world.total_vertices = world.total_vertices.saturating_sub(old_v);
                 }
                 world.chunk_lod.remove(&coord);
+                world.chunk_connectivity.remove(&coord);
                 continue;
             }
 
@@ -700,9 +704,14 @@ impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChunkGeneratorPool>()
             .init_resource::<ChunkMesherPool>()
+            .init_resource::<crate::world::occlusion::SectionOcclusionCache>()
             .add_systems(
                 Update,
-                world_streaming_system.in_set(crate::stage::VoxelStage::WorldStreaming),
+                (
+                    world_streaming_system.in_set(crate::stage::VoxelStage::WorldStreaming),
+                    crate::world::occlusion::section_occlusion_system
+                        .after(crate::stage::VoxelStage::WorldStreaming),
+                ),
             );
     }
 }

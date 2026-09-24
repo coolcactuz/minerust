@@ -3,6 +3,7 @@
 //! and sloped heightfield continuous meshing with ore simplification (LOD 1).
 //! All meshers partition the 16x128x16 chunk column into 8 independent 16x16x16 sub-chunk sections.
 
+pub mod connectivity;
 pub mod greedy;
 pub mod helpers;
 pub mod sloped_lod;
@@ -14,6 +15,7 @@ mod tests;
 use crate::chunk::{CHUNK_HEIGHT, Chunk};
 use bevy::prelude::Mesh;
 
+pub use connectivity::{compute_section_connectivity, SectionConnectivity, SectionFace};
 pub use greedy::{build_chunk_mesh_greedy, build_section_mesh_greedy};
 pub use helpers::{
     add_quad, add_triangle, can_merge_blocks, should_render_face, simplify_block_for_lod,
@@ -56,6 +58,7 @@ impl SectionMeshes {
 #[derive(Default, Debug)]
 pub struct ChunkMeshes {
     pub sections: [SectionMeshes; CHUNK_SECTIONS],
+    pub connectivity: [SectionConnectivity; CHUNK_SECTIONS],
 }
 
 impl ChunkMeshes {
@@ -124,6 +127,7 @@ impl ChunkMeshes {
         let mut res = Self::default();
         if section_y < CHUNK_SECTIONS {
             res.sections[section_y] = SectionMeshes { solid, water };
+            res.connectivity[section_y] = SectionConnectivity::full();
         }
         res
     }

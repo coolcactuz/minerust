@@ -54,6 +54,11 @@ impl BlockType {
     }
 
     #[inline]
+    pub const fn is_opaque(self) -> bool {
+        !self.is_transparent()
+    }
+
+    #[inline]
     pub const fn drop_item(self) -> Option<BlockType> {
         match self {
             BlockType::Air | BlockType::Water | BlockType::Bedrock => None,
