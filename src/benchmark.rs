@@ -5,78 +5,49 @@ use bevy::app::AppExit;
 use bevy::prelude::*;
 
 use crate::camera::FpsCamera;
-use crate::menu::{DevSettings, GraphicsSettings};
+use crate::menu::GraphicsSettings;
 use crate::physics::PlayerPhysics;
 use crate::profile::read_process_memory;
 use crate::world::WorldGrid;
 
-/// Standard predefined optimization profiles for scientific benchmarking comparison.
+/// Standard predefined flight benchmark profiles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BenchmarkPreset {
-    /// Raw unoptimized baseline: Naive meshing (1 quad per block face), no LOD, no culling, no max_y skip.
-    Baseline,
-    /// Culling optimizations only: Backface culling + Atmosphere Max-Y skip active, Naive meshing.
-    Culling,
-    /// Greedy Meshing active (merging coplanar faces), no distance LOD.
-    Greedy,
-    /// Greedy Meshing + 3D Sloped Heightfield LOD active.
-    SlopedLod,
-    /// Full production pipeline: Greedy + Sloped LOD + Culling + Max-Y.
-    Production,
+    Flight1km,
 }
 
 impl BenchmarkPreset {
-    pub const ALL: [Self; 5] = [
-        Self::Baseline,
-        Self::Culling,
-        Self::Greedy,
-        Self::SlopedLod,
-        Self::Production,
-    ];
+    pub const ALL: [Self; 1] = [Self::Flight1km];
 
     pub fn from_str_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
-            "baseline" | "none" | "raw" => Some(Self::Baseline),
-            "culling" | "cull" => Some(Self::Culling),
-            "greedy" => Some(Self::Greedy),
-            "sloped" | "lod" | "sloped_lod" => Some(Self::SlopedLod),
-            "production" | "full" | "all" => Some(Self::Production),
+            "flight" | "standard" | "production" | "1km" | "bench" | "baseline" | "culling" | "greedy" | "sloped_lod" => {
+                Some(Self::Flight1km)
+            }
             _ => None,
         }
     }
 
     pub fn id(self) -> &'static str {
-        match self {
-            Self::Baseline => "baseline",
-            Self::Culling => "culling",
-            Self::Greedy => "greedy",
-            Self::SlopedLod => "sloped_lod",
-            Self::Production => "production",
-        }
+        "flight_1km"
     }
 
     pub fn name(self) -> &'static str {
-        match self {
-            Self::Baseline => "Baseline (No Optimizations)",
-            Self::Culling => "Backface Culling & Max-Y Skip",
-            Self::Greedy => "Greedy Meshing",
-            Self::SlopedLod => "Greedy + Sloped Heightfield LOD",
-            Self::Production => "Full Production (All Optimizations)",
-        }
+        "1km Flight Benchmark"
     }
 
     pub fn into_scenario(self, view_distance: i32) -> BenchmarkScenario {
-        BenchmarkScenario::from_preset(self, view_distance)
+        BenchmarkScenario::standard(view_distance)
     }
 }
 
 /// Fully-encapsulated configuration for an individual benchmark run.
 ///
-/// Contains all world generation, graphics pipeline, and flight trajectory
-/// parameters needed to execute a deterministic and reproducible benchmark.
+/// Contains all flight trajectory and render distance parameters needed
+/// to execute a deterministic and reproducible benchmark against the built-in engine.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BenchmarkScenario {
-    /// Machine-readable identifier (e.g. "baseline", "culling", "greedy", "sloped_lod", "production")
+    /// Machine-readable identifier
     pub id: &'static str,
     /// Human-readable display name for reports and logs
     pub name: &'static str,
@@ -90,18 +61,6 @@ pub struct BenchmarkScenario {
     pub flight_altitude: f32,
     /// Minimum warmup duration in seconds before recording
     pub warmup_duration_secs: f32,
-    /// Enable greedy meshing (merging coplanar faces)
-    pub greedy: bool,
-    /// Distance threshold in chunks for greedy meshing
-    pub greedy_threshold: i32,
-    /// Enable 3D sloped heightfield LOD
-    pub lod: bool,
-    /// Distance threshold in chunks for distant sloped LOD
-    pub lod_threshold: i32,
-    /// Enable GPU backface culling
-    pub culling: bool,
-    /// Enable skipping empty atmosphere scans
-    pub max_y_skip: bool,
     /// Enable atmospheric distance fog
     pub distance_fog: bool,
     /// Output file path for JSON metrics report
@@ -113,117 +72,39 @@ impl BenchmarkScenario {
     pub const DEFAULT_FLIGHT_SPEED: f32 = 50.0;
     pub const DEFAULT_FLIGHT_ALTITUDE: f32 = 92.0;
     pub const DEFAULT_WARMUP_SECS: f32 = 2.5;
-    pub const DEFAULT_GREEDY_THRESHOLD: i32 = 24;
-    pub const DEFAULT_LOD_THRESHOLD: i32 = 32;
 
-    pub fn baseline(view_distance: i32) -> Self {
+    pub fn standard(view_distance: i32) -> Self {
         Self {
-            id: "baseline",
-            name: "Baseline (No Optimizations)",
+            id: "standard",
+            name: "Standard 1km Flight Benchmark",
             view_distance,
             flight_distance: Self::DEFAULT_FLIGHT_DISTANCE,
             flight_speed: Self::DEFAULT_FLIGHT_SPEED,
             flight_altitude: Self::DEFAULT_FLIGHT_ALTITUDE,
             warmup_duration_secs: Self::DEFAULT_WARMUP_SECS,
-            greedy: false,
-            greedy_threshold: Self::DEFAULT_GREEDY_THRESHOLD,
-            lod: false,
-            lod_threshold: Self::DEFAULT_LOD_THRESHOLD,
-            culling: false,
-            max_y_skip: false,
             distance_fog: false,
-            output_path: Some("benchmark_results/1_baseline.json".to_string()),
-        }
-    }
-
-    pub fn culling(view_distance: i32) -> Self {
-        Self {
-            id: "culling",
-            name: "Backface Culling & Max-Y Skip",
-            culling: true,
-            max_y_skip: true,
-            output_path: Some("benchmark_results/2_culling.json".to_string()),
-            ..Self::baseline(view_distance)
-        }
-    }
-
-    pub fn greedy(view_distance: i32) -> Self {
-        Self {
-            id: "greedy",
-            name: "Greedy Meshing",
-            greedy: true,
-            greedy_threshold: Self::DEFAULT_GREEDY_THRESHOLD,
-            culling: true,
-            max_y_skip: true,
-            output_path: Some("benchmark_results/3_greedy.json".to_string()),
-            ..Self::baseline(view_distance)
-        }
-    }
-
-    pub fn sloped_lod(view_distance: i32) -> Self {
-        Self {
-            id: "sloped_lod",
-            name: "Greedy + Sloped Heightfield LOD",
-            greedy: true,
-            greedy_threshold: Self::DEFAULT_GREEDY_THRESHOLD,
-            lod: true,
-            lod_threshold: Self::DEFAULT_LOD_THRESHOLD,
-            culling: true,
-            max_y_skip: true,
-            output_path: Some("benchmark_results/4_sloped_lod.json".to_string()),
-            ..Self::baseline(view_distance)
+            output_path: Some("benchmark_results/flight_benchmark.json".to_string()),
         }
     }
 
     pub fn production(view_distance: i32) -> Self {
-        Self {
-            id: "production",
-            name: "Full Production (All Optimizations)",
-            greedy: true,
-            greedy_threshold: Self::DEFAULT_GREEDY_THRESHOLD,
-            lod: true,
-            lod_threshold: Self::DEFAULT_LOD_THRESHOLD,
-            culling: true,
-            max_y_skip: true,
-            distance_fog: false,
-            output_path: Some("benchmark_results/5_production.json".to_string()),
-            ..Self::baseline(view_distance)
-        }
+        Self::standard(view_distance)
     }
 
     pub fn from_preset(preset: BenchmarkPreset, view_distance: i32) -> Self {
-        match preset {
-            BenchmarkPreset::Baseline => Self::baseline(view_distance),
-            BenchmarkPreset::Culling => Self::culling(view_distance),
-            BenchmarkPreset::Greedy => Self::greedy(view_distance),
-            BenchmarkPreset::SlopedLod => Self::sloped_lod(view_distance),
-            BenchmarkPreset::Production => Self::production(view_distance),
-        }
+        preset.into_scenario(view_distance)
     }
 
     pub fn from_preset_name(name: &str, view_distance: i32) -> Option<Self> {
-        BenchmarkPreset::from_str_name(name).map(|p| Self::from_preset(p, view_distance))
+        BenchmarkPreset::from_str_name(name).map(|p| p.into_scenario(view_distance))
     }
 
-    /// Directly configures Bevy's DevSettings and GraphicsSettings according to this scenario.
-    pub fn apply(&self, dev: &mut DevSettings, graphics: &mut GraphicsSettings) {
+    /// Directly configures Bevy's GraphicsSettings according to this scenario.
+    pub fn apply(&self, graphics: &mut GraphicsSettings) {
         graphics.vsync = false;
         graphics.fps_cap = None;
         graphics.distance_fog = self.distance_fog;
         graphics.view_distance = self.view_distance;
-        dev.distance_fog = self.distance_fog;
-
-        graphics.greedy_meshing = self.greedy;
-        graphics.greedy_threshold = self.greedy_threshold;
-        dev.greedy_meshing = self.greedy;
-
-        graphics.distance_lod = self.lod;
-        graphics.lod_threshold = self.lod_threshold;
-        dev.distance_lod = self.lod;
-        dev.lod_threshold = self.lod_threshold;
-
-        dev.backface_culling = self.culling;
-        dev.max_y_skip = self.max_y_skip;
     }
 }
 
@@ -240,10 +121,7 @@ impl BenchmarkSuite {
     pub fn standard(view_distance: i32) -> Self {
         Self {
             seed: Self::DEFAULT_SEED,
-            scenarios: BenchmarkPreset::ALL
-                .iter()
-                .map(|&p| BenchmarkScenario::from_preset(p, view_distance))
-                .collect(),
+            scenarios: vec![BenchmarkScenario::standard(view_distance)],
         }
     }
 }
@@ -622,69 +500,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_benchmark_scenario_presets_differ_as_expected() {
-        let baseline = BenchmarkScenario::baseline(64);
-        let culling = BenchmarkScenario::culling(64);
-        let greedy = BenchmarkScenario::greedy(64);
-        let sloped_lod = BenchmarkScenario::sloped_lod(64);
-        let prod = BenchmarkScenario::production(64);
-
-        assert!(!baseline.culling && !baseline.greedy && !baseline.lod);
-        assert!(culling.culling && !culling.greedy && !culling.lod);
-        assert!(greedy.culling && greedy.greedy && !greedy.lod);
-        assert!(sloped_lod.culling && sloped_lod.greedy && sloped_lod.lod);
-        assert!(prod.culling && prod.greedy && prod.lod);
+    fn test_benchmark_scenario_standard_properties() {
+        let bench = BenchmarkScenario::standard(64);
+        assert_eq!(bench.view_distance, 64);
+        assert!((bench.flight_distance - 1000.0).abs() < f32::EPSILON);
+        assert!((bench.flight_speed - 50.0).abs() < f32::EPSILON);
+        assert!(!bench.distance_fog);
     }
 
     #[test]
     fn test_benchmark_scenario_apply_configures_settings() {
-        let scenario = BenchmarkScenario::greedy(48);
-        let mut dev = DevSettings::default();
+        let scenario = BenchmarkScenario::standard(48);
         let mut graphics = GraphicsSettings::default();
 
-        scenario.apply(&mut dev, &mut graphics);
+        scenario.apply(&mut graphics);
 
         assert!(!graphics.vsync);
         assert_eq!(graphics.view_distance, 48);
-        assert!(graphics.greedy_meshing);
-        assert_eq!(graphics.greedy_threshold, 24);
-        assert!(!graphics.distance_lod);
-        assert!(dev.backface_culling);
-        assert!(dev.max_y_skip);
+        assert_eq!(graphics.fps_cap, None);
+        assert!(!graphics.distance_fog);
     }
 
     #[test]
-    fn test_benchmark_suite_standard_contains_five_scenarios() {
+    fn test_benchmark_suite_standard_contains_scenario() {
         let suite = BenchmarkSuite::standard(32);
-        assert_eq!(suite.scenarios.len(), 5);
+        assert_eq!(suite.scenarios.len(), 1);
         assert_eq!(suite.seed, BenchmarkSuite::DEFAULT_SEED);
-        for s in &suite.scenarios {
-            assert_eq!(s.view_distance, 32);
-            assert!((s.flight_distance - 1000.0).abs() < f32::EPSILON);
-        }
+        assert_eq!(suite.scenarios[0].view_distance, 32);
+        assert!((suite.scenarios[0].flight_distance - 1000.0).abs() < f32::EPSILON);
     }
 
     #[test]
     fn test_benchmark_preset_from_str_name() {
         assert_eq!(
-            BenchmarkPreset::from_str_name("baseline"),
-            Some(BenchmarkPreset::Baseline)
+            BenchmarkPreset::from_str_name("flight"),
+            Some(BenchmarkPreset::Flight1km)
         );
         assert_eq!(
-            BenchmarkPreset::from_str_name("CULLING"),
-            Some(BenchmarkPreset::Culling)
+            BenchmarkPreset::from_str_name("PRODUCTION"),
+            Some(BenchmarkPreset::Flight1km)
         );
         assert_eq!(
-            BenchmarkPreset::from_str_name("greedy"),
-            Some(BenchmarkPreset::Greedy)
-        );
-        assert_eq!(
-            BenchmarkPreset::from_str_name("sloped_lod"),
-            Some(BenchmarkPreset::SlopedLod)
-        );
-        assert_eq!(
-            BenchmarkPreset::from_str_name("production"),
-            Some(BenchmarkPreset::Production)
+            BenchmarkPreset::from_str_name("standard"),
+            Some(BenchmarkPreset::Flight1km)
         );
         assert_eq!(BenchmarkPreset::from_str_name("invalid_preset"), None);
     }

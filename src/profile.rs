@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::coords::BlockPos;
 use crate::fluid::FluidSimulation;
-use crate::menu::DevSettings;
+use crate::menu::ProfilerState;
 use crate::world::{WorldGrid, calculate_biome_and_height};
 
 /// Process physical and virtual memory metrics read safely from the OS.
@@ -307,18 +307,18 @@ pub fn setup_profiling_ui(mut commands: Commands) {
         });
 }
 
-/// Updates the profiling HUD text and toggles visibility based on `DevSettings::show_debug_hud`.
+/// Updates the profiling HUD text and toggles visibility based on `ProfilerState::visible`.
 pub fn update_profiling_hud_system(
     time: Res<Time>,
     mut fps: Local<ProfilerFpsTracker>,
     world: Option<Res<WorldGrid>>,
-    dev_settings: Option<Res<DevSettings>>,
+    profiler_state: Option<Res<ProfilerState>>,
     fluid_sim: Option<Res<FluidSimulation>>,
     camera_query: Query<&Transform, With<crate::camera::FpsCamera>>,
     mut text_query: Query<&mut Text, With<ProfilingHudText>>,
     mut root_query: Query<&mut Visibility, With<ProfilingHudRoot>>,
 ) {
-    let show_hud = dev_settings.as_ref().is_some_and(|d| d.show_debug_hud);
+    let show_hud = profiler_state.as_ref().is_some_and(|p| p.visible);
 
     if let Ok(mut vis) = root_query.single_mut() {
         let target = if show_hud {
@@ -448,35 +448,6 @@ pub fn update_profiling_hud_system(
             // Fluid simulation status
             let fluid_queue_len = fluid_sim.as_ref().map_or(0, |f| f.queue.len());
 
-            // Optimizations status
-            let (cull, max_y, budget, async_m, greedy, lod) = if let Some(ref dev) = dev_settings {
-                (
-                    if dev.backface_culling { "ON" } else { "OFF" },
-                    if dev.max_y_skip { "ON" } else { "OFF" },
-                    if dev.mesh_budget { "ON (6/fr)" } else { "OFF" },
-                    if dev.async_meshing { "ON" } else { "OFF" },
-                    if dev.greedy_meshing {
-                        "ON (~75% drop)"
-                    } else {
-                        "OFF"
-                    },
-                    if dev.distance_lod {
-                        format!("ON ({}ch)", dev.lod_threshold)
-                    } else {
-                        "OFF".to_string()
-                    },
-                )
-            } else {
-                (
-                    "ON",
-                    "ON",
-                    "ON (6/fr)",
-                    "ON",
-                    "ON (~75% drop)",
-                    "ON (4ch)".to_string(),
-                )
-            };
-
             *text = Text::new(format!(
                 "=== MINERUST ENGINE PROFILER [F3: Toggle HUD] ===\n\
                  PERFORMANCE:  FPS: {:.0} ({:.1} ms) | 1% Low: {:.0} FPS | Min/Max: {:.1}ms / {:.1}ms\n\
@@ -487,7 +458,7 @@ pub fn update_profiling_hud_system(
                  STREAMING:    Gen Queue: {} | Mesh Queue: {} | Active Tasks: {}\n\
                  FLUID ENGINE: Water Queue: {} | Tick Rate: 1.0s batch\n\
                  PLAYER POS:   {} | Biome: {}\n\
-                 OPTIMIZATION: [Greedy: {}] [LOD: {}] [Max-Y: {}] [Cull: {}] [Async: {}] [Budget: {}] [Direct-GPU: ON]",
+                 OPTIMIZATION: [Greedy: Built-in (>32m)] [LOD: Built-in (>128m)] [Max-Y: Built-in] [Cull: Built-in] [Async: Built-in] [Budget: Built-in (32/fr)] [Two-Pass Water: Built-in]",
                 fps.fps,
                 fps.frame_time_ms,
                 fps.one_percent_low_fps,
@@ -509,12 +480,6 @@ pub fn update_profiling_hud_system(
                 fluid_queue_len,
                 pos_str,
                 biome_str,
-                greedy,
-                lod,
-                max_y,
-                cull,
-                async_m,
-                budget,
             ));
         }
     }
@@ -571,10 +536,7 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(ProfilePlugin);
 
-        app.insert_resource(DevSettings {
-            show_debug_hud: false,
-            ..Default::default()
-        });
+        app.insert_resource(ProfilerState { visible: false });
 
         app.update();
 
@@ -585,7 +547,7 @@ mod tests {
         assert_eq!(*vis, Visibility::Hidden);
 
         // Toggle on
-        app.world_mut().resource_mut::<DevSettings>().show_debug_hud = true;
+        app.world_mut().resource_mut::<ProfilerState>().visible = true;
         app.update();
 
         let mut query = app

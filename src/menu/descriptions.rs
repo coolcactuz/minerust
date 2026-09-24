@@ -16,6 +16,24 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             description: "Switches between Borderless Fullscreen (native monitor resolution) and Windowed mode (1280x720).",
             impact: "- Fullscreen: Immersive edge-to-edge display.\n- Windowed: Convenient multitasking and window positioning.",
         }),
+        MenuButtonAction::ToggleShadows => Some(OptionDescription {
+            header: "LIGHTING & SHADOWS",
+            title: "Dynamic Directional Shadows",
+            description: "Toggles real-time directional sunlight shadow maps across the voxel terrain.",
+            impact: "- ON: Realistic depth, tree canopy shadows, and terrain self-shadowing.\n- OFF: Skips shadow passes, yielding higher FPS on integrated graphics.",
+        }),
+        MenuButtonAction::ToggleDistanceFog => Some(OptionDescription {
+            header: "ATMOSPHERE & BLENDING",
+            title: "Atmospheric Distance Fog",
+            description: "Applies linear atmospheric distance fog that gracefully blends distant terrain into the sky before chunk boundaries.",
+            impact: "- ON: Smooth, immersive horizon that hides chunk loading boundaries.\n- OFF: Sharp cutoff edge at the boundary of loaded chunks.",
+        }),
+        MenuButtonAction::ToggleDebugHud => Some(OptionDescription {
+            header: "DIAGNOSTICS & PROFILING",
+            title: "Engine Profiler Overlay (F3)",
+            description: "Displays real-time FPS, frame pacing, 1% low, memory footprint, GPU VRAM, active chunks, triangle counts, and coordinates.",
+            impact: "- Essential for inspecting performance metrics.\n- Can also be toggled anytime in-game using the F3 key.",
+        }),
         MenuButtonAction::CycleFpsCap
         | MenuButtonAction::StepFpsCapLeft
         | MenuButtonAction::StepFpsCapRight
@@ -34,95 +52,12 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             description: "Sets the horizontal radius of chunks loaded and rendered around the player (4 to 64 chunks = 64m to 1024m).",
             impact: "- 16 Chunks (256m): Recommended balance of horizon view and performance.\n- 32-64 Chunks: Sweeping vistas; higher RAM/VRAM load.",
         }),
-        MenuButtonAction::ToggleBackfaceCulling => Some(OptionDescription {
-            header: "GPU PIPELINE BENCHMARK",
-            title: "Backface Culling",
-            description: "Discards triangles facing away from the camera in the GPU rasterizer. Solid voxel blocks never expose interior faces.",
-            impact: "- ON: Cuts rasterizer fragment load and fill-rate by ~50%.\n- OFF: Forces GPU to rasterize front and back faces of every quad.",
+        MenuButtonAction::BackFromSettings => Some(OptionDescription {
+            header: "NAVIGATION",
+            title: "Back / Done",
+            description: "Save configuration changes and return to the previous menu screen.",
+            impact: "- All graphical adjustments apply immediately in real-time.",
         }),
-        MenuButtonAction::ToggleShadows => Some(OptionDescription {
-            header: "LIGHTING & SHADOWS",
-            title: "Dynamic Cascaded Shadows",
-            description: "Toggles real-time directional sunlight shadow cascades spanning up to 120 meters from the camera.",
-            impact: "- ON: Realistic depth, tree canopy shadows, and terrain self-shadowing.\n- OFF: Skips shadow passes, yielding a large FPS boost on iGPUs.",
-        }),
-        MenuButtonAction::ToggleMaxYSkip => Some(OptionDescription {
-            header: "MESHING BENCHMARK",
-            title: "Mesher max_y Air Skipping",
-            description: "Tracks the highest solid block per chunk during generation, allowing the mesher to skip empty sky layers up to Y=384.",
-            impact: "- ON: ~2x faster chunk meshing, preventing CPU stutters.\n- OFF: Scans all 384 vertical Y layers even if 250 are empty sky.",
-        }),
-        MenuButtonAction::ToggleDistanceFog => Some(OptionDescription {
-            header: "ATMOSPHERE & BLENDING",
-            title: "Distance Fog",
-            description: "Applies linear atmospheric distance fog that gracefully blends distant terrain into the sky before chunk boundaries.",
-            impact: "- ON: Smooth, immersive horizon that hides chunk loading boundaries.\n- OFF: Sharp cutoff edge at the boundary of loaded chunks.",
-        }),
-        MenuButtonAction::ToggleMeshBudget => Some(OptionDescription {
-            header: "FRAME PACING BENCHMARK",
-            title: "Frame Mesh Upload Budget",
-            description: "Limits GPU buffer uploads of newly meshed chunks to a maximum of 6 chunks per frame.",
-            impact: "- ON: Smooth, consistent frame times when flying rapidly.\n- OFF: Uploads all meshes simultaneously, causing micro-stutters.",
-        }),
-        MenuButtonAction::ToggleAsyncMeshing => Some(OptionDescription {
-            header: "MULTITHREADING BENCHMARK",
-            title: "Async Multi-Threaded Meshing",
-            description: "Dispatches chunk greedy meshing computations to background worker threads across all available CPU cores.",
-            impact: "- ON: Zero main-thread lag (0ms) during terrain meshing.\n- OFF: Synchronous meshing on the render thread, causing frame drops.",
-        }),
-        MenuButtonAction::CycleGreedyMeshing
-        | MenuButtonAction::StepGreedyMeshingLeft
-        | MenuButtonAction::StepGreedyMeshingRight
-        | MenuButtonAction::SlideGreedyMeshing => Some(OptionDescription {
-            header: "VOXEL GREEDY MERGING",
-            title: "Greedy Meshing Distance",
-            description: "Controls the distance from the player beyond which adjacent coplanar block faces are merged into optimized quads. Chunks closer than this distance preserve crisp 1x1 individual voxel block faces.",
-            impact: "- > 1-4 Chunks: Crisp 1x1 blocks near camera, high FPS at medium/long range.\n- OFF: 1x1 block quads everywhere.\n- All Chunks: Maximum geometry optimization everywhere.",
-        }),
-        MenuButtonAction::ToggleGreedyMeshing => Some(OptionDescription {
-            header: "GEOMETRY OPTIMIZATION BENCHMARK",
-            title: "Greedy Meshing Algorithm",
-            description: "Iteratively merges adjacent coplanar block faces sharing the same voxel type into large single rectangular quads.",
-            impact: "- ON: Reduces chunk vertex and triangle counts by ~75%.\n- OFF: Emits separate 1x1 quads for every exposed block face.",
-        }),
-        MenuButtonAction::CycleDistanceLod
-        | MenuButtonAction::StepDistanceLodLeft
-        | MenuButtonAction::StepDistanceLodRight
-        | MenuButtonAction::SlideDistanceLod
-        | MenuButtonAction::ToggleDistanceLod => {
-            Some(OptionDescription {
-                header: "DISTANCE LEVEL OF DETAIL (LOD)",
-                title: "Distant Sloped Heightfield LOD",
-                description: "Replaces distant stepped voxel stairs on mountain slopes with smooth continuous angled surfaces and groups exposed ore veins into stone. Engages only for chunks far in the distance.",
-                impact: "- ON (2-32 Chunks): Cuts distant geometry by up to 90%, stabilizing 60+ FPS without affecting foreground voxels.\n- OFF: Renders every distant block as a 1x1 voxel cube.",
-            })
-        }
-        MenuButtonAction::CycleLodThreshold => Some(OptionDescription {
-            header: "LOD DISTANCE TUNING",
-            title: "LOD Distance Threshold",
-            description: "Distance in chunks (2, 4, 6, 8 chunks = 32m to 128m) at which chunk geometry transitions to simplified Level 2 LOD.",
-            impact: "- Shorter distance = higher frame rates at the cost of closer visual simplification.\n- Longer distance = full detail preserved further out.",
-        }),
-        MenuButtonAction::CyclePregenMargin => Some(OptionDescription {
-            header: "MEMORY & STREAMING BENCHMARK",
-            title: "Lookahead Pregen Buffer",
-            description: "Pre-calculates chunk voxel data in RAM just outside the camera's visual view distance (0 to 4 chunks = 0m to 64m margin).",
-            impact: "- Eliminates pop-in stutter when walking forward.\n- 0 Chunks: Disabled (benchmark raw generation latency).\n- 2-4 Chunks: Seamless walking buffer.",
-        }),
-        MenuButtonAction::ToggleDebugHud => Some(OptionDescription {
-            header: "DIAGNOSTICS",
-            title: "Debug Diagnostics Overlay (F3)",
-            description: "Displays in-game real-time FPS, frame timing, player coordinates, active chunk count, triangle counts, and biome data.",
-            impact: "- Essential for profiling performance impacts while playing.\n- Can also be toggled anytime in-game with the F3 key.",
-        }),
-        MenuButtonAction::BackFromSettings | MenuButtonAction::BackFromDevSettings => {
-            Some(OptionDescription {
-                header: "NAVIGATION",
-                title: "Back / Done",
-                description: "Save configuration changes and return to the previous menu screen.",
-                impact: "- All graphical and benchmark adjustments apply immediately in real-time.",
-            })
-        }
         MenuButtonAction::Play | MenuButtonAction::NewGame => Some(OptionDescription {
             header: "WORLD GENERATION",
             title: "Start New World",
@@ -144,14 +79,8 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
         MenuButtonAction::OpenSettings => Some(OptionDescription {
             header: "CONFIGURATION",
             title: "Graphics Settings",
-            description: "Configure display mode, VSync, frame rate limit, and view distance.",
+            description: "Configure display mode, VSync, frame rate limit, shadows, fog, and view distance.",
             impact: "- Adjust visuals and performance for your hardware.",
-        }),
-        MenuButtonAction::OpenDevSettings => Some(OptionDescription {
-            header: "BENCHMARK TOOLS",
-            title: "Dev & Benchmark Settings",
-            description: "Toggle internal engine optimizations to measure performance impacts.",
-            impact: "- Available only in Developer mode.",
         }),
         MenuButtonAction::BackToMain => Some(OptionDescription {
             header: "NAVIGATION",

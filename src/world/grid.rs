@@ -8,7 +8,7 @@ use crate::coords::{BlockPos, ChunkPos};
 use crate::error::WorldError;
 use crate::noise::NoiseGenerator;
 use crate::voxel_material::VoxelBlockMaterial;
-use crate::world::streaming::update_chunk_mesh;
+use crate::world::streaming::{chunk_distance_sq_to_player, determine_chunk_tier, update_chunk_mesh};
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{CHUNK_CACHE_CAPACITY, WorldSeed};
 
@@ -252,8 +252,6 @@ impl WorldGrid {
         commands: &mut Commands,
         meshes: &mut Assets<Mesh>,
         materials: &mut Assets<VoxelBlockMaterial>,
-        max_y_skip: bool,
-        greedy: bool,
     ) {
         let seed = self.seed.0;
         let noise = self.noise.clone();
@@ -292,9 +290,15 @@ impl WorldGrid {
             self.chunks.insert(coord, chunk);
         }
 
+        let center_world_x = center_chunk.x as f32 * 16.0 + 8.0;
+        let center_world_z = center_chunk.y as f32 * 16.0 + 8.0;
+        let player_pos = Vec3::new(center_world_x, 90.0, center_world_z);
+
         for coord in &initial_coords {
-            let tier = u8::from(greedy);
-            update_chunk_mesh(coord, commands, self, meshes, materials, max_y_skip, tier);
+            let chunk_opt = self.chunks.get(coord);
+            let dist_sq = chunk_distance_sq_to_player(*coord, player_pos, chunk_opt);
+            let (tier, _, _) = determine_chunk_tier(dist_sq);
+            update_chunk_mesh(coord, commands, self, meshes, materials, true, tier);
         }
     }
 }

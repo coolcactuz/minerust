@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use bevy::pbr::ExtendedMaterial;
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
@@ -11,7 +13,7 @@ use minerust::fluid::FluidPlugin;
 use minerust::interaction::InteractionPlugin;
 use minerust::inventory::InventoryPlugin;
 use minerust::menu::{
-    DevSettings, GraphicsSettings, MenuPlugin, MenuScreen, MenuState, SeedInputState,
+    GraphicsSettings, MenuPlugin, MenuScreen, MenuState, ProfilerState, SeedInputState,
 };
 use minerust::physics::{PhysicsPlugin, PlayerPhysics};
 use minerust::profile::ProfilePlugin;
@@ -25,7 +27,6 @@ use minerust::world::{WorldGrid, WorldPlugin, WorldSeed};
 #[derive(Default, Debug, PartialEq)]
 struct CliOptions {
     seed: Option<WorldSeed>,
-    dev_mode: bool,
     profile_mode: bool,
     quickstart: bool,
     is_benchmark: bool,
@@ -47,9 +48,6 @@ impl CliOptions {
                     if i < args.len() {
                         opts.seed = Some(WorldSeed::from_seed_str(&args[i]));
                     }
-                }
-                "-d" | "--dev" | "--debug" => {
-                    opts.dev_mode = true;
                 }
                 "-p" | "--profile" => {
                     opts.profile_mode = true;
@@ -103,10 +101,9 @@ impl CliOptions {
         Usage: minerust [OPTIONS]\n\n\
         Options:\n  \
           -s, --seed <SEED>              Set world generation seed (string or integer)\n  \
-          -d, --dev, --debug             Enable Developer Mode (benchmarks & debug settings)\n  \
-          -p, --profile                  Enable Real-time Performance Profiler HUD\n  \
+          -p, --profile                  Enable Real-time Performance Profiler HUD (F3)\n  \
           -q, --quickstart               Start directly in-game bypassing the main menu\n  \
-          -b, --benchmark [PRESET]       Run automated benchmark (baseline, culling, greedy, sloped_lod, production)\n      \
+          -b, --benchmark [PRESET]       Run automated flight benchmark (standard, flight, production)\n      \
               --view-distance <chunks>   Render distance (4 to 64 chunks)\n  \
           -o, --output <path>            JSON output file for benchmark results\n  \
           -h, --help                     Print help information"
@@ -146,11 +143,8 @@ fn main() {
         MenuState::default()
     };
 
-    let mut dev_settings = DevSettings {
-        dev_mode: opts.dev_mode,
-        profile_mode: opts.profile_mode,
-        show_debug_hud: opts.dev_mode || opts.profile_mode,
-        ..default()
+    let profiler_state = ProfilerState {
+        visible: opts.profile_mode,
     };
 
     let mut graphics_settings = GraphicsSettings::load_or_default();
@@ -163,20 +157,20 @@ fn main() {
         let mut s = if let Some(ref preset_name) = opts.benchmark_preset {
             BenchmarkScenario::from_preset_name(preset_name, vd).unwrap_or_else(|| {
                 eprintln!(
-                    "[BENCHMARK] Warning: Unknown preset '{preset_name}', defaulting to 'production'"
+                    "[BENCHMARK] Warning: Unknown preset '{preset_name}', defaulting to 'standard'"
                 );
-                BenchmarkScenario::production(vd)
+                BenchmarkScenario::standard(vd)
             })
         } else {
-            BenchmarkScenario::production(vd)
+            BenchmarkScenario::standard(vd)
         };
         if let Some(ref path) = opts.output_path {
             s.output_path = Some(path.clone());
         }
-        s.apply(&mut dev_settings, &mut graphics_settings);
+        s.apply(&mut graphics_settings);
         s
     } else {
-        BenchmarkScenario::production(graphics_settings.view_distance)
+        BenchmarkScenario::standard(graphics_settings.view_distance)
     };
 
     let present_mode = if opts.is_benchmark {
@@ -205,8 +199,6 @@ fn main() {
                     primary_window: Some(Window {
                         title: if opts.is_benchmark {
                             format!("MineRust [BENCHMARK MODE] - Seed: {}", seed.0)
-                        } else if opts.dev_mode {
-                            format!("MineRust [DEV MODE] - Seed: {}", seed.0)
                         } else if opts.profile_mode {
                             format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
                         } else {
@@ -224,7 +216,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .insert_resource(graphics_settings)
-        .insert_resource(dev_settings)
+        .insert_resource(profiler_state)
         .insert_resource(seed_state)
         .insert_resource(menu_state)
         .insert_resource(benchmark_config)
@@ -264,17 +256,12 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     graphics_settings: Res<GraphicsSettings>,
     menu_state: Res<minerust::menu::MenuState>,
-    dev_settings: Res<DevSettings>,
 ) {
     // 0. 2D Texture Array (25 layers of 16x16 pixel-art) and shared ExtendedMaterial with Alpha Mask for transparency (Glass)
     let array_image = texture::create_texture_array();
     let array_handle = images.add(array_image);
 
-    let cull_mode = if dev_settings.backface_culling {
-        Some(bevy::render::render_resource::Face::Back)
-    } else {
-        None
-    };
+    let cull_mode = Some(bevy::render::render_resource::Face::Back);
 
     let block_mat = materials.add(ExtendedMaterial {
         base: StandardMaterial {
@@ -306,15 +293,11 @@ fn setup(
 
     if menu_state.world_active {
         let center_chunk = WorldGrid::world_to_chunk_coord(0, 0).0;
-        let max_y_skip = dev_settings.max_y_skip;
-        let greedy = dev_settings.greedy_meshing && graphics_settings.greedy_meshing;
         world.pregenerate_spawn_grid(
             center_chunk,
             &mut commands,
             &mut meshes,
             &mut materials,
-            max_y_skip,
-            greedy,
         );
     }
 
@@ -358,7 +341,7 @@ fn setup(
     commands.spawn((
         DirectionalLight {
             illuminance: 14_000.0,
-            shadow_maps_enabled: true,
+            shadow_maps_enabled: graphics_settings.shadows,
             ..default()
         },
         bevy::light::CascadeShadowConfigBuilder {
@@ -383,7 +366,6 @@ mod tests {
             opts,
             CliOptions {
                 seed: None,
-                dev_mode: false,
                 profile_mode: false,
                 quickstart: false,
                 is_benchmark: false,
@@ -400,14 +382,12 @@ mod tests {
             "minerust".to_string(),
             "-s".to_string(),
             "42".to_string(),
-            "-d".to_string(),
             "-p".to_string(),
             "-q".to_string(),
         ])
         .unwrap();
 
         assert_eq!(opts.seed, Some(WorldSeed(42)));
-        assert!(opts.dev_mode);
         assert!(opts.profile_mode);
         assert!(opts.quickstart);
         assert!(!opts.is_benchmark);
@@ -436,12 +416,12 @@ mod tests {
         let opts2 = CliOptions::parse_from_args(vec![
             "minerust".to_string(),
             "-b".to_string(),
-            "greedy".to_string(),
+            "flight".to_string(),
         ])
         .unwrap();
 
         assert!(opts2.is_benchmark);
-        assert_eq!(opts2.benchmark_preset, Some("greedy".to_string()));
+        assert_eq!(opts2.benchmark_preset, Some("flight".to_string()));
     }
 
     #[test]

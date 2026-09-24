@@ -183,8 +183,6 @@ pub fn fluid_simulation_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<VoxelBlockMaterial>>,
-    graphics_settings: Option<Res<crate::menu::GraphicsSettings>>,
-    dev_settings: Option<Res<crate::menu::DevSettings>>,
     camera_query: Query<&Transform, With<FpsCamera>>,
 ) {
     fluid_sim.timer.tick(time.delta());
@@ -203,44 +201,18 @@ pub fn fluid_simulation_system(
             .single()
             .ok()
             .map_or(Vec3::ZERO, |t| t.translation);
-        let max_y_skip = dev_settings.as_ref().map_or(true, |d| d.max_y_skip);
-        let (greedy_meshing, greedy_threshold) = graphics_settings.as_ref().map_or_else(
-            || {
-                dev_settings
-                    .as_ref()
-                    .map_or((true, 2), |d| (d.greedy_meshing, 2))
-            },
-            |g| (g.greedy_meshing, g.greedy_threshold),
-        );
-        let (distance_lod, lod_threshold) = graphics_settings.as_ref().map_or_else(
-            || {
-                dev_settings
-                    .as_ref()
-                    .map_or((true, 8), |d| (d.distance_lod, d.lod_threshold))
-            },
-            |g| (g.distance_lod, g.lod_threshold),
-        );
-        let lod_threshold_sq = ((lod_threshold as f32) * 16.0).powi(2);
-        let greedy_threshold_sq = ((greedy_threshold as f32) * 16.0).powi(2);
 
         for coord in dirty_coords {
             let chunk_opt = world.chunks.get(&coord);
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, chunk_opt);
-            let (tier, _, _) = determine_chunk_tier(
-                dist_sq,
-                distance_lod,
-                lod_threshold_sq,
-                greedy_meshing,
-                greedy_threshold,
-                greedy_threshold_sq,
-            );
+            let (tier, _, _) = determine_chunk_tier(dist_sq);
             update_chunk_mesh(
                 &coord,
                 &mut commands,
                 &mut world,
                 &mut meshes,
                 &mut materials,
-                max_y_skip,
+                true,
                 tier,
             );
         }

@@ -165,19 +165,20 @@ pub fn apply_chunk_mesh(
     }
 }
 
-/// Determines the chunk mesh tier and meshing parameters based on distance to player
+pub const GREEDY_THRESHOLD_WORLD: f32 = 32.0; // 2 chunks = 32m
+pub const GREEDY_THRESHOLD_SQ: f32 = GREEDY_THRESHOLD_WORLD * GREEDY_THRESHOLD_WORLD; // 1024.0
+pub const LOD_THRESHOLD_WORLD: f32 = 128.0; // 8 chunks = 128m
+pub const LOD_THRESHOLD_SQ: f32 = LOD_THRESHOLD_WORLD * LOD_THRESHOLD_WORLD; // 16384.0
+
+/// Determines the chunk mesh tier and meshing parameters based on distance to player.
+/// - Distance < 32m: Tier 0 (Standard 1x1 Voxel Meshing)
+/// - 32m <= Distance <= 128m: Tier 1 (Greedy Voxel Meshing)
+/// - Distance > 128m: Tier 2 (Sloped Heightfield LOD)
 #[inline]
-pub fn determine_chunk_tier(
-    dist_sq: f32,
-    distance_lod: bool,
-    lod_threshold_sq: f32,
-    greedy_meshing: bool,
-    greedy_threshold: i32,
-    greedy_threshold_sq: f32,
-) -> (u8, bool, u8) {
-    if distance_lod && dist_sq > lod_threshold_sq {
+pub fn determine_chunk_tier(dist_sq: f32) -> (u8, bool, u8) {
+    if dist_sq > LOD_THRESHOLD_SQ {
         (2, false, 1) // Tier 2: Sloped Heightfield LOD
-    } else if greedy_meshing && (greedy_threshold <= 0 || dist_sq >= greedy_threshold_sq) {
+    } else if dist_sq >= GREEDY_THRESHOLD_SQ {
         (1, true, 0) // Tier 1: Greedy Voxel Meshing
     } else {
         (0, false, 0) // Tier 0: Standard 1x1 Voxel Meshing
@@ -215,7 +216,6 @@ pub fn update_chunk_mesh(
 #[derive(SystemParam)]
 pub struct WorldSettingsParams<'w> {
     pub graphics: Option<Res<'w, GraphicsSettings>>,
-    pub dev: Option<Res<'w, crate::menu::DevSettings>>,
     pub menu: Option<Res<'w, crate::menu::MenuState>>,
     pub bench_state: Option<Res<'w, crate::benchmark::BenchmarkState>>,
 }
@@ -261,12 +261,11 @@ pub fn world_streaming_system(
         .graphics
         .as_ref()
         .map_or(VIEW_DISTANCE, |s| s.view_distance);
-    let pregen_margin = settings.dev.as_ref().map_or(2, |d| d.pregen_margin);
+    let pregen_margin = 2;
     let gen_dist = view_dist + pregen_margin;
     let unload_dist = gen_dist + 2;
 
     let settings_changed = settings.graphics.as_ref().is_some_and(|s| s.is_changed());
-    let dev_changed = settings.dev.as_ref().is_some_and(|d| d.is_changed());
 
     if settings_changed {
         if let Projection::Perspective(ref mut persp) = *projection {
@@ -274,7 +273,7 @@ pub fn world_streaming_system(
         }
     }
 
-    if player_chunk != world.last_player_chunk || settings_changed || dev_changed {
+    if player_chunk != world.last_player_chunk || settings_changed {
         world.last_player_chunk = player_chunk;
 
         let mut needed_chunks = Vec::new();
@@ -530,30 +529,7 @@ pub fn world_streaming_system(
         }
     }
 
-    let (greedy_meshing, greedy_threshold) = settings.graphics.as_ref().map_or_else(
-        || {
-            settings
-                .dev
-                .as_ref()
-                .map_or((true, 2), |d| (d.greedy_meshing, 2))
-        },
-        |g| (g.greedy_meshing, g.greedy_threshold),
-    );
-    let (distance_lod, lod_threshold) = settings.graphics.as_ref().map_or_else(
-        || {
-            settings
-                .dev
-                .as_ref()
-                .map_or((true, 8), |d| (d.distance_lod, d.lod_threshold))
-        },
-        |g| (g.distance_lod, g.lod_threshold),
-    );
-
     let player_pos = cam_transform.translation;
-    let lod_threshold_world = (lod_threshold as f32) * 16.0;
-    let lod_threshold_sq = lod_threshold_world * lod_threshold_world;
-    let greedy_threshold_world = (greedy_threshold as f32) * 16.0;
-    let greedy_threshold_sq = greedy_threshold_world * greedy_threshold_world;
 
     // Dynamic 3D LOD transitions: check if any active chunks need to change mesh tier as player moves in 3D
     let mut chunks_needing_lod_update = Vec::new();
@@ -564,14 +540,7 @@ pub fn world_streaming_system(
             && (world.chunk_entities.contains_key(&coord) || world.water_entities.contains_key(&coord))
         {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-            let (target_tier, _, _) = determine_chunk_tier(
-                dist_sq,
-                distance_lod,
-                lod_threshold_sq,
-                greedy_meshing,
-                greedy_threshold,
-                greedy_threshold_sq,
-            );
+            let (target_tier, _, _) = determine_chunk_tier(dist_sq);
 
             if world.chunk_lod.get(&coord) != Some(&target_tier)
                 && !world.queued_for_mesh.contains(&coord)
@@ -596,15 +565,10 @@ pub fn world_streaming_system(
             -(d_sq as i64)
         });
 
-        let max_y_skip = settings.dev.as_ref().is_none_or(|d| d.max_y_skip);
-        let budget_enabled = settings.dev.as_ref().is_none_or(|d| d.mesh_budget);
-        let async_meshing = settings.dev.as_ref().is_none_or(|d| d.async_meshing);
         let max_meshes_per_frame = if is_bench_initializing {
             48
-        } else if budget_enabled {
-            MAX_MESHES_PER_FRAME
         } else {
-            usize::MAX
+            MAX_MESHES_PER_FRAME
         };
         let max_in_flight_meshes = if is_bench_initializing { 64 } else { 24 };
 
@@ -623,53 +587,34 @@ pub fn world_streaming_system(
                 let dist_2d = diff.x.abs().max(diff.y.abs());
                 if dist_2d <= view_dist {
                     let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-                    let (target_tier, chunk_greedy, chunk_lod) = determine_chunk_tier(
-                        dist_sq,
-                        distance_lod,
-                        lod_threshold_sq,
-                        greedy_meshing,
-                        greedy_threshold,
-                        greedy_threshold_sq,
-                    );
+                    let (target_tier, chunk_greedy, chunk_lod) = determine_chunk_tier(dist_sq);
 
-                    if async_meshing {
-                        if world.in_progress_meshes.contains(&coord) {
-                            continue;
-                        }
-                        let chunk = chunk.clone();
-                        world.in_progress_meshes.insert(coord);
-                        let north = world.chunks.get(&(coord + IVec2::new(0, 1))).cloned();
-                        let south = world.chunks.get(&(coord + IVec2::new(0, -1))).cloned();
-                        let east = world.chunks.get(&(coord + IVec2::new(1, 0))).cloned();
-                        let west = world.chunks.get(&(coord + IVec2::new(-1, 0))).cloned();
-
-                        let tx = pools.mesher.tx.clone();
-                        AsyncComputeTaskPool::get()
-                            .spawn(async move {
-                                let mesh = build_chunk_mesh_lod(
-                                    &chunk,
-                                    north.as_ref(),
-                                    south.as_ref(),
-                                    east.as_ref(),
-                                    west.as_ref(),
-                                    max_y_skip,
-                                    chunk_greedy,
-                                    chunk_lod,
-                                );
-                                let _ = tx.send((coord, mesh, target_tier));
-                            })
-                            .detach();
-                    } else {
-                        update_chunk_mesh(
-                            &coord,
-                            &mut commands,
-                            &mut world,
-                            &mut assets.meshes,
-                            &mut assets.materials,
-                            max_y_skip,
-                            target_tier,
-                        );
+                    if world.in_progress_meshes.contains(&coord) {
+                        continue;
                     }
+                    let chunk = chunk.clone();
+                    world.in_progress_meshes.insert(coord);
+                    let north = world.chunks.get(&(coord + IVec2::new(0, 1))).cloned();
+                    let south = world.chunks.get(&(coord + IVec2::new(0, -1))).cloned();
+                    let east = world.chunks.get(&(coord + IVec2::new(1, 0))).cloned();
+                    let west = world.chunks.get(&(coord + IVec2::new(-1, 0))).cloned();
+
+                    let tx = pools.mesher.tx.clone();
+                    AsyncComputeTaskPool::get()
+                        .spawn(async move {
+                            let mesh = build_chunk_mesh_lod(
+                                &chunk,
+                                north.as_ref(),
+                                south.as_ref(),
+                                east.as_ref(),
+                                west.as_ref(),
+                                true, // max_y_skip
+                                chunk_greedy,
+                                chunk_lod,
+                            );
+                            let _ = tx.send((coord, mesh, target_tier));
+                        })
+                        .detach();
                     meshed += 1;
                 }
             }
