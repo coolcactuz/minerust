@@ -10,9 +10,9 @@ use crate::camera::FpsCamera;
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
-use crate::mesher::{build_chunk_mesh_lod, ChunkMeshes};
+use crate::mesher::{build_chunk_mesh_lod, ChunkMeshes, CHUNK_SECTIONS};
 use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
-use crate::world::grid::WorldGrid;
+use crate::world::grid::{ChunkSection, WorldGrid};
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{
     MAX_CHUNK_DISPATCH_PER_FRAME, MAX_MESHES_PER_FRAME, SEA_LEVEL, VIEW_DISTANCE,
@@ -125,43 +125,70 @@ pub fn apply_chunk_mesh(
         })
     });
 
-    // Solid terrain mesh entity
-    if let Some(&entity) = world.chunk_entities.get(&coord) {
-        if let Some(mesh) = meshes_res.solid {
-            commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
-        } else {
-            commands.entity(entity).despawn();
-            world.chunk_entities.remove(&coord);
+    // Get existing section entity arrays or create empty ones
+    let mut solid_entities = world
+        .chunk_entities
+        .remove(&coord)
+        .unwrap_or([None; CHUNK_SECTIONS]);
+    let mut water_entities = world
+        .water_entities
+        .remove(&coord)
+        .unwrap_or([None; CHUNK_SECTIONS]);
+
+    for (sy, section_mesh) in meshes_res.sections.into_iter().enumerate() {
+        // Solid terrain mesh entity
+        if let Some(entity) = solid_entities[sy] {
+            if let Some(mesh) = section_mesh.solid {
+                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+            } else {
+                commands.entity(entity).despawn();
+                solid_entities[sy] = None;
+            }
+        } else if let Some(mesh) = section_mesh.solid {
+            let entity = commands
+                .spawn((
+                    Mesh3d(meshes.add(mesh)),
+                    MeshMaterial3d(solid_material.clone()),
+                    Transform::from_translation(world_pos),
+                    ChunkSection {
+                        chunk: coord,
+                        section_y: sy as u8,
+                    },
+                ))
+                .id();
+            solid_entities[sy] = Some(entity);
         }
-    } else if let Some(mesh) = meshes_res.solid {
-        let entity = commands
-            .spawn((
-                Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(solid_material),
-                Transform::from_translation(world_pos),
-            ))
-            .id();
-        world.chunk_entities.insert(coord, entity);
+
+        // Water surface mesh entity
+        if let Some(entity) = water_entities[sy] {
+            if let Some(mesh) = section_mesh.water {
+                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+            } else {
+                commands.entity(entity).despawn();
+                water_entities[sy] = None;
+            }
+        } else if let Some(mesh) = section_mesh.water {
+            let entity = commands
+                .spawn((
+                    Mesh3d(meshes.add(mesh)),
+                    MeshMaterial3d(water_material.clone()),
+                    Transform::from_translation(world_pos),
+                    NotShadowCaster,
+                    ChunkSection {
+                        chunk: coord,
+                        section_y: sy as u8,
+                    },
+                ))
+                .id();
+            water_entities[sy] = Some(entity);
+        }
     }
 
-    // Water surface mesh entity
-    if let Some(&entity) = world.water_entities.get(&coord) {
-        if let Some(mesh) = meshes_res.water {
-            commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
-        } else {
-            commands.entity(entity).despawn();
-            world.water_entities.remove(&coord);
-        }
-    } else if let Some(mesh) = meshes_res.water {
-        let entity = commands
-            .spawn((
-                Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(water_material),
-                Transform::from_translation(world_pos),
-                NotShadowCaster,
-            ))
-            .id();
-        world.water_entities.insert(coord, entity);
+    if solid_entities.iter().any(Option::is_some) {
+        world.chunk_entities.insert(coord, solid_entities);
+    }
+    if water_entities.iter().any(Option::is_some) {
+        world.water_entities.insert(coord, water_entities);
     }
 }
 
@@ -312,10 +339,10 @@ pub fn world_streaming_system(
         for (&coord, _) in &world.chunks {
             let diff = coord - player_chunk;
             if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
-                if !world.chunk_entities.contains_key(&coord) && !world.water_entities.contains_key(&coord) {
+                if !world.has_chunk_mesh(&coord) {
                     chunks_to_queue.push(coord);
                 }
-            } else if world.chunk_entities.contains_key(&coord) || world.water_entities.contains_key(&coord) {
+            } else if world.has_chunk_mesh(&coord) {
                 chunks_to_demesh.push(coord);
             }
         }
@@ -325,11 +352,15 @@ pub fn world_streaming_system(
         }
 
         for coord in chunks_to_demesh {
-            if let Some(entity) = world.chunk_entities.remove(&coord) {
-                commands.entity(entity).despawn();
+            if let Some(entities) = world.chunk_entities.remove(&coord) {
+                for entity in entities.into_iter().flatten() {
+                    commands.entity(entity).despawn();
+                }
             }
-            if let Some(entity) = world.water_entities.remove(&coord) {
-                commands.entity(entity).despawn();
+            if let Some(entities) = world.water_entities.remove(&coord) {
+                for entity in entities.into_iter().flatten() {
+                    commands.entity(entity).despawn();
+                }
             }
             if let Some(old_v) = world.chunk_vertices.remove(&coord) {
                 world.total_vertices = world.total_vertices.saturating_sub(old_v);
@@ -365,11 +396,15 @@ pub fn world_streaming_system(
                 world.total_vertices = world.total_vertices.saturating_sub(old_v);
             }
             // Despawn 3D mesh entities from GPU
-            if let Some(entity) = world.chunk_entities.remove(&coord) {
-                commands.entity(entity).despawn();
+            if let Some(entities) = world.chunk_entities.remove(&coord) {
+                for entity in entities.into_iter().flatten() {
+                    commands.entity(entity).despawn();
+                }
             }
-            if let Some(entity) = world.water_entities.remove(&coord) {
-                commands.entity(entity).despawn();
+            if let Some(entities) = world.water_entities.remove(&coord) {
+                for entity in entities.into_iter().flatten() {
+                    commands.entity(entity).despawn();
+                }
             }
 
             // If the chunk was modified by the player, persist it to disk
@@ -487,8 +522,7 @@ pub fn world_streaming_system(
                 let n_diff = neighbor_coord - player_chunk;
                 if n_diff.x.abs() <= view_dist
                     && n_diff.y.abs() <= view_dist
-                    && (world.chunk_entities.contains_key(&neighbor_coord)
-                        || world.water_entities.contains_key(&neighbor_coord))
+                    && world.has_chunk_mesh(&neighbor_coord)
                 {
                     world.queue_mesh(neighbor_coord);
                 }
@@ -511,11 +545,15 @@ pub fn world_streaming_system(
             // discard the completed mesh immediately rather than spawning an off-screen entity.
             let diff = coord - player_chunk;
             if diff.x.abs() > view_dist || diff.y.abs() > view_dist {
-                if let Some(entity) = world.chunk_entities.remove(&coord) {
-                    commands.entity(entity).despawn();
+                if let Some(entities) = world.chunk_entities.remove(&coord) {
+                    for entity in entities.into_iter().flatten() {
+                        commands.entity(entity).despawn();
+                    }
                 }
-                if let Some(entity) = world.water_entities.remove(&coord) {
-                    commands.entity(entity).despawn();
+                if let Some(entities) = world.water_entities.remove(&coord) {
+                    for entity in entities.into_iter().flatten() {
+                        commands.entity(entity).despawn();
+                    }
                 }
                 if let Some(old_v) = world.chunk_vertices.remove(&coord) {
                     world.total_vertices = world.total_vertices.saturating_sub(old_v);
@@ -557,7 +595,7 @@ pub fn world_streaming_system(
         let diff = coord - player_chunk;
         let dist_2d = diff.x.abs().max(diff.y.abs());
         if dist_2d <= view_dist
-            && (world.chunk_entities.contains_key(&coord) || world.water_entities.contains_key(&coord))
+            && world.has_chunk_mesh(&coord)
         {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
             let (target_tier, _, _) = determine_chunk_tier(

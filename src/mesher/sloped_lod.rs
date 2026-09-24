@@ -1,5 +1,5 @@
 use super::helpers::{add_quad, add_triangle, simplify_block_for_lod, triangle_normal, MeshBuffers};
-use super::ChunkMeshes;
+use super::{ChunkMeshes, SectionMeshes, CHUNK_SECTIONS, SECTION_HEIGHT};
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::texture::{block_texture, quad_uvs};
@@ -155,8 +155,44 @@ pub fn build_chunk_mesh_sloped_lod(
     }
 
     // 3. Generate mesh geometry using 2x2 macro-cells (8x8 cells across chunk)
-    let mut solid = MeshBuffers::with_capacity(512, 1024);
-    let mut water = MeshBuffers::default();
+    let mut solid_sections: [MeshBuffers; CHUNK_SECTIONS] = Default::default();
+    let mut water_sections: [MeshBuffers; CHUNK_SECTIONS] = Default::default();
+
+    let add_solid_quad =
+        |solid_sections: &mut [MeshBuffers; CHUNK_SECTIONS],
+         verts: [[f32; 3]; 4],
+         norm: [f32; 3],
+         uvs: [[f32; 2]; 4],
+         layer: f32,
+         shade: f32| {
+            let avg_y = (verts[0][1] + verts[1][1] + verts[2][1] + verts[3][1]) * 0.25;
+            let sy = ((avg_y / SECTION_HEIGHT as f32).floor() as usize).clamp(0, CHUNK_SECTIONS - 1);
+            add_quad(&mut solid_sections[sy], verts, norm, uvs, layer, shade);
+        };
+
+    let add_water_quad =
+        |water_sections: &mut [MeshBuffers; CHUNK_SECTIONS],
+         verts: [[f32; 3]; 4],
+         norm: [f32; 3],
+         uvs: [[f32; 2]; 4],
+         layer: f32,
+         shade: f32| {
+            let avg_y = (verts[0][1] + verts[1][1] + verts[2][1] + verts[3][1]) * 0.25;
+            let sy = ((avg_y / SECTION_HEIGHT as f32).floor() as usize).clamp(0, CHUNK_SECTIONS - 1);
+            add_quad(&mut water_sections[sy], verts, norm, uvs, layer, shade);
+        };
+
+    let add_solid_tri =
+        |solid_sections: &mut [MeshBuffers; CHUNK_SECTIONS],
+         verts: [[f32; 3]; 3],
+         norm: [f32; 3],
+         uvs: [[f32; 2]; 3],
+         layer: f32,
+         shade: f32| {
+            let avg_y = (verts[0][1] + verts[1][1] + verts[2][1]) / 3.0;
+            let sy = ((avg_y / SECTION_HEIGHT as f32).floor() as usize).clamp(0, CHUNK_SECTIONS - 1);
+            add_triangle(&mut solid_sections[sy], verts, norm, uvs, layer, shade);
+        };
 
     let cells_x = CHUNK_WIDTH / CELL_SIZE; // 8
     let cells_z = CHUNK_DEPTH / CELL_SIZE; // 8
@@ -204,8 +240,8 @@ pub fn build_chunk_mesh_sloped_lod(
                 let water_y = 64.0;
                 let layer = block_texture(BlockType::Water, BlockFace::Top).layer();
                 let water_uvs = quad_uvs(CELL_SIZE as f32, CELL_SIZE as f32);
-                add_quad(
-                    &mut water,
+                add_water_quad(
+                    &mut water_sections,
                     [
                         [fx0, water_y, fz0],
                         [fx0, water_y, fz1],
@@ -219,8 +255,8 @@ pub fn build_chunk_mesh_sloped_lod(
                 );
 
                 // Downward face for underwater viewing
-                add_quad(
-                    &mut water,
+                add_water_quad(
+                    &mut water_sections,
                     [
                         [fx0, water_y, fz0],
                         [fx1, water_y, fz0],
@@ -241,8 +277,8 @@ pub fn build_chunk_mesh_sloped_lod(
                     * 0.25;
                 let seabed_block = col_seabed_blocks[lz0][lx0];
                 let seabed_layer = block_texture(seabed_block, BlockFace::Top).layer();
-                add_quad(
-                    &mut solid,
+                add_solid_quad(
+                    &mut solid_sections,
                     [
                         [fx0, seabed_y, fz0],
                         [fx0, seabed_y, fz1],
@@ -288,8 +324,8 @@ pub fn build_chunk_mesh_sloped_lod(
             // Triangle 1: p0 -> p1 -> p2
             let norm_1 = triangle_normal(p0, p1, p2);
             let shade_1 = 0.75 + 0.25 * norm_1[1].clamp(0.0, 1.0);
-            add_triangle(
-                &mut solid,
+            add_solid_tri(
+                &mut solid_sections,
                 [p0, p1, p2],
                 norm_1,
                 [[0.0, 0.0], [0.0, f_size], [f_size, f_size]],
@@ -300,8 +336,8 @@ pub fn build_chunk_mesh_sloped_lod(
             // Triangle 2: p0 -> p2 -> p3
             let norm_2 = triangle_normal(p0, p2, p3);
             let shade_2 = 0.75 + 0.25 * norm_2[1].clamp(0.0, 1.0);
-            add_triangle(
-                &mut solid,
+            add_solid_tri(
+                &mut solid_sections,
                 [p0, p2, p3],
                 norm_2,
                 [[0.0, 0.0], [f_size, f_size], [f_size, 0.0]],
@@ -323,8 +359,8 @@ pub fn build_chunk_mesh_sloped_lod(
         let b = col_blocks[0][cx * CELL_SIZE];
         if b != BlockType::Air && !b.is_water() {
             let layer = block_texture(b, BlockFace::South).layer();
-            add_quad(
-                &mut solid,
+            add_solid_quad(
+                &mut solid_sections,
                 [
                     [lx1, y1, 0.0],
                     [lx1, y1 - SKIRT_DROP, 0.0],
@@ -348,8 +384,8 @@ pub fn build_chunk_mesh_sloped_lod(
         let b = col_blocks[CHUNK_DEPTH - 1][cx * CELL_SIZE];
         if b != BlockType::Air && !b.is_water() {
             let layer = block_texture(b, BlockFace::North).layer();
-            add_quad(
-                &mut solid,
+            add_solid_quad(
+                &mut solid_sections,
                 [
                     [lx0, y0, 16.0],
                     [lx0, y0 - SKIRT_DROP, 16.0],
@@ -373,8 +409,8 @@ pub fn build_chunk_mesh_sloped_lod(
         let b = col_blocks[cz * CELL_SIZE][0];
         if b != BlockType::Air && !b.is_water() {
             let layer = block_texture(b, BlockFace::West).layer();
-            add_quad(
-                &mut solid,
+            add_solid_quad(
+                &mut solid_sections,
                 [
                     [0.0, y0, lz0],
                     [0.0, y0 - SKIRT_DROP, lz0],
@@ -398,8 +434,8 @@ pub fn build_chunk_mesh_sloped_lod(
         let b = col_blocks[cz * CELL_SIZE][CHUNK_WIDTH - 1];
         if b != BlockType::Air && !b.is_water() {
             let layer = block_texture(b, BlockFace::East).layer();
-            add_quad(
-                &mut solid,
+            add_solid_quad(
+                &mut solid_sections,
                 [
                     [16.0, y1, lz1],
                     [16.0, y1 - SKIRT_DROP, lz1],
@@ -414,8 +450,12 @@ pub fn build_chunk_mesh_sloped_lod(
         }
     }
 
-    ChunkMeshes {
-        solid: solid.to_mesh(),
-        water: water.to_mesh(),
+    let mut sections: [SectionMeshes; CHUNK_SECTIONS] = Default::default();
+    for (sy, (s, w)) in solid_sections.into_iter().zip(water_sections).enumerate() {
+        sections[sy] = SectionMeshes {
+            solid: s.to_mesh(),
+            water: w.to_mesh(),
+        };
     }
+    ChunkMeshes { sections }
 }

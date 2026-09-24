@@ -10,7 +10,7 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
-pub use grid::WorldGrid;
+pub use grid::{ChunkSection, WorldGrid};
 pub use spawn::find_safe_surface_spawn;
 pub use streaming::{
     ChunkGeneratorPool, ChunkMesherPool, WorldMeshAssets, WorldPlugin, WorldSettingsParams,

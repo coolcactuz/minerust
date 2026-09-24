@@ -241,10 +241,7 @@ fn test_zombie_mesh_prevention_and_streaming_cleanup() {
     );
     tx.send((
         distant_coord,
-        crate::mesher::ChunkMeshes {
-            solid: Some(dummy_mesh),
-            water: None,
-        },
+        crate::mesher::ChunkMeshes::from_solid(dummy_mesh),
         0,
     ))
     .unwrap();
@@ -467,4 +464,99 @@ fn test_determine_chunk_tier_near_mid_distant() {
     );
     assert_eq!(tier_no_lod, 1, "With LOD off, distant chunk should stay greedy meshed");
     assert!(greedy_no_lod);
+}
+
+#[test]
+fn test_subchunk_section_entities_lifecycle() {
+    let mut app = App::new();
+    app.add_plugins(bevy::asset::AssetPlugin::default());
+    app.init_asset::<Mesh>();
+    app.init_asset::<crate::voxel_material::VoxelBlockMaterial>();
+
+    let mut world_grid = WorldGrid::new(WorldSeed(42));
+    let coord = IVec2::new(3, 4);
+
+    let mut dummy_meshes = crate::mesher::ChunkMeshes::default();
+    dummy_meshes.sections[0].solid = Some(Mesh::new(
+        bevy::render::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    ));
+    dummy_meshes.sections[2].solid = Some(Mesh::new(
+        bevy::render::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    ));
+    dummy_meshes.sections[2].water = Some(Mesh::new(
+        bevy::render::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    ));
+
+    app.world_mut().resource_scope(|world, mut meshes: Mut<Assets<Mesh>>| {
+        world.resource_scope(
+            |world, mut materials: Mut<Assets<crate::voxel_material::VoxelBlockMaterial>>| {
+                let mut commands = world.commands();
+                crate::world::streaming::apply_chunk_mesh(
+                    coord,
+                    dummy_meshes,
+                    0,
+                    &mut commands,
+                    &mut world_grid,
+                    &mut meshes,
+                    &mut materials,
+                );
+            },
+        );
+    });
+
+    // Apply commands to app world
+    app.update();
+
+    // Verify entities stored in world_grid
+    let solid_secs = world_grid
+        .chunk_entities
+        .get(&coord)
+        .expect("chunk_entities entry must exist");
+    assert!(solid_secs[0].is_some(), "Section 0 must have solid entity");
+    assert!(solid_secs[1].is_none(), "Section 1 had no mesh and must be None");
+    assert!(solid_secs[2].is_some(), "Section 2 must have solid entity");
+
+    let water_secs = world_grid
+        .water_entities
+        .get(&coord)
+        .expect("water_entities entry must exist");
+    assert!(water_secs[0].is_none(), "Section 0 had no water");
+    assert!(water_secs[2].is_some(), "Section 2 must have water entity");
+
+    assert_eq!(world_grid.total_mesh_entities(), 3);
+
+    // Verify ChunkSection components on entities
+    let sec0_entity = solid_secs[0].unwrap();
+    let sec0_comp = app
+        .world()
+        .get::<ChunkSection>(sec0_entity)
+        .expect("ChunkSection component must exist");
+    assert_eq!(sec0_comp.chunk, coord);
+    assert_eq!(sec0_comp.section_y, 0);
+
+    let sec2_entity = solid_secs[2].unwrap();
+    let sec2_comp = app
+        .world()
+        .get::<ChunkSection>(sec2_entity)
+        .expect("ChunkSection component must exist");
+    assert_eq!(sec2_comp.chunk, coord);
+    assert_eq!(sec2_comp.section_y, 2);
+
+    // Despawn all chunks and verify entities are despawned
+    {
+        let mut commands = app.world_mut().commands();
+        world_grid.despawn_all_chunks(&mut commands);
+    }
+    app.update();
+
+    assert!(world_grid.chunk_entities.is_empty());
+    assert!(world_grid.water_entities.is_empty());
+    assert_eq!(world_grid.total_mesh_entities(), 0);
+    assert!(
+        app.world().get_entity(sec0_entity).is_err(),
+        "Entity must be despawned from ECS"
+    );
 }
