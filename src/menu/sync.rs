@@ -335,8 +335,8 @@ pub fn update_benchmark_banner_system(
             }
             BenchmarkPhase::FlightRecording => {
                 format!(
-                    "[ BENCHMARK IN PROGRESS ] Distance: {:.0}m / {:.0}m ({:.0}%) | Press [ESC] to Cancel",
-                    dist, total_dist, pct
+                    "[ BENCHMARK IN PROGRESS ] Distance: {:.0}m / {:.0}m ({:.2}km / {:.1}km - {:.0}%) | Press [ESC] to Cancel",
+                    dist, total_dist, dist / 1000.0, total_dist / 1000.0, pct
                 )
             }
             BenchmarkPhase::Completed => "[ BENCHMARK COMPLETED ]".to_string(),

@@ -579,7 +579,7 @@ fn spawn_benchmark_results_menu(commands: &mut Commands) {
                         TextColor(Color::srgb(1.0, 0.85, 0.2)),
                     ));
                     card.spawn((
-                        Text::new("Standardized 1,000m high-speed streaming trajectory flight on seed 'BENCHMARK'"),
+                        Text::new("Standardized 5,000m (5km) high-speed streaming trajectory flight on seed 'BENCHMARK'"),
                         TextFont {
                             font_size: FontSize::Px(13.0),
                             ..default()
@@ -691,7 +691,7 @@ fn spawn_benchmark_results_menu(commands: &mut Commands) {
                                 BenchmarkVertsText,
                             ));
                             c.spawn((
-                                Text::new("Flight: 1,000m @ 50m/s"),
+                                Text::new("Flight: 5,000m @ 50m/s (5km)"),
                                 TextFont { font_size: FontSize::Px(11.5), ..default() },
                                 TextColor(Color::srgb(0.65, 0.7, 0.8)),
                             ));
@@ -824,7 +824,7 @@ fn spawn_benchmark_running_banner(commands: &mut Commands) {
                 ))
                 .with_children(|box_node| {
                     box_node.spawn((
-                        Text::new("[ BENCHMARK IN PROGRESS ] Distance: 0m / 1,000m (0%) | Press [ESC] to Cancel"),
+                        Text::new("[ BENCHMARK IN PROGRESS ] Distance: 0m / 5,000m (0%) | Press [ESC] to Cancel"),
                         TextFont {
                             font_size: FontSize::Px(13.0),
                             ..default()

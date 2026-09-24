@@ -13,27 +13,27 @@ use crate::world::WorldGrid;
 /// Standard predefined flight benchmark profiles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BenchmarkPreset {
-    Flight1km,
+    Flight5km,
 }
 
 impl BenchmarkPreset {
-    pub const ALL: [Self; 1] = [Self::Flight1km];
+    pub const ALL: [Self; 1] = [Self::Flight5km];
 
     pub fn from_str_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
-            "flight" | "standard" | "production" | "1km" | "bench" | "baseline" | "culling" | "greedy" | "sloped_lod" => {
-                Some(Self::Flight1km)
+            "flight" | "standard" | "production" | "5km" | "1km" | "bench" | "baseline" | "culling" | "greedy" | "sloped_lod" => {
+                Some(Self::Flight5km)
             }
             _ => None,
         }
     }
 
     pub fn id(self) -> &'static str {
-        "flight_1km"
+        "flight_5km"
     }
 
     pub fn name(self) -> &'static str {
-        "1km Flight Benchmark"
+        "5km Flight Benchmark"
     }
 
     pub fn into_scenario(self, view_distance: i32) -> BenchmarkScenario {
@@ -68,7 +68,7 @@ pub struct BenchmarkScenario {
 }
 
 impl BenchmarkScenario {
-    pub const DEFAULT_FLIGHT_DISTANCE: f32 = 1000.0;
+    pub const DEFAULT_FLIGHT_DISTANCE: f32 = 5000.0;
     pub const DEFAULT_FLIGHT_SPEED: f32 = 50.0;
     pub const DEFAULT_FLIGHT_ALTITUDE: f32 = 92.0;
     pub const DEFAULT_WARMUP_SECS: f32 = 2.5;
@@ -76,7 +76,7 @@ impl BenchmarkScenario {
     pub fn standard(view_distance: i32) -> Self {
         Self {
             id: "standard",
-            name: "Standard 1km Flight Benchmark",
+            name: "Standard 5km Flight Benchmark",
             view_distance,
             flight_distance: Self::DEFAULT_FLIGHT_DISTANCE,
             flight_speed: Self::DEFAULT_FLIGHT_SPEED,
@@ -363,7 +363,7 @@ pub fn benchmark_runner_system(
                     state.static_fps, state.static_frametime_ms
                 );
                 println!(
-                    "[BENCHMARK] Starting 1km Trajectory Flight at {:.1} m/s (Target: {:.0}m)...\n",
+                    "[BENCHMARK] Starting 5km Trajectory Flight at {:.1} m/s (Target: {:.0}m)...\n",
                     config.scenario.flight_speed, config.scenario.flight_distance
                 );
 
@@ -373,8 +373,11 @@ pub fn benchmark_runner_system(
             }
         }
         BenchmarkPhase::FlightRecording => {
-            // Advance along +Z at steady flight speed
-            transform.translation.z += config.scenario.flight_speed * dt;
+            // Advance in camera forward direction at steady flight speed
+            let mut forward = *transform.forward();
+            forward.y = 0.0;
+            let forward = forward.normalize_or_zero();
+            transform.translation += forward * config.scenario.flight_speed * dt;
 
             let start = state.start_z.get_or_insert(0.0);
             state.distance_traveled = (transform.translation.z - *start).abs();
@@ -583,7 +586,7 @@ fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkCon
         state.static_fps, state.static_frametime_ms
     );
     println!("------------------------------------------------------------");
-    println!("  [PHASE 2: DYNAMIC FLIGHT - 1KM TRAJECTORY STREAMING]");
+    println!("  [PHASE 2: DYNAMIC FLIGHT - 5KM TRAJECTORY STREAMING]");
     println!(
         "  Distance Traveled    : \x1b[1;32m{:.1} m ({:.2} km)\x1b[0m in {:.2} s (Speed: {:.1} m/s)",
         state.distance_traveled,
@@ -672,7 +675,7 @@ mod tests {
     fn test_benchmark_scenario_standard_properties() {
         let bench = BenchmarkScenario::standard(64);
         assert_eq!(bench.view_distance, 64);
-        assert!((bench.flight_distance - 1000.0).abs() < f32::EPSILON);
+        assert!((bench.flight_distance - 5000.0).abs() < f32::EPSILON);
         assert!((bench.flight_speed - 50.0).abs() < f32::EPSILON);
         assert!(!bench.distance_fog);
     }
@@ -696,22 +699,26 @@ mod tests {
         assert_eq!(suite.scenarios.len(), 1);
         assert_eq!(suite.seed, BenchmarkSuite::DEFAULT_SEED);
         assert_eq!(suite.scenarios[0].view_distance, 32);
-        assert!((suite.scenarios[0].flight_distance - 1000.0).abs() < f32::EPSILON);
+        assert!((suite.scenarios[0].flight_distance - 5000.0).abs() < f32::EPSILON);
     }
 
     #[test]
     fn test_benchmark_preset_from_str_name() {
         assert_eq!(
             BenchmarkPreset::from_str_name("flight"),
-            Some(BenchmarkPreset::Flight1km)
+            Some(BenchmarkPreset::Flight5km)
         );
         assert_eq!(
             BenchmarkPreset::from_str_name("PRODUCTION"),
-            Some(BenchmarkPreset::Flight1km)
+            Some(BenchmarkPreset::Flight5km)
         );
         assert_eq!(
             BenchmarkPreset::from_str_name("standard"),
-            Some(BenchmarkPreset::Flight1km)
+            Some(BenchmarkPreset::Flight5km)
+        );
+        assert_eq!(
+            BenchmarkPreset::from_str_name("5km"),
+            Some(BenchmarkPreset::Flight5km)
         );
         assert_eq!(BenchmarkPreset::from_str_name("invalid_preset"), None);
     }
@@ -729,7 +736,7 @@ mod tests {
             static_chunks: 289,
             chunk_samples: vec![289],
             vertex_samples: vec![100_000],
-            distance_traveled: 1000.0,
+            distance_traveled: 5000.0,
             ..Default::default()
         };
 

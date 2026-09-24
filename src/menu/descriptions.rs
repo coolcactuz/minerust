@@ -75,7 +75,7 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
         MenuButtonAction::StartBenchmark => Some(OptionDescription {
             header: "AUTOMATED BENCHMARK",
             title: "Run Hardware Benchmark",
-            description: "Generates a standardized world on seed 'BENCHMARK' and executes a 1,000m high-speed camera flight across diverse terrain to evaluate performance under your active graphics settings.",
+            description: "Generates a standardized world on seed 'BENCHMARK' and executes a 5,000m (5km) high-speed camera flight across diverse terrain to evaluate performance under your active graphics settings.",
             impact: "- Measures average FPS, 1% low, frametimes, RAM, VRAM, and provides optimization advice.",
         }),
         MenuButtonAction::BackFromBenchmark => Some(OptionDescription {
