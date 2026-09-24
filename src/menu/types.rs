@@ -5,6 +5,7 @@ pub enum MenuScreen {
     Main,
     Settings,
     Pause,
+    BenchmarkResults,
     None, // In-game gameplay
 }
 
@@ -402,6 +403,8 @@ pub enum MenuButtonAction {
     StepDistanceLodRight,
     SlideDistanceLod,
     ToggleDistanceLod,
+    StartBenchmark,
+    BackFromBenchmark,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -508,3 +511,48 @@ pub struct GraphicsLodFill;
 
 #[derive(Component)]
 pub struct GraphicsLodThumb;
+
+#[derive(Component)]
+pub struct BenchmarkResultsRoot;
+
+#[derive(Component)]
+pub struct BenchmarkRunningBanner;
+
+#[derive(Component)]
+pub struct BenchmarkBannerText;
+
+#[derive(Component)]
+pub struct BenchmarkAvgFpsText;
+
+#[derive(Component)]
+pub struct BenchmarkOnePercentLowText;
+
+#[derive(Component)]
+pub struct BenchmarkFrametimeText;
+
+#[derive(Component)]
+pub struct BenchmarkMinMaxFrametimeText;
+
+#[derive(Component)]
+pub struct BenchmarkP99Text;
+
+#[derive(Component)]
+pub struct BenchmarkRamText;
+
+#[derive(Component)]
+pub struct BenchmarkVramText;
+
+#[derive(Component)]
+pub struct BenchmarkChunksText;
+
+#[derive(Component)]
+pub struct BenchmarkVertsText;
+
+#[derive(Component)]
+pub struct BenchmarkSettingsText;
+
+#[derive(Component)]
+pub struct BenchmarkVerdictTitleText;
+
+#[derive(Component)]
+pub struct BenchmarkVerdictDescText;

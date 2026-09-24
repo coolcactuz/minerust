@@ -78,6 +78,8 @@ fn test_get_option_description_all_actions() {
         MenuButtonAction::QuitGame,
         MenuButtonAction::ToggleEditSeed,
         MenuButtonAction::RandomizeSeed,
+        MenuButtonAction::StartBenchmark,
+        MenuButtonAction::BackFromBenchmark,
     ];
 
     for action in actions {

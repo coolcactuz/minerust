@@ -2,13 +2,17 @@ use bevy::prelude::*;
 
 use super::descriptions::get_option_description;
 use super::types::{
-    DebugHudBtnText, DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsLimiter,
-    FullscreenBtnText, GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb,
-    GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, MenuButtonAction,
-    OptionTooltipCard, OptionTooltipDesc, OptionTooltipHeader, OptionTooltipImpact,
-    OptionTooltipTitle, ProfilerState, ShadowsBtnText, ViewDistanceBtnText, ViewDistanceFill,
-    ViewDistanceThumb, VsyncBtnText,
+    BenchmarkAvgFpsText, BenchmarkBannerText, BenchmarkChunksText, BenchmarkFrametimeText,
+    BenchmarkMinMaxFrametimeText, BenchmarkOnePercentLowText, BenchmarkP99Text, BenchmarkRamText,
+    BenchmarkRunningBanner, BenchmarkSettingsText, BenchmarkVerdictDescText,
+    BenchmarkVerdictTitleText, BenchmarkVertsText, BenchmarkVramText, DebugHudBtnText,
+    DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsLimiter, FullscreenBtnText,
+    GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsLodBtnText,
+    GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, MenuButtonAction, OptionTooltipCard,
+    OptionTooltipDesc, OptionTooltipHeader, OptionTooltipImpact, OptionTooltipTitle, ProfilerState,
+    ShadowsBtnText, ViewDistanceBtnText, ViewDistanceFill, ViewDistanceThumb, VsyncBtnText,
 };
+use crate::benchmark::{BenchmarkConfig, BenchmarkPhase, BenchmarkState, BenchmarkSummary};
 
 pub fn update_settings_button_text_system(
     settings: Res<GraphicsSettings>,
@@ -261,7 +265,16 @@ pub fn auto_save_graphics_settings_system(settings: Res<GraphicsSettings>) {
     }
 }
 
-pub fn fps_limiter_system(settings: Res<GraphicsSettings>, mut limiter: ResMut<FpsLimiter>) {
+pub fn fps_limiter_system(
+    settings: Res<GraphicsSettings>,
+    bench_config: Option<Res<BenchmarkConfig>>,
+    mut limiter: ResMut<FpsLimiter>,
+) {
+    if bench_config.as_ref().is_some_and(|c| c.enabled) {
+        limiter.last_frame_instant = None;
+        return;
+    }
+
     if let Some(cap) = settings.fps_cap {
         let target_frame_duration = std::time::Duration::from_secs_f64(1.0 / cap as f64);
         if let Some(last) = limiter.last_frame_instant {
@@ -273,5 +286,164 @@ pub fn fps_limiter_system(settings: Res<GraphicsSettings>, mut limiter: ResMut<F
         limiter.last_frame_instant = Some(std::time::Instant::now());
     } else {
         limiter.last_frame_instant = None;
+    }
+}
+
+pub fn update_benchmark_banner_system(
+    config: Option<Res<BenchmarkConfig>>,
+    state: Option<Res<BenchmarkState>>,
+    mut banner_query: Query<&mut Visibility, With<BenchmarkRunningBanner>>,
+    mut text_query: Query<&mut Text, With<BenchmarkBannerText>>,
+) {
+    let (Some(config), Some(state)) = (config, state) else {
+        return;
+    };
+
+    let is_running = config.enabled && !config.is_cli && !state.completed;
+    for mut vis in &mut banner_query {
+        let target = if is_running {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != target {
+            *vis = target;
+        }
+    }
+
+    if is_running {
+        let total_dist = config.scenario.flight_distance;
+        let dist = state.distance_traveled.min(total_dist);
+        let pct = if total_dist > 0.0 {
+            (dist / total_dist * 100.0).clamp(0.0, 100.0)
+        } else {
+            0.0
+        };
+
+        let status_str = match state.phase {
+            BenchmarkPhase::InitializingWorld => {
+                format!(
+                    "[ BENCHMARK: PREGENERATING CHUNKS ] Elapsed: {:.1}s | Press [ESC] to Cancel",
+                    state.elapsed
+                )
+            }
+            BenchmarkPhase::StationarySettle => {
+                format!(
+                    "[ BENCHMARK: MEASURING BASELINE ] Settling 1.5s ({:.1}s) | Press [ESC] to Cancel",
+                    state.stationary_timer
+                )
+            }
+            BenchmarkPhase::FlightRecording => {
+                format!(
+                    "[ BENCHMARK IN PROGRESS ] Distance: {:.0}m / {:.0}m ({:.0}%) | Press [ESC] to Cancel",
+                    dist, total_dist, pct
+                )
+            }
+            BenchmarkPhase::Completed => "[ BENCHMARK COMPLETED ]".to_string(),
+        };
+
+        for mut text in &mut text_query {
+            *text = Text::new(&status_str);
+        }
+    }
+}
+
+pub fn update_benchmark_results_ui_system(
+    summary: Option<Res<BenchmarkSummary>>,
+    mut query: Query<(
+        &mut Text,
+        Option<&mut TextColor>,
+        Option<&BenchmarkAvgFpsText>,
+        Option<&BenchmarkOnePercentLowText>,
+        Option<&BenchmarkP99Text>,
+        Option<&BenchmarkFrametimeText>,
+        Option<&BenchmarkMinMaxFrametimeText>,
+        Option<&BenchmarkRamText>,
+        Option<&BenchmarkVramText>,
+        Option<&BenchmarkChunksText>,
+        Option<&BenchmarkVertsText>,
+        Option<&BenchmarkSettingsText>,
+        Option<&BenchmarkVerdictTitleText>,
+        Option<&BenchmarkVerdictDescText>,
+    )>,
+) {
+    let Some(summary) = summary else {
+        return;
+    };
+    if !summary.is_changed() || !summary.has_results {
+        return;
+    }
+
+    for (
+        mut text,
+        mut text_color,
+        avg_fps,
+        low_fps,
+        p99,
+        frametime,
+        min_max,
+        ram,
+        vram,
+        chunks,
+        verts,
+        settings,
+        verdict_title,
+        verdict_desc,
+    ) in &mut query
+    {
+        if avg_fps.is_some() {
+            *text = Text::new(format!("Avg: {:.1} FPS", summary.avg_fps));
+        } else if low_fps.is_some() {
+            *text = Text::new(format!("1% Low: {:.1} FPS", summary.one_percent_low_fps));
+        } else if p99.is_some() {
+            *text = Text::new(format!("99th %: {:.2} ms", summary.p99_frametime_ms));
+        } else if frametime.is_some() {
+            *text = Text::new(format!("Frametime: {:.2} ms", summary.avg_frametime_ms));
+        } else if min_max.is_some() {
+            *text = Text::new(format!(
+                "Min/Max: {:.1} / {:.1} ms",
+                summary.min_frametime_ms, summary.max_frametime_ms
+            ));
+        } else if ram.is_some() {
+            *text = Text::new(format!("RAM (RSS): {:.1} MB", summary.peak_rss_mb));
+        } else if vram.is_some() {
+            *text = Text::new(if summary.peak_vram_mb > 0.0 {
+                format!("VRAM: {:.1} MB", summary.peak_vram_mb)
+            } else {
+                "VRAM: N/A".to_string()
+            });
+        } else if chunks.is_some() {
+            *text = Text::new(format!("Active Chunks: {}", summary.peak_chunks_active));
+        } else if verts.is_some() {
+            let tris_k = (summary.peak_vertices / 2) as f32 / 1000.0;
+            *text = Text::new(format!(
+                "Peak Geometry: {} verts (~{:.1}k tris)",
+                summary.peak_vertices, tris_k
+            ));
+        } else if settings.is_some() {
+            *text = Text::new(format!(
+                "Render Dist: {} chunks\nGreedy Meshing: {}\nSloped LOD: {}\nShadows: {}\nFog: {}",
+                summary.tested_view_distance,
+                summary.tested_greedy,
+                summary.tested_lod,
+                if summary.tested_shadows { "ON" } else { "OFF" },
+                if summary.tested_fog { "ON" } else { "OFF" }
+            ));
+        } else if verdict_title.is_some() {
+            *text = Text::new(format!("[ HARDWARE VERDICT ] {}", summary.verdict_title));
+            if let Some(ref mut color) = text_color {
+                if summary.avg_fps >= 100.0 && summary.one_percent_low_fps >= 60.0 {
+                    color.0 = Color::srgb(0.35, 1.0, 0.55);
+                } else if summary.avg_fps >= 60.0 {
+                    color.0 = Color::srgb(0.4, 0.85, 1.0);
+                } else if summary.avg_fps >= 45.0 {
+                    color.0 = Color::srgb(1.0, 0.85, 0.2);
+                } else {
+                    color.0 = Color::srgb(1.0, 0.45, 0.4);
+                }
+            }
+        } else if verdict_desc.is_some() {
+            *text = Text::new(&summary.verdict_desc);
+        }
     }
 }

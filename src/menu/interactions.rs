@@ -1,7 +1,9 @@
 use bevy::app::AppExit;
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, MonitorSelection, PresentMode, PrimaryWindow, WindowMode};
 
+use crate::benchmark::{BenchmarkConfig, BenchmarkScenario, BenchmarkState};
 use crate::inventory::Inventory;
 use crate::physics::PlayerPhysics;
 use crate::save::{load_player_from_disk, PlayerSaveData};
@@ -9,10 +11,22 @@ use crate::voxel_material::VoxelBlockMaterial;
 use crate::world::{find_safe_surface_spawn, WorldGrid, WorldSeed};
 
 use super::types::{
-    FpsCapTrack, GraphicsGreedyTrack, GraphicsLodTrack, GraphicsSettings, MainMenuRoot,
-    MenuButtonAction, MenuScreen, MenuState, PauseMenuRoot, ProfilerState, SeedInputBox,
-    SeedInputState, SettingsMenuRoot, SliderTrack, ViewDistanceTrack,
+    BenchmarkResultsRoot, FpsCapTrack, GraphicsGreedyTrack, GraphicsLodTrack, GraphicsSettings,
+    MainMenuRoot, MenuButtonAction, MenuScreen, MenuState, PauseMenuRoot, ProfilerState,
+    SeedInputBox, SeedInputState, SettingsMenuRoot, SliderTrack, ViewDistanceTrack,
 };
+
+#[derive(SystemParam)]
+pub struct MenuAssets<'w> {
+    pub meshes: ResMut<'w, Assets<Mesh>>,
+    pub materials: ResMut<'w, Assets<VoxelBlockMaterial>>,
+}
+
+#[derive(SystemParam)]
+pub struct MenuBenchmarkControl<'w> {
+    pub config: Option<ResMut<'w, BenchmarkConfig>>,
+    pub state: Option<ResMut<'w, BenchmarkState>>,
+}
 
 pub fn menu_input_system(
     keys: Res<ButtonInput<KeyCode>>,
@@ -21,6 +35,7 @@ pub fn menu_input_system(
     mut profiler_state: Option<ResMut<ProfilerState>>,
     mut seed_state: Option<ResMut<SeedInputState>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut bench_control: MenuBenchmarkControl,
 ) {
     let Ok(mut cursor) = cursor_options.single_mut() else {
         return;
@@ -47,6 +62,21 @@ pub fn menu_input_system(
             }
         }
 
+        // Cancel in-progress hardware benchmark if currently running
+        if let (Some(ref mut config), Some(ref mut state)) = (
+            bench_control.config.as_deref_mut(),
+            bench_control.state.as_deref_mut(),
+        ) {
+            if config.enabled && !config.is_cli && !state.completed {
+                config.enabled = false;
+                state.completed = true;
+                menu.screen = MenuScreen::Settings;
+                cursor.grab_mode = CursorGrabMode::None;
+                cursor.visible = true;
+                return;
+            }
+        }
+
         match menu.screen {
             MenuScreen::None => {
                 // In game -> Open pause menu and unlock cursor
@@ -64,6 +94,10 @@ pub fn menu_input_system(
                 // Return to previous screen (Main or Pause)
                 menu.screen = menu.previous_screen;
             }
+            MenuScreen::BenchmarkResults => {
+                // Return to settings menu from benchmark results screen
+                menu.screen = MenuScreen::Settings;
+            }
             MenuScreen::Main => {
                 // In main menu -> Do nothing on ESC
             }
@@ -73,57 +107,43 @@ pub fn menu_input_system(
 
 pub fn update_menu_visibility_system(
     menu: Res<MenuState>,
-    mut main_query: Query<
+    mut query: Query<(
         &mut Visibility,
-        (
-            With<MainMenuRoot>,
-            Without<PauseMenuRoot>,
-            Without<SettingsMenuRoot>,
-        ),
-    >,
-    mut pause_query: Query<
-        &mut Visibility,
-        (
-            With<PauseMenuRoot>,
-            Without<MainMenuRoot>,
-            Without<SettingsMenuRoot>,
-        ),
-    >,
-    mut settings_query: Query<
-        &mut Visibility,
-        (
-            With<SettingsMenuRoot>,
-            Without<MainMenuRoot>,
-            Without<PauseMenuRoot>,
-        ),
-    >,
+        Option<&MainMenuRoot>,
+        Option<&PauseMenuRoot>,
+        Option<&SettingsMenuRoot>,
+        Option<&BenchmarkResultsRoot>,
+    )>,
 ) {
-    if let Ok(mut vis) = main_query.single_mut() {
-        let target = if menu.screen == MenuScreen::Main {
-            Visibility::Inherited
+    for (mut vis, main, pause, settings, bench) in &mut query {
+        let target = if main.is_some() {
+            if menu.screen == MenuScreen::Main {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            }
+        } else if pause.is_some() {
+            if menu.screen == MenuScreen::Pause {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            }
+        } else if settings.is_some() {
+            if menu.screen == MenuScreen::Settings {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            }
+        } else if bench.is_some() {
+            if menu.screen == MenuScreen::BenchmarkResults {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            }
         } else {
-            Visibility::Hidden
+            continue;
         };
-        if *vis != target {
-            *vis = target;
-        }
-    }
-    if let Ok(mut vis) = pause_query.single_mut() {
-        let target = if menu.screen == MenuScreen::Pause {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        if *vis != target {
-            *vis = target;
-        }
-    }
-    if let Ok(mut vis) = settings_query.single_mut() {
-        let target = if menu.screen == MenuScreen::Settings {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
+
         if *vis != target {
             *vis = target;
         }
@@ -181,13 +201,13 @@ pub fn menu_button_click_system(
     mut profiler_state: Option<ResMut<ProfilerState>>,
     mut seed_state: Option<ResMut<SeedInputState>>,
     mut world: Option<ResMut<WorldGrid>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<VoxelBlockMaterial>>,
+    mut assets: MenuAssets,
     mut window_query: Query<&mut Window, With<PrimaryWindow>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut exit_writer: MessageWriter<AppExit>,
     mut player_query: Query<(&mut Transform, &mut crate::camera::FpsCamera, &mut PlayerPhysics)>,
     mut inventory: Option<ResMut<Inventory>>,
+    mut bench_control: MenuBenchmarkControl,
     interaction_query: Query<(&Interaction, &MenuButtonAction), (Changed<Interaction>, With<Button>)>,
 ) {
     let Ok(mut window) = window_query.single_mut() else {
@@ -264,8 +284,8 @@ pub fn menu_button_click_system(
                             w.pregenerate_spawn_grid(
                                 center_chunk,
                                 &mut commands,
-                                &mut meshes,
-                                &mut materials,
+                                &mut assets.meshes,
+                                &mut assets.materials,
                             );
 
                             window.title = format!("MineRust - Seed: {}", target_seed.0);
@@ -334,8 +354,8 @@ pub fn menu_button_click_system(
                         w.pregenerate_spawn_grid(
                             center_chunk,
                             &mut commands,
-                            &mut meshes,
-                            &mut materials,
+                            &mut assets.meshes,
+                            &mut assets.materials,
                         );
 
                         window.title = format!("MineRust - Seed: {}", target_seed.0);
@@ -359,6 +379,9 @@ pub fn menu_button_click_system(
                     menu.screen = menu.previous_screen;
                 }
                 MenuButtonAction::BackToMain => {
+                    if let Some(ref mut config) = bench_control.config.as_deref_mut() {
+                        config.enabled = false;
+                    }
                     if let Some(ref mut w) = world {
                         let _ = w.save_all_modified();
                         if let Ok((transform, fps_cam, _)) = player_query.single() {
@@ -379,6 +402,7 @@ pub fn menu_button_click_system(
                     }
                     menu.world_active = false;
                     menu.screen = MenuScreen::Main;
+                    window.title = "MineRust".to_string();
                     cursor.grab_mode = CursorGrabMode::None;
                     cursor.visible = true;
                 }
@@ -441,6 +465,62 @@ pub fn menu_button_click_system(
                 }
                 MenuButtonAction::ToggleDistanceLod => {
                     settings.distance_lod = !settings.distance_lod;
+                }
+                MenuButtonAction::StartBenchmark => {
+                    let target_seed = WorldSeed::from_seed_str("BENCHMARK");
+                    if let Some(ref mut w) = world {
+                        w.reinitialize_with_seed(target_seed, &mut commands);
+
+                        let spawn_pos = Vec3::new(
+                            0.0,
+                            BenchmarkScenario::DEFAULT_FLIGHT_ALTITUDE,
+                            0.0,
+                        );
+                        let player_yaw = 0.0;
+                        let player_pitch = -0.06;
+
+                        if let Ok((mut transform, mut fps_cam, mut physics)) =
+                            player_query.single_mut()
+                        {
+                            transform.translation = spawn_pos;
+                            transform.rotation = Quat::from_rotation_y(player_yaw)
+                                * Quat::from_rotation_x(player_pitch);
+                            fps_cam.yaw = player_yaw;
+                            fps_cam.pitch = player_pitch;
+                            physics.velocity = Vec3::ZERO;
+                            physics.is_flying = true;
+                        }
+
+                        let center_chunk = WorldGrid::world_to_chunk_coord(0, 0).0;
+                        w.pregenerate_spawn_grid(
+                            center_chunk,
+                            &mut commands,
+                            &mut assets.meshes,
+                            &mut assets.materials,
+                        );
+
+                        window.title = "MineRust [BENCHMARK RUNNING] - Seed: BENCHMARK".to_string();
+                    }
+
+                    if let (Some(ref mut config), Some(ref mut state)) = (
+                        bench_control.config.as_deref_mut(),
+                        bench_control.state.as_deref_mut(),
+                    ) {
+                        config.enabled = true;
+                        config.is_cli = false;
+                        config.seed = target_seed.0;
+                        config.scenario.view_distance = settings.view_distance;
+                        config.scenario.distance_fog = settings.distance_fog;
+                        **state = BenchmarkState::default();
+                    }
+
+                    menu.world_active = true;
+                    menu.screen = MenuScreen::None;
+                    cursor.grab_mode = CursorGrabMode::Locked;
+                    cursor.visible = false;
+                }
+                MenuButtonAction::BackFromBenchmark => {
+                    menu.screen = MenuScreen::Settings;
                 }
                 MenuButtonAction::SlideFpsCap
                 | MenuButtonAction::SlideViewDistance

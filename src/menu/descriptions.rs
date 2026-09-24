@@ -72,6 +72,18 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             description: "Replaces distant stepped voxel stairs on mountain slopes with smooth continuous angled surfaces and groups exposed ore veins into stone.",
             impact: "- ON (2-32 Chunks): Cuts distant geometry by up to 90%, stabilizing 60+ FPS.\n- OFF: Preserves 1x1 voxel blocks all the way to the horizon.",
         }),
+        MenuButtonAction::StartBenchmark => Some(OptionDescription {
+            header: "AUTOMATED BENCHMARK",
+            title: "Run Hardware Benchmark",
+            description: "Generates a standardized world on seed 'BENCHMARK' and executes a 1,000m high-speed camera flight across diverse terrain to evaluate performance under your active graphics settings.",
+            impact: "- Measures average FPS, 1% low, frametimes, RAM, VRAM, and provides optimization advice.",
+        }),
+        MenuButtonAction::BackFromBenchmark => Some(OptionDescription {
+            header: "NAVIGATION",
+            title: "Change Graphics Settings",
+            description: "Return to the Graphics Settings menu to fine-tune render distance, LOD, or shadows and run another test.",
+            impact: "- Quickly iterate and verify frame rate improvements.",
+        }),
         MenuButtonAction::BackFromSettings => Some(OptionDescription {
             header: "NAVIGATION",
             title: "Back / Done",

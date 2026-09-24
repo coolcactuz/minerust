@@ -188,6 +188,7 @@ fn main() {
 
     let benchmark_config = BenchmarkConfig {
         enabled: opts.is_benchmark,
+        is_cli: opts.is_benchmark,
         seed: seed.0,
         scenario,
     };

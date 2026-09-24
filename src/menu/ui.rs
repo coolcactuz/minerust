@@ -2,6 +2,10 @@ use bevy::prelude::*;
 use bevy::text::FontSize;
 
 use super::types::{
+    BenchmarkAvgFpsText, BenchmarkBannerText, BenchmarkChunksText, BenchmarkFrametimeText,
+    BenchmarkMinMaxFrametimeText, BenchmarkOnePercentLowText, BenchmarkP99Text, BenchmarkRamText,
+    BenchmarkResultsRoot, BenchmarkRunningBanner, BenchmarkSettingsText,
+    BenchmarkVerdictDescText, BenchmarkVerdictTitleText, BenchmarkVertsText, BenchmarkVramText,
     DebugHudBtnText, DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsCapTrack,
     FullscreenBtnText, GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb,
     GraphicsGreedyTrack, GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsLodTrack,
@@ -31,6 +35,8 @@ pub fn setup_menu_ui(
         graphics_settings.as_deref(),
         profiler_state.as_deref(),
     );
+    spawn_benchmark_results_menu(&mut commands);
+    spawn_benchmark_running_banner(&mut commands);
 }
 
 fn spawn_main_menu(commands: &mut Commands, initial_seed_str: &str) {
@@ -498,12 +504,23 @@ fn spawn_settings_menu(
                             42.0,
                         );
 
+                        // Run Hardware Benchmark Button
+                        spawn_menu_button_sized(
+                            btn_col,
+                            "⚡ Run Hardware Benchmark",
+                            MenuButtonAction::StartBenchmark,
+                            true,
+                            320.0,
+                            34.0,
+                            14.0,
+                        );
+
                         // Back Button
                         spawn_menu_button_sized(
                             btn_col,
                             "Back / Done",
                             MenuButtonAction::BackFromSettings,
-                            true,
+                            false,
                             320.0,
                             34.0,
                             14.0,
@@ -512,6 +529,309 @@ fn spawn_settings_menu(
 
                     // Right Info Popup Card
                     spawn_option_tooltip_card(row, 380.0, 380.0);
+                });
+        });
+}
+
+fn spawn_benchmark_results_menu(commands: &mut Commands) {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(0.0),
+                top: Val::Percent(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.03, 0.04, 0.07, 0.93)),
+            Visibility::Hidden,
+            BenchmarkResultsRoot,
+        ))
+        .with_children(|parent| {
+            // Container modal
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(840.0),
+                        max_width: Val::Percent(96.0),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::all(Val::Px(20.0)),
+                        row_gap: Val::Px(12.0),
+                        border: UiRect::all(Val::Px(2.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.07, 0.08, 0.12, 0.98)),
+                    BorderColor::all(Color::srgb(1.0, 0.85, 0.2)), // Gold border
+                ))
+                .with_children(|card| {
+                    // Header title
+                    card.spawn((
+                        Text::new("BENCHMARK RESULTS & HARDWARE TELEMETRY"),
+                        TextFont {
+                            font_size: FontSize::Px(24.0),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(1.0, 0.85, 0.2)),
+                    ));
+                    card.spawn((
+                        Text::new("Standardized 1,000m high-speed streaming trajectory flight on seed 'BENCHMARK'"),
+                        TextFont {
+                            font_size: FontSize::Px(13.0),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.7, 0.75, 0.85)),
+                    ));
+
+                    // Row with 3 Cards
+                    card.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(12.0),
+                        width: Val::Percent(100.0),
+                        justify_content: JustifyContent::SpaceBetween,
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        // Card 1: Framerate & Pacing
+                        row.spawn((
+                            Node {
+                                width: Val::Px(256.0),
+                                flex_direction: FlexDirection::Column,
+                                padding: UiRect::all(Val::Px(12.0)),
+                                row_gap: Val::Px(6.0),
+                                border: UiRect::all(Val::Px(1.0)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.12, 0.13, 0.18, 0.9)),
+                            BorderColor::all(Color::srgba(0.35, 0.55, 0.85, 0.5)),
+                        ))
+                        .with_children(|c| {
+                            c.spawn((
+                                Text::new("[ FRAMERATE & PACING ]"),
+                                TextFont { font_size: FontSize::Px(11.5), ..default() },
+                                TextColor(Color::srgb(1.0, 0.85, 0.2)),
+                            ));
+                            c.spawn((
+                                Text::new("Avg: -- FPS"),
+                                TextFont { font_size: FontSize::Px(24.0), ..default() },
+                                TextColor(Color::srgb(0.35, 1.0, 0.55)),
+                                BenchmarkAvgFpsText,
+                            ));
+                            c.spawn((
+                                Text::new("1% Low: -- FPS"),
+                                TextFont { font_size: FontSize::Px(14.0), ..default() },
+                                TextColor(Color::srgb(0.9, 0.95, 0.4)),
+                                BenchmarkOnePercentLowText,
+                            ));
+                            c.spawn((
+                                Text::new("99th %: -- ms"),
+                                TextFont { font_size: FontSize::Px(12.0), ..default() },
+                                TextColor(Color::srgb(0.8, 0.85, 0.9)),
+                                BenchmarkP99Text,
+                            ));
+                            c.spawn((
+                                Text::new("Frametime: -- ms"),
+                                TextFont { font_size: FontSize::Px(12.0), ..default() },
+                                TextColor(Color::srgb(0.8, 0.85, 0.9)),
+                                BenchmarkFrametimeText,
+                            ));
+                            c.spawn((
+                                Text::new("Min/Max: -- / --"),
+                                TextFont { font_size: FontSize::Px(11.5), ..default() },
+                                TextColor(Color::srgb(0.65, 0.7, 0.8)),
+                                BenchmarkMinMaxFrametimeText,
+                            ));
+                        });
+
+                        // Card 2: Memory & Hardware
+                        row.spawn((
+                            Node {
+                                width: Val::Px(256.0),
+                                flex_direction: FlexDirection::Column,
+                                padding: UiRect::all(Val::Px(12.0)),
+                                row_gap: Val::Px(6.0),
+                                border: UiRect::all(Val::Px(1.0)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.12, 0.13, 0.18, 0.9)),
+                            BorderColor::all(Color::srgba(0.35, 0.55, 0.85, 0.5)),
+                        ))
+                        .with_children(|c| {
+                            c.spawn((
+                                Text::new("[ MEMORY & HARDWARE ]"),
+                                TextFont { font_size: FontSize::Px(11.5), ..default() },
+                                TextColor(Color::srgb(1.0, 0.85, 0.2)),
+                            ));
+                            c.spawn((
+                                Text::new("RAM (RSS): -- MB"),
+                                TextFont { font_size: FontSize::Px(14.5), ..default() },
+                                TextColor(Color::srgb(0.4, 0.85, 1.0)),
+                                BenchmarkRamText,
+                            ));
+                            c.spawn((
+                                Text::new("VRAM: -- MB"),
+                                TextFont { font_size: FontSize::Px(14.5), ..default() },
+                                TextColor(Color::srgb(0.4, 0.85, 1.0)),
+                                BenchmarkVramText,
+                            ));
+                            c.spawn((
+                                Text::new("Active Chunks: --"),
+                                TextFont { font_size: FontSize::Px(12.0), ..default() },
+                                TextColor(Color::srgb(0.8, 0.85, 0.9)),
+                                BenchmarkChunksText,
+                            ));
+                            c.spawn((
+                                Text::new("Peak Geometry: --"),
+                                TextFont { font_size: FontSize::Px(12.0), ..default() },
+                                TextColor(Color::srgb(0.8, 0.85, 0.9)),
+                                BenchmarkVertsText,
+                            ));
+                            c.spawn((
+                                Text::new("Flight: 1,000m @ 50m/s"),
+                                TextFont { font_size: FontSize::Px(11.5), ..default() },
+                                TextColor(Color::srgb(0.65, 0.7, 0.8)),
+                            ));
+                        });
+
+                        // Card 3: Evaluated Settings
+                        row.spawn((
+                            Node {
+                                width: Val::Px(256.0),
+                                flex_direction: FlexDirection::Column,
+                                padding: UiRect::all(Val::Px(12.0)),
+                                row_gap: Val::Px(6.0),
+                                border: UiRect::all(Val::Px(1.0)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.12, 0.13, 0.18, 0.9)),
+                            BorderColor::all(Color::srgba(0.35, 0.55, 0.85, 0.5)),
+                        ))
+                        .with_children(|c| {
+                            c.spawn((
+                                Text::new("[ TESTED SETTINGS ]"),
+                                TextFont { font_size: FontSize::Px(11.5), ..default() },
+                                TextColor(Color::srgb(1.0, 0.85, 0.2)),
+                            ));
+                            c.spawn((
+                                Text::new("Loading settings..."),
+                                TextFont { font_size: FontSize::Px(12.0), ..default() },
+                                TextColor(Color::srgb(0.85, 0.9, 0.95)),
+                                BenchmarkSettingsText,
+                            ));
+                        });
+                    });
+
+                    // Verdict Card
+                    card.spawn((
+                        Node {
+                            width: Val::Percent(100.0),
+                            flex_direction: FlexDirection::Column,
+                            padding: UiRect::all(Val::Px(12.0)),
+                            row_gap: Val::Px(4.0),
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.10, 0.12, 0.18, 0.95)),
+                        BorderColor::all(Color::srgb(0.35, 0.75, 1.0)),
+                    ))
+                    .with_children(|v| {
+                        v.spawn((
+                            Text::new("[ HARDWARE VERDICT ] Analyzing..."),
+                            TextFont { font_size: FontSize::Px(14.0), ..default() },
+                            TextColor(Color::srgb(1.0, 0.85, 0.2)),
+                            BenchmarkVerdictTitleText,
+                        ));
+                        v.spawn((
+                            Text::new("Optimization advice will appear here once the benchmark completes."),
+                            TextFont { font_size: FontSize::Px(12.5), ..default() },
+                            TextColor(Color::srgb(0.85, 0.9, 0.95)),
+                            BenchmarkVerdictDescText,
+                        ));
+                    });
+
+                    // Action Buttons Row
+                    card.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(16.0),
+                        margin: UiRect::top(Val::Px(6.0)),
+                        ..default()
+                    })
+                    .with_children(|btn_row| {
+                        spawn_menu_button_sized(
+                            btn_row,
+                            "⚡ Rerun Benchmark",
+                            MenuButtonAction::StartBenchmark,
+                            true,
+                            220.0,
+                            36.0,
+                            13.5,
+                        );
+                        spawn_menu_button_sized(
+                            btn_row,
+                            "Adjust Graphics Settings",
+                            MenuButtonAction::BackFromBenchmark,
+                            false,
+                            230.0,
+                            36.0,
+                            13.5,
+                        );
+                        spawn_menu_button_sized(
+                            btn_row,
+                            "Return to Main Menu",
+                            MenuButtonAction::BackToMain,
+                            false,
+                            200.0,
+                            36.0,
+                            13.5,
+                        );
+                    });
+                });
+        });
+}
+
+fn spawn_benchmark_running_banner(commands: &mut Commands) {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(0.0),
+                top: Val::Px(16.0),
+                width: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Visibility::Hidden,
+            BenchmarkRunningBanner,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        padding: UiRect::axes(Val::Px(24.0), Val::Px(8.0)),
+                        border: UiRect::all(Val::Px(1.5)),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(12.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.04, 0.05, 0.09, 0.92)),
+                    BorderColor::all(Color::srgb(1.0, 0.85, 0.2)),
+                ))
+                .with_children(|box_node| {
+                    box_node.spawn((
+                        Text::new("[ BENCHMARK IN PROGRESS ] Distance: 0m / 1,000m (0%) | Press [ESC] to Cancel"),
+                        TextFont {
+                            font_size: FontSize::Px(13.0),
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.35, 1.0, 0.55)),
+                        BenchmarkBannerText,
+                    ));
                 });
         });
 }

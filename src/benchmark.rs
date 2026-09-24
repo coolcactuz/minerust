@@ -130,6 +130,7 @@ impl BenchmarkSuite {
 #[derive(Resource, Clone, Debug)]
 pub struct BenchmarkConfig {
     pub enabled: bool,
+    pub is_cli: bool,
     pub seed: u64,
     pub scenario: BenchmarkScenario,
 }
@@ -138,8 +139,63 @@ impl Default for BenchmarkConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            is_cli: false,
             seed: BenchmarkSuite::DEFAULT_SEED,
-            scenario: BenchmarkScenario::production(64),
+            scenario: BenchmarkScenario::production(16),
+        }
+    }
+}
+
+/// Comprehensive summary of benchmark metrics presented to the user on completion.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct BenchmarkSummary {
+    pub has_results: bool,
+    pub total_duration_secs: f32,
+    pub total_frames: usize,
+    pub avg_fps: f32,
+    pub one_percent_low_fps: f32,
+    pub p99_frametime_ms: f32,
+    pub avg_frametime_ms: f32,
+    pub min_frametime_ms: f32,
+    pub max_frametime_ms: f32,
+    pub peak_rss_mb: f32,
+    pub peak_vram_mb: f32,
+    pub total_chunks_meshed: usize,
+    pub peak_chunks_active: usize,
+    pub peak_vertices: usize,
+    pub distance_traveled: f32,
+    pub tested_view_distance: i32,
+    pub tested_greedy: String,
+    pub tested_lod: String,
+    pub tested_shadows: bool,
+    pub tested_fog: bool,
+    pub verdict_title: String,
+    pub verdict_desc: String,
+}
+
+impl BenchmarkSummary {
+    #[must_use]
+    pub fn generate_verdict(avg_fps: f32, one_percent_low_fps: f32, _p99_ms: f32) -> (String, String) {
+        if avg_fps >= 100.0 && one_percent_low_fps >= 60.0 {
+            (
+                "PERFECT: Ultra-Smooth High Refresh Rate".to_string(),
+                "Your hardware delivers 100+ FPS with rock-solid frame pacing. You can comfortably increase Render Distance or maximize visual quality!".to_string(),
+            )
+        } else if avg_fps >= 60.0 && one_percent_low_fps >= 45.0 {
+            (
+                "GREAT: Smooth 60+ FPS Gameplay".to_string(),
+                "Your configuration delivers a consistent 60+ FPS experience with minimal frame drops under fast terrain streaming.".to_string(),
+            )
+        } else if avg_fps >= 45.0 {
+            (
+                "PLAYABLE: Minor Streaming Stutter".to_string(),
+                "Framerate is generally playable but experiences dips during high-speed terrain loading. Try setting Distant Sloped LOD to > 4-8 chunks to reduce distant geometry.".to_string(),
+            )
+        } else {
+            (
+                "SUB-OPTIMAL: Heavy GPU / CPU Load".to_string(),
+                "Significant frame drops detected. Recommended tweaks: enable Distant Sloped LOD (> 4 chunks), disable Dynamic Shadows, or reduce Render Distance by 2-4 chunks.".to_string(),
+            )
         }
     }
 }
@@ -188,8 +244,12 @@ pub struct BenchmarkState {
 /// System that executes the automated deterministic benchmark trajectory and records frame latencies.
 pub fn benchmark_runner_system(
     time: Res<Time>,
-    config: Res<BenchmarkConfig>,
+    mut config: ResMut<BenchmarkConfig>,
     mut state: ResMut<BenchmarkState>,
+    mut summary: ResMut<BenchmarkSummary>,
+    mut menu: Option<ResMut<crate::menu::MenuState>>,
+    graphics_settings: Option<Res<crate::menu::GraphicsSettings>>,
+    mut cursor_options: Query<&mut bevy::window::CursorOptions, With<bevy::window::PrimaryWindow>>,
     mut player_query: Query<(&mut Transform, &mut FpsCamera, &mut PlayerPhysics)>,
     world: Option<Res<WorldGrid>>,
     mut exit_writer: MessageWriter<AppExit>,
@@ -330,11 +390,119 @@ pub fn benchmark_runner_system(
             if state.distance_traveled >= config.scenario.flight_distance {
                 state.phase = BenchmarkPhase::Completed;
                 state.completed = true;
-                print_and_save_benchmark_report(&state, &config);
-                exit_writer.write(AppExit::Success);
+                let computed = compute_benchmark_summary(&state, &config, graphics_settings.as_deref());
+                *summary = computed;
+
+                if config.is_cli {
+                    print_and_save_benchmark_report(&state, &config);
+                    exit_writer.write(AppExit::Success);
+                } else {
+                    println!("[BENCHMARK] In-game benchmark complete! Transitioning to results dashboard.");
+                    config.enabled = false;
+                    if let Some(ref mut m) = menu {
+                        m.screen = crate::menu::MenuScreen::BenchmarkResults;
+                        m.world_active = true;
+                    }
+                    if let Ok(mut cursor) = cursor_options.single_mut() {
+                        cursor.grab_mode = bevy::window::CursorGrabMode::None;
+                        cursor.visible = true;
+                    }
+                }
             }
         }
         BenchmarkPhase::Completed => {}
+    }
+}
+
+/// Computes structured statistical benchmark results from collected telemetry.
+#[must_use]
+pub fn compute_benchmark_summary(
+    state: &BenchmarkState,
+    config: &BenchmarkConfig,
+    graphics: Option<&GraphicsSettings>,
+) -> BenchmarkSummary {
+    let total_frames = state.frame_times_ms.len();
+    if total_frames == 0 {
+        return BenchmarkSummary::default();
+    }
+
+    let total_time_ms: f32 = state.frame_times_ms.iter().sum();
+    let total_duration_secs = total_time_ms / 1000.0;
+    let avg_fps = total_frames as f32 / total_duration_secs;
+    let avg_frametime_ms = total_time_ms / total_frames as f32;
+
+    let min_frametime_ms = state
+        .frame_times_ms
+        .iter()
+        .copied()
+        .reduce(f32::min)
+        .unwrap_or(0.0);
+    let max_frametime_ms = state
+        .frame_times_ms
+        .iter()
+        .copied()
+        .reduce(f32::max)
+        .unwrap_or(0.0);
+
+    let mut sorted_times = state.frame_times_ms.clone();
+    sorted_times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let p99_idx = ((total_frames as f32 * 0.99) as usize).min(total_frames.saturating_sub(1));
+    let p99_frametime_ms = sorted_times[p99_idx];
+    let one_percent_low_fps = if p99_frametime_ms > 0.0 {
+        1000.0 / p99_frametime_ms
+    } else {
+        0.0
+    };
+
+    let peak_verts = state.vertex_samples.iter().copied().max().unwrap_or(0);
+    let peak_chunks = state.chunk_samples.iter().copied().max().unwrap_or(0);
+
+    let (tested_view_distance, tested_greedy, tested_lod, tested_shadows, tested_fog) =
+        if let Some(g) = graphics {
+            (
+                g.view_distance,
+                g.greedy_label(),
+                g.lod_label(),
+                g.shadows,
+                g.distance_fog,
+            )
+        } else {
+            (
+                config.scenario.view_distance,
+                "Greedy: Built-in (>32m)".to_string(),
+                "Sloped LOD: Built-in (>128m)".to_string(),
+                true,
+                config.scenario.distance_fog,
+            )
+        };
+
+    let (verdict_title, verdict_desc) =
+        BenchmarkSummary::generate_verdict(avg_fps, one_percent_low_fps, p99_frametime_ms);
+
+    BenchmarkSummary {
+        has_results: true,
+        total_duration_secs,
+        total_frames,
+        avg_fps,
+        one_percent_low_fps,
+        p99_frametime_ms,
+        avg_frametime_ms,
+        min_frametime_ms,
+        max_frametime_ms,
+        peak_rss_mb: state.peak_rss_mb,
+        peak_vram_mb: state.peak_vram_mb,
+        total_chunks_meshed: state.static_chunks,
+        peak_chunks_active: peak_chunks,
+        peak_vertices: peak_verts,
+        distance_traveled: state.distance_traveled,
+        tested_view_distance,
+        tested_greedy,
+        tested_lod,
+        tested_shadows,
+        tested_fog,
+        verdict_title,
+        verdict_desc,
     }
 }
 
@@ -488,6 +656,7 @@ impl Plugin for BenchmarkPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BenchmarkConfig>()
             .init_resource::<BenchmarkState>()
+            .init_resource::<BenchmarkSummary>()
             .add_systems(
                 Update,
                 benchmark_runner_system.in_set(crate::stage::VoxelStage::PlayerPhysics),
@@ -545,5 +714,34 @@ mod tests {
             Some(BenchmarkPreset::Flight1km)
         );
         assert_eq!(BenchmarkPreset::from_str_name("invalid_preset"), None);
+    }
+
+    #[test]
+    fn test_compute_benchmark_summary_and_verdict() {
+        let mut frame_times = vec![10.0; 100];
+        // Inject 1 frame of 20ms to test 1% low
+        frame_times[99] = 20.0;
+
+        let state = BenchmarkState {
+            frame_times_ms: frame_times,
+            peak_rss_mb: 150.0,
+            peak_vram_mb: 600.0,
+            static_chunks: 289,
+            chunk_samples: vec![289],
+            vertex_samples: vec![100_000],
+            distance_traveled: 1000.0,
+            ..Default::default()
+        };
+
+        let config = BenchmarkConfig::default();
+        let graphics = GraphicsSettings::default();
+        let summary = compute_benchmark_summary(&state, &config, Some(&graphics));
+
+        assert!(summary.has_results);
+        assert_eq!(summary.total_frames, 100);
+        assert!(summary.avg_fps > 90.0);
+        assert!(summary.one_percent_low_fps > 45.0);
+        assert_eq!(summary.tested_view_distance, 16);
+        assert!(summary.verdict_title.contains("GREAT") || summary.verdict_title.contains("PERFECT"));
     }
 }

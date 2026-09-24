@@ -54,6 +54,10 @@ impl Plugin for MenuPlugin {
                         auto_save_graphics_settings_system,
                         fps_limiter_system,
                     ),
+                    (
+                        update_benchmark_banner_system,
+                        update_benchmark_results_ui_system,
+                    ),
                 ),
             );
     }
