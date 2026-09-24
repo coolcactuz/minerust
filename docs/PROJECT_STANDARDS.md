@@ -229,6 +229,9 @@ The codebase enforces a rigorous **Testing Pyramid**:
      - `bench_greedy_meshing`: Measures microsecond timings on dense chunks, flatlands, and cavernous geometry.
      - `bench_noise_generation`: Measures SIMD/FBM procedural terrain evaluation throughput.
      - `bench_fluid_propagation`: Benchmarks cellular automata batch processing speed.
+4. **Automated Hardware Streaming Benchmarking (`src/benchmark.rs`)**:
+   - Automated 5km trajectory flight tests at 50 m/s with seed `"BENCHMARK"`.
+   - Continuous stress-testing and telemetry validation of multithreaded chunk streaming, LRU cache eviction, greedy quad merging, and 1% low frame pacing under heavy real-time procedural workloads.
 
 ---
 

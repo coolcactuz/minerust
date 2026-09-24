@@ -43,9 +43,10 @@ Rather than relying on ready-made high-level game features, the goal of this pro
 - **Continuous Terrain**: Generating diverse biomes (plains, forests, deserts, mountains, oceans) and 3D subterranean cave networks using deterministic noise functions.
 - **Voxel Physics & Cellular Fluids**: Simple discrete collision detection, raymarching for block interactions, and real-time cellular automata for spreading water and waterfalls.
 
-### 4. Performance Telemetry & Profiling
+### 4. Performance Telemetry & Hardware Benchmarking
 - **In-Game Telemetry (`F3`)**: An integrated real-time debug overlay monitoring FPS, 1% low frame latency, active chunk counts, vertex memory, and system RAM/VRAM usage.
-- **Benchmarking Suite**: Automated, reproducible benchmark scenarios to objectively measure the impact of each architectural optimization.
+- **In-Game Hardware Benchmark**: A dedicated stress-test available directly from the Graphics Settings menu (`⚡ Run Hardware Benchmark`). It generates a standardized world (seed `BENCHMARK`) and flies the camera across a 5km trajectory at 50 m/s using your active graphics settings.
+- **Telemetry Dashboard & Hardware Verdict**: Upon completing the benchmark, displays a comprehensive report (average FPS, 1% low FPS, p99 frametimes, peak RAM/VRAM, active chunks/geometry) and personalized optimization advice to fine-tune graphics settings for your hardware.
 
 ---
 
