@@ -67,7 +67,7 @@ pub fn menu_input_system(
             bench_control.config.as_deref_mut(),
             bench_control.state.as_deref_mut(),
         ) {
-            if config.enabled && !config.is_cli && !state.completed {
+            if config.enabled && !state.completed {
                 config.enabled = false;
                 state.completed = true;
                 menu.screen = MenuScreen::Settings;
@@ -507,7 +507,6 @@ pub fn menu_button_click_system(
                         bench_control.state.as_deref_mut(),
                     ) {
                         config.enabled = true;
-                        config.is_cli = false;
                         config.seed = target_seed.0;
                         config.scenario.view_distance = settings.view_distance;
                         config.scenario.distance_fog = settings.distance_fog;
