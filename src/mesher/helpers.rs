@@ -67,11 +67,9 @@ pub const fn should_render_face(block: BlockType, neighbor: BlockType, _face: Bl
 #[inline(always)]
 pub const fn can_merge_blocks(b1: BlockType, b2: BlockType) -> bool {
     b1 as u8 == b2 as u8
-        || (matches!(b1, BlockType::Sand | BlockType::Gravel)
-            && matches!(b2, BlockType::Sand | BlockType::Gravel))
 }
 
-/// Simplifies ore and block types into base rock/sand for distant LOD rendering.
+/// Simplifies ore and block types into base rock for distant LOD rendering.
 /// At distance, ore veins (coal, iron, gold, diamond) merge into stone to reduce visual noise and quad fragmentation.
 #[inline(always)]
 pub const fn simplify_block_for_lod(block: BlockType) -> BlockType {
@@ -81,7 +79,6 @@ pub const fn simplify_block_for_lod(block: BlockType) -> BlockType {
         | BlockType::GoldOre
         | BlockType::DiamondOre
         | BlockType::Cobblestone => BlockType::Stone,
-        BlockType::Gravel => BlockType::Sand,
         other => other,
     }
 }

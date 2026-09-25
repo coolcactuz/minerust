@@ -12,7 +12,7 @@ use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
 use crate::mesher::{build_chunk_mesh_lod, ChunkMeshes, CHUNK_SECTIONS};
 use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
-use crate::world::grid::{ChunkSection, WorldGrid};
+use crate::world::grid::{ChunkSection, WorldGrid, FULL_CHUNK_SECTION_INDEX};
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{
     MAX_CHUNK_DISPATCH_PER_FRAME, MAX_MESHES_PER_FRAME, SEA_LEVEL, VIEW_DISTANCE,
@@ -137,6 +137,12 @@ pub fn apply_chunk_mesh(
         .unwrap_or([None; CHUNK_SECTIONS]);
 
     for (sy, section_mesh) in meshes_res.sections.into_iter().enumerate() {
+        let section_y = if lod == 1 {
+            FULL_CHUNK_SECTION_INDEX
+        } else {
+            sy as u8
+        };
+
         // Solid terrain mesh entity
         if let Some(entity) = solid_entities[sy] {
             if let Some(mesh) = section_mesh.solid {
@@ -153,7 +159,7 @@ pub fn apply_chunk_mesh(
                     Transform::from_translation(world_pos),
                     ChunkSection {
                         chunk: coord,
-                        section_y: sy as u8,
+                        section_y,
                     },
                 ))
                 .id();
@@ -177,7 +183,7 @@ pub fn apply_chunk_mesh(
                     NotShadowCaster,
                     ChunkSection {
                         chunk: coord,
-                        section_y: sy as u8,
+                        section_y,
                     },
                 ))
                 .id();

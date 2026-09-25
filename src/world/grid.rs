@@ -21,6 +21,10 @@ pub struct ChunkSection {
     pub section_y: u8,
 }
 
+/// Special `section_y` value assigned to distant continuous LOD 1 chunk entities.
+/// Bypasses sub-chunk subterranean occlusion culling so surface terrain is never culled.
+pub const FULL_CHUNK_SECTION_INDEX: u8 = 255;
+
 #[derive(Resource)]
 pub struct WorldGrid {
     pub chunks: HashMap<IVec2, Chunk>,

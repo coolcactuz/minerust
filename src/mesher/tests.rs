@@ -77,10 +77,10 @@ fn test_waterfall_renders_sides_in_air() {
 #[test]
 fn test_seabed_sand_gravel_greedy_merging() {
     let mut chunk = Chunk::new();
-    // Create an alternating checkerboard of Sand and Gravel on the seabed at y = 10, covered with Water at y = 11
+    // Create contiguous regions of Sand and Gravel on the seabed at y = 10, covered with Water at y = 11
     for lx in 0..4 {
         for lz in 0..4 {
-            let block = if (lx + lz) % 2 == 0 {
+            let block = if lx < 2 {
                 BlockType::Sand
             } else {
                 BlockType::Gravel
@@ -142,8 +142,8 @@ fn test_simplify_block_for_lod() {
         BlockType::Stone
     );
 
-    // Gravel simplifies to Sand
-    assert_eq!(simplify_block_for_lod(BlockType::Gravel), BlockType::Sand);
+    // Gravel is preserved as Gravel
+    assert_eq!(simplify_block_for_lod(BlockType::Gravel), BlockType::Gravel);
 
     // Natural surface blocks preserved
     assert_eq!(simplify_block_for_lod(BlockType::Grass), BlockType::Grass);

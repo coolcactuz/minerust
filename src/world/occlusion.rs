@@ -1,12 +1,12 @@
+use std::collections::VecDeque;
 use bevy::prelude::*;
 use crate::chunk::CHUNK_HEIGHT;
 use crate::mesher::{SectionFace, CHUNK_SECTIONS, SECTION_HEIGHT};
-use crate::world::grid::{ChunkSection, WorldGrid};
+use crate::world::grid::{ChunkSection, WorldGrid, FULL_CHUNK_SECTION_INDEX};
 
 pub const OCCLUSION_RADIUS: i32 = 8;
 pub const OCCLUSION_GRID_WIDTH: usize = (OCCLUSION_RADIUS * 2 + 1) as usize; // 17
 pub const OCCLUSION_CHUNKS: usize = OCCLUSION_GRID_WIDTH * OCCLUSION_GRID_WIDTH; // 289
-const QUEUE_CAPACITY: usize = 512;
 
 /// Stack/L1-cache friendly bitset recording visible sub-chunk sections within LOD 0 radius (17x17 chunks).
 ///
@@ -67,34 +67,38 @@ pub fn is_under_open_sky(world: &WorldGrid, cam_pos: Vec3) -> bool {
 ///
 /// If the camera is outdoors under the open sky (or in flight), subterranean cave sections that have
 /// no air path to the sky are excluded from the bitset.
+/// Computes the set of visible sub-chunk sections within LOD 0 radius using the section reachability graph.
+///
+/// If the camera is outdoors under the open sky (or in flight), sunlight illuminates all terrain
+/// columns from above, keeping surfaces, rivers, oceans, and seabeds fully visible while culling
+/// enclosed subterranean caves.
 /// If the camera is underground inside a cave, only sections topologically reachable along air corridors
 /// from the camera are marked visible.
 #[must_use]
 pub fn compute_section_occlusion(world: &WorldGrid, cam_pos: Vec3) -> OcclusionBitset {
+    let mut queue = VecDeque::with_capacity(2048);
+    compute_section_occlusion_with_queue(world, cam_pos, &mut queue)
+}
+
+/// Core occlusion BFS algorithm utilizing a reusable `VecDeque` queue to eliminate heap allocations.
+#[must_use]
+pub fn compute_section_occlusion_with_queue(
+    world: &WorldGrid,
+    cam_pos: Vec3,
+    queue: &mut VecDeque<(IVec2, u8, Option<SectionFace>)>,
+) -> OcclusionBitset {
     let mut bitset = OcclusionBitset::default();
+    queue.clear();
 
     let (player_chunk, _, _) = WorldGrid::world_to_chunk_coord(
         cam_pos.x.floor() as i32,
         cam_pos.z.floor() as i32,
     );
     let cam_sy_raw = (cam_pos.y / SECTION_HEIGHT as f32).floor() as i32;
+    let outdoors = cam_sy_raw >= CHUNK_SECTIONS as i32 || is_under_open_sky(world, cam_pos);
 
-    // Fixed-capacity circular queue for BFS traversal (zero heap allocations, 6 KB total)
-    let mut queue = [(IVec2::ZERO, 0u8, None::<SectionFace>); QUEUE_CAPACITY];
-    let mut head = 0usize;
-    let mut tail = 0usize;
-
-    // Helper closure to push into circular queue
-    let push_queue = |chunk: IVec2, sy: u8, entry_face: Option<SectionFace>, head_idx: usize, tail_idx: &mut usize, q: &mut [(IVec2, u8, Option<SectionFace>); QUEUE_CAPACITY]| {
-        let next_tail = (*tail_idx + 1) % QUEUE_CAPACITY;
-        if next_tail != head_idx {
-            q[*tail_idx] = (chunk, sy, entry_face);
-            *tail_idx = next_tail;
-        }
-    };
-
-    if cam_sy_raw >= CHUNK_SECTIONS as i32 {
-        // High in the sky above the world: seed top sections that can receive light from the sky
+    if outdoors {
+        // High in the sky or outdoors on the surface: sunlight illuminates all sections open to the sky
         for dz in -OCCLUSION_RADIUS..=OCCLUSION_RADIUS {
             for dx in -OCCLUSION_RADIUS..=OCCLUSION_RADIUS {
                 let chunk_coord = player_chunk + IVec2::new(dx, dz);
@@ -105,28 +109,19 @@ pub fn compute_section_occlusion(world: &WorldGrid, cam_pos: Vec3) -> OcclusionB
                     .map_or_else(crate::mesher::SectionConnectivity::full, |secs| secs[top_sy as usize]);
                 if !n_conn.is_solid && n_conn.mask[SectionFace::Up as usize] != 0 {
                     bitset.mark_visible(dx, dz, top_sy);
-                    push_queue(
-                        chunk_coord,
-                        top_sy,
-                        Some(SectionFace::Up),
-                        head,
-                        &mut tail,
-                        &mut queue,
-                    );
+                    queue.push_back((chunk_coord, top_sy, Some(SectionFace::Up)));
                 }
             }
         }
     } else {
+        // Underground inside a cave: seed strictly from camera's current cave section
         let start_sy = cam_sy_raw.clamp(0, (CHUNK_SECTIONS - 1) as i32) as u8;
         bitset.mark_visible(0, 0, start_sy);
-        push_queue(player_chunk, start_sy, None, head, &mut tail, &mut queue);
+        queue.push_back((player_chunk, start_sy, None));
     }
 
     // BFS flood fill across section boundaries
-    while head != tail {
-        let (coord, sy, entry_face) = queue[head];
-        head = (head + 1) % QUEUE_CAPACITY;
-
+    while let Some((coord, sy, entry_face)) = queue.pop_front() {
         let diff = coord - player_chunk;
         if diff.x.abs() > OCCLUSION_RADIUS || diff.y.abs() > OCCLUSION_RADIUS {
             continue;
@@ -195,14 +190,7 @@ pub fn compute_section_occlusion(world: &WorldGrid, cam_pos: Vec3) -> OcclusionB
             }
 
             bitset.mark_visible(n_diff.x, n_diff.y, n_sy);
-            push_queue(
-                n_chunk,
-                n_sy,
-                Some(entry_face),
-                head,
-                &mut tail,
-                &mut queue,
-            );
+            queue.push_back((n_chunk, n_sy, Some(entry_face)));
         }
     }
 
@@ -216,6 +204,7 @@ pub struct SectionOcclusionCache {
     pub last_sy: i32,
     pub last_outdoors: bool,
     pub bitset: OcclusionBitset,
+    pub queue: VecDeque<(IVec2, u8, Option<SectionFace>)>,
 }
 
 /// Bevy system executing the software occlusion culling pass.
@@ -241,13 +230,21 @@ pub fn section_occlusion_system(
 
     // Only recompute occlusion BFS when crossing into a different section or indoor/outdoor state
     if cam_chunk != cache.last_chunk || cam_sy != cache.last_sy || outdoors != cache.last_outdoors {
-        cache.bitset = compute_section_occlusion(&world, cam_pos);
+        cache.bitset = compute_section_occlusion_with_queue(&world, cam_pos, &mut cache.queue);
         cache.last_chunk = cam_chunk;
         cache.last_sy = cam_sy;
         cache.last_outdoors = outdoors;
 
         let bitset = cache.bitset;
         for (section, mut visibility) in &mut section_query {
+            // Distant continuous LOD 1 chunk entities are never culled by sub-chunk cave occlusion
+            if section.section_y == FULL_CHUNK_SECTION_INDEX {
+                if *visibility != Visibility::Inherited {
+                    *visibility = Visibility::Inherited;
+                }
+                continue;
+            }
+
             let diff = section.chunk - cam_chunk;
             if diff.x.abs() <= OCCLUSION_RADIUS && diff.y.abs() <= OCCLUSION_RADIUS {
                 let is_vis = bitset.is_visible(diff.x, diff.y, section.section_y);
@@ -342,5 +339,56 @@ mod tests {
             cave_bitset.is_visible(0, 0, 1),
             "Cave section 1 must be visible when camera is inside the cave!"
         );
+    }
+
+    #[test]
+    fn test_seabed_is_visible_under_ocean_water_from_surface() {
+        let mut world = WorldGrid::new(crate::world::types::WorldSeed(12345));
+
+        // Create ocean chunk at (0, 0)
+        let mut chunk = Chunk::new();
+        // Seabed stone at y=0..50 (section 0, 1, 2 and lower part of section 3)
+        for y in 0..50 {
+            for z in 0..16 {
+                for x in 0..16 {
+                    chunk.set_fast(x, y, z, BlockType::Stone);
+                }
+            }
+        }
+        // Sand seabed at y=50..52
+        for y in 50..52 {
+            for z in 0..16 {
+                for x in 0..16 {
+                    chunk.set_fast(x, y, z, BlockType::Sand);
+                }
+            }
+        }
+        // Ocean water from y=52 to y=64 (section 3 and 4)
+        for y in 52..=64 {
+            for z in 0..16 {
+                for x in 0..16 {
+                    chunk.set_fast(x, y, z, BlockType::Water);
+                }
+            }
+        }
+
+        let mut conns = [crate::mesher::SectionConnectivity::default(); CHUNK_SECTIONS];
+        for sy in 0..CHUNK_SECTIONS {
+            conns[sy] = compute_section_connectivity(&chunk, sy);
+        }
+
+        world.chunks.insert(IVec2::ZERO, chunk);
+        world.chunk_connectivity.insert(IVec2::ZERO, conns);
+
+        // Camera is on the surface looking down at the ocean at Y = 66.0
+        let cam_pos = Vec3::new(8.0, 66.0, 8.0);
+        let bitset = compute_section_occlusion(&world, cam_pos);
+
+        // Section 4 (water surface) MUST be visible
+        assert!(bitset.is_visible(0, 0, 4), "Water surface must be visible");
+        // Section 3 (seabed with sand and water) MUST be visible through the transparent water
+        assert!(bitset.is_visible(0, 0, 3), "Seabed section must be visible under water");
+        // Deep subterranean bedrock section 0 MUST be culled
+        assert!(!bitset.is_visible(0, 0, 0), "Deep bedrock must be culled");
     }
 }

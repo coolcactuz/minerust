@@ -415,11 +415,10 @@ pub fn build_chunk_mesh_sloped_lod(
     }
 
     let mut sections: [SectionMeshes; CHUNK_SECTIONS] = Default::default();
-    let mut connectivity: [SectionConnectivity; CHUNK_SECTIONS] = Default::default();
     sections[0] = SectionMeshes {
         solid: solid.to_mesh(),
         water: water.to_mesh(),
     };
-    connectivity[0] = SectionConnectivity::full();
+    let connectivity = [SectionConnectivity::full(); CHUNK_SECTIONS];
     ChunkMeshes { sections, connectivity }
 }
