@@ -32,6 +32,7 @@ Rather than relying on ready-made high-level game features, the goal of this pro
 ### 1. Graphics & Geometry Optimization
 - **Voxel Meshing Strategies**: Implementing techniques like *Greedy Meshing* to merge adjacent coplanar block faces into larger quads, significantly reducing polygon and vertex counts compared to naive meshing.
 - **Level of Detail (LOD)**: Reducing geometry density for distant chunks with continuous heightfield approximations, keeping the horizon visible while preserving close-up block detail.
+- **Sub-Chunk Sections & Occlusion Culling**: Partitioning vertical chunk columns into 16x16x16 sub-chunks and computing directional face reachability graphs to eliminate rendering buried caves, underground ravines, and mountain cavities when viewing from the surface.
 - **Transparent Rendering (Two-Pass Water)**: Decoupling opaque terrain from transparent water into separate rendering passes, allowing smooth alpha blending without depth-fighting artifacts or early-Z culling penalties.
 - **Texture Arrays & Custom Shaders**: Using 2D texture arrays in custom WGSL shaders to tile textures seamlessly across merged surfaces without texture-bleeding artifacts.
 

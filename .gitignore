@@ -4,3 +4,4 @@ benchmark_results.json
 benchmark_results/
 benchmark_results*/
 test_*.json
+docs/adr/

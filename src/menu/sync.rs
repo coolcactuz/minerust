@@ -299,7 +299,7 @@ pub fn update_benchmark_banner_system(
         return;
     };
 
-    let is_running = config.enabled && !config.is_cli && !state.completed;
+    let is_running = config.enabled && !state.completed;
     for mut vis in &mut banner_query {
         let target = if is_running {
             Visibility::Inherited

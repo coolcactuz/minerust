@@ -7,7 +7,7 @@ use bevy::window::WindowResolution;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use minerust::benchmark::{BenchmarkConfig, BenchmarkScenario, BenchmarkSuite};
+use minerust::benchmark::BenchmarkConfig;
 use minerust::camera::{CameraPlugin, FpsCamera};
 use minerust::fluid::FluidPlugin;
 use minerust::interaction::InteractionPlugin;
@@ -29,10 +29,7 @@ struct CliOptions {
     seed: Option<WorldSeed>,
     profile_mode: bool,
     quickstart: bool,
-    is_benchmark: bool,
-    benchmark_preset: Option<String>,
     view_distance: Option<i32>,
-    output_path: Option<String>,
 }
 
 impl CliOptions {
@@ -55,34 +52,12 @@ impl CliOptions {
                 "-q" | "--quickstart" => {
                     opts.quickstart = true;
                 }
-                "-b" | "--benchmark" => {
-                    opts.is_benchmark = true;
-                    opts.quickstart = true;
-                    if i + 1 < args.len() && !args[i + 1].starts_with('-') {
-                        i += 1;
-                        opts.benchmark_preset = Some(args[i].clone());
-                    }
-                }
-                "-bp" | "--benchmark-preset" => {
-                    opts.is_benchmark = true;
-                    opts.quickstart = true;
-                    i += 1;
-                    if i < args.len() {
-                        opts.benchmark_preset = Some(args[i].clone());
-                    }
-                }
                 "--view-distance" => {
                     i += 1;
                     if i < args.len() {
                         if let Ok(vd) = args[i].parse::<i32>() {
                             opts.view_distance = Some(vd.clamp(2, 64));
                         }
-                    }
-                }
-                "-o" | "--output" => {
-                    i += 1;
-                    if i < args.len() {
-                        opts.output_path = Some(args[i].clone());
                     }
                 }
                 "-h" | "--help" => {
@@ -102,10 +77,8 @@ impl CliOptions {
         Options:\n  \
           -s, --seed <SEED>              Set world generation seed (string or integer)\n  \
           -p, --profile                  Enable Real-time Performance Profiler HUD (F3)\n  \
-          -q, --quickstart               Start directly in-game bypassing the main menu\n  \
-          -b, --benchmark [PRESET]       Run automated flight benchmark (standard, flight, production)\n      \
-              --view-distance <chunks>   Render distance (4 to 64 chunks)\n  \
-          -o, --output <path>            JSON output file for benchmark results\n  \
+          -q, --quickstart               Start directly in-game bypassing the main menu\n      \
+              --view-distance <chunks>   Render distance (2 to 64 chunks)\n  \
           -h, --help                     Print help information"
             .to_string()
     }
@@ -120,13 +93,7 @@ fn main() {
         }
     };
 
-    let seed = opts.seed.unwrap_or_else(|| {
-        if opts.is_benchmark {
-            WorldSeed(BenchmarkSuite::DEFAULT_SEED)
-        } else {
-            WorldSeed::random()
-        }
-    });
+    let seed = opts.seed.unwrap_or_else(WorldSeed::random);
 
     let seed_state = SeedInputState {
         seed_text: seed.0.to_string(),
@@ -152,30 +119,7 @@ fn main() {
         graphics_settings.view_distance = vd;
     }
 
-    let scenario = if opts.is_benchmark {
-        let vd = graphics_settings.view_distance;
-        let mut s = if let Some(ref preset_name) = opts.benchmark_preset {
-            BenchmarkScenario::from_preset_name(preset_name, vd).unwrap_or_else(|| {
-                eprintln!(
-                    "[BENCHMARK] Warning: Unknown preset '{preset_name}', defaulting to 'standard'"
-                );
-                BenchmarkScenario::standard(vd)
-            })
-        } else {
-            BenchmarkScenario::standard(vd)
-        };
-        if let Some(ref path) = opts.output_path {
-            s.output_path = Some(path.clone());
-        }
-        s.apply(&mut graphics_settings);
-        s
-    } else {
-        BenchmarkScenario::standard(graphics_settings.view_distance)
-    };
-
-    let present_mode = if opts.is_benchmark {
-        bevy::window::PresentMode::AutoNoVsync // Force un-capped framerate during benchmarks
-    } else if graphics_settings.vsync {
+    let present_mode = if graphics_settings.vsync {
         bevy::window::PresentMode::AutoVsync
     } else {
         bevy::window::PresentMode::AutoNoVsync
@@ -186,21 +130,14 @@ fn main() {
         bevy::window::WindowMode::Windowed
     };
 
-    let benchmark_config = BenchmarkConfig {
-        enabled: opts.is_benchmark,
-        is_cli: opts.is_benchmark,
-        seed: seed.0,
-        scenario,
-    };
+    let benchmark_config = BenchmarkConfig::default();
 
     App::new()
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: if opts.is_benchmark {
-                            format!("MineRust [BENCHMARK MODE] - Seed: {}", seed.0)
-                        } else if opts.profile_mode {
+                        title: if opts.profile_mode {
                             format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
                         } else {
                             format!("MineRust - Seed: {}", seed.0)
@@ -369,10 +306,7 @@ mod tests {
                 seed: None,
                 profile_mode: false,
                 quickstart: false,
-                is_benchmark: false,
-                benchmark_preset: None,
                 view_distance: None,
-                output_path: None,
             }
         );
     }
@@ -391,38 +325,6 @@ mod tests {
         assert_eq!(opts.seed, Some(WorldSeed(42)));
         assert!(opts.profile_mode);
         assert!(opts.quickstart);
-        assert!(!opts.is_benchmark);
-    }
-
-    #[test]
-    fn test_cli_options_benchmark_with_and_without_preset() {
-        // Without preset
-        let opts = CliOptions::parse_from_args(vec![
-            "minerust".to_string(),
-            "--benchmark".to_string(),
-            "--view-distance".to_string(),
-            "32".to_string(),
-            "-o".to_string(),
-            "out.json".to_string(),
-        ])
-        .unwrap();
-
-        assert!(opts.is_benchmark);
-        assert!(opts.quickstart);
-        assert_eq!(opts.benchmark_preset, None);
-        assert_eq!(opts.view_distance, Some(32));
-        assert_eq!(opts.output_path, Some("out.json".to_string()));
-
-        // With preset
-        let opts2 = CliOptions::parse_from_args(vec![
-            "minerust".to_string(),
-            "-b".to_string(),
-            "flight".to_string(),
-        ])
-        .unwrap();
-
-        assert!(opts2.is_benchmark);
-        assert_eq!(opts2.benchmark_preset, Some("flight".to_string()));
     }
 
     #[test]

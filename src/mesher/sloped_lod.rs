@@ -1,5 +1,5 @@
 use super::helpers::{add_quad, add_triangle, simplify_block_for_lod, triangle_normal, MeshBuffers};
-use super::ChunkMeshes;
+use super::{ChunkMeshes, SectionConnectivity, SectionMeshes, CHUNK_SECTIONS};
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::texture::{block_texture, quad_uvs};
@@ -155,7 +155,7 @@ pub fn build_chunk_mesh_sloped_lod(
     }
 
     // 3. Generate mesh geometry using 2x2 macro-cells (8x8 cells across chunk)
-    let mut solid = MeshBuffers::with_capacity(512, 1024);
+    let mut solid = MeshBuffers::default();
     let mut water = MeshBuffers::default();
 
     let cells_x = CHUNK_WIDTH / CELL_SIZE; // 8
@@ -414,8 +414,11 @@ pub fn build_chunk_mesh_sloped_lod(
         }
     }
 
-    ChunkMeshes {
+    let mut sections: [SectionMeshes; CHUNK_SECTIONS] = Default::default();
+    sections[0] = SectionMeshes {
         solid: solid.to_mesh(),
         water: water.to_mesh(),
-    }
+    };
+    let connectivity = [SectionConnectivity::full(); CHUNK_SECTIONS];
+    ChunkMeshes { sections, connectivity }
 }

@@ -2,6 +2,7 @@
 //! and background multi-threaded mesh/generation streaming.
 
 pub mod grid;
+pub mod occlusion;
 pub mod spawn;
 pub mod streaming;
 pub mod terrain;
@@ -10,7 +11,8 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
-pub use grid::WorldGrid;
+pub use grid::{ChunkSection, WorldGrid};
+pub use occlusion::{compute_section_occlusion, section_occlusion_system, SectionOcclusionCache};
 pub use spawn::find_safe_surface_spawn;
 pub use streaming::{
     ChunkGeneratorPool, ChunkMesherPool, WorldMeshAssets, WorldPlugin, WorldSettingsParams,

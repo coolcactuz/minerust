@@ -12,12 +12,26 @@ use crate::world::streaming::{chunk_distance_sq_to_player, determine_chunk_tier,
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{CHUNK_CACHE_CAPACITY, WorldSeed};
 
+use crate::mesher::{SectionConnectivity, CHUNK_SECTIONS};
+
+/// Component attached to sub-chunk section mesh entities.
+#[derive(Component, Copy, Clone, Debug, PartialEq, Eq, Hash, Reflect)]
+pub struct ChunkSection {
+    pub chunk: IVec2,
+    pub section_y: u8,
+}
+
+/// Special `section_y` value assigned to distant continuous LOD 1 chunk entities.
+/// Bypasses sub-chunk subterranean occlusion culling so surface terrain is never culled.
+pub const FULL_CHUNK_SECTION_INDEX: u8 = 255;
+
 #[derive(Resource)]
 pub struct WorldGrid {
     pub chunks: HashMap<IVec2, Chunk>,
     pub chunk_cache: quick_cache::sync::Cache<IVec2, Chunk>,
-    pub chunk_entities: HashMap<IVec2, Entity>,
-    pub water_entities: HashMap<IVec2, Entity>,
+    pub chunk_entities: HashMap<IVec2, [Option<Entity>; CHUNK_SECTIONS]>,
+    pub water_entities: HashMap<IVec2, [Option<Entity>; CHUNK_SECTIONS]>,
+    pub chunk_connectivity: HashMap<IVec2, [SectionConnectivity; CHUNK_SECTIONS]>,
     pub modified_chunks: HashSet<IVec2>,
     pub in_progress_chunks: HashSet<IVec2>,
     pub in_progress_meshes: HashSet<IVec2>,
@@ -50,6 +64,7 @@ impl WorldGrid {
             chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
             chunk_entities: HashMap::default(),
             water_entities: HashMap::default(),
+            chunk_connectivity: HashMap::default(),
             modified_chunks: HashSet::default(),
             dirty_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
@@ -214,16 +229,41 @@ impl WorldGrid {
         Self::load_chunk_from_disk_path(&self.save_dir, coord)
     }
 
+    #[inline]
+    pub fn has_chunk_mesh(&self, coord: &IVec2) -> bool {
+        self.chunk_entities.contains_key(coord) || self.water_entities.contains_key(coord)
+    }
+
+    #[inline]
+    pub fn total_mesh_entities(&self) -> usize {
+        let solid: usize = self
+            .chunk_entities
+            .values()
+            .map(|secs| secs.iter().flatten().count())
+            .sum();
+        let water: usize = self
+            .water_entities
+            .values()
+            .map(|secs| secs.iter().flatten().count())
+            .sum();
+        solid + water
+    }
+
     /// Despawns all active chunk meshes and clears loaded chunks and internal queues.
     pub fn despawn_all_chunks(&mut self, commands: &mut Commands) {
-        for (_, entity) in self.chunk_entities.drain() {
-            commands.entity(entity).despawn();
+        for (_, entities) in self.chunk_entities.drain() {
+            for entity in entities.into_iter().flatten() {
+                commands.entity(entity).despawn();
+            }
         }
-        for (_, entity) in self.water_entities.drain() {
-            commands.entity(entity).despawn();
+        for (_, entities) in self.water_entities.drain() {
+            for entity in entities.into_iter().flatten() {
+                commands.entity(entity).despawn();
+            }
         }
         self.chunks.clear();
         self.chunk_lod.clear();
+        self.chunk_connectivity.clear();
         self.chunk_vertices.clear();
         self.total_vertices = 0;
         self.in_progress_chunks.clear();
