@@ -15,11 +15,11 @@ mod tests;
 use crate::chunk::{CHUNK_HEIGHT, Chunk};
 use bevy::prelude::Mesh;
 
-pub use connectivity::{compute_section_connectivity, SectionConnectivity, SectionFace};
+pub use connectivity::{SectionConnectivity, SectionFace, compute_section_connectivity};
 pub use greedy::{build_chunk_mesh_greedy, build_section_mesh_greedy};
 pub use helpers::{
-    add_quad, add_triangle, can_merge_blocks, should_render_face, simplify_block_for_lod,
-    triangle_normal, MeshBuffers,
+    MeshBuffers, add_quad, add_triangle, can_merge_blocks, should_render_face,
+    simplify_block_for_lod, triangle_normal,
 };
 pub use sloped_lod::build_chunk_mesh_sloped_lod;
 pub use standard::{build_chunk_mesh_standard, build_section_mesh_standard};
@@ -69,7 +69,10 @@ impl ChunkMeshes {
 
     #[must_use]
     pub fn total_vertices(&self) -> usize {
-        self.sections.iter().map(SectionMeshes::total_vertices).sum()
+        self.sections
+            .iter()
+            .map(SectionMeshes::total_vertices)
+            .sum()
     }
 
     #[must_use]

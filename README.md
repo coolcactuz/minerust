@@ -4,6 +4,7 @@
 
 [![Rust](https://img.shields.io/badge/Rust-2024_Edition-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Engine](https://img.shields.io/badge/Engine-Bevy-blue?logo=bevy&logoColor=white)](https://bevyengine.org/)
+[![CI](https://github.com/coolcactuz/minerust/actions/workflows/ci.yml/badge.svg)](https://github.com/coolcactuz/minerust/actions/workflows/ci.yml)
 [![Safety](https://img.shields.io/badge/Safety-%23!%5Bforbid(unsafe__code)%5D-brightgreen)](https://doc.rust-lang.org/nomicon/safe-unsafe-meaning.html)
 [![License](https://img.shields.io/badge/License-MIT%2FApache_2.0-blue)](#-license)
 
@@ -48,6 +49,11 @@ Rather than relying on ready-made high-level game features, the goal of this pro
 - **In-Game Telemetry (`F3`)**: An integrated real-time debug overlay monitoring FPS, 1% low frame latency, active chunk counts, vertex memory, and system RAM/VRAM usage.
 - **In-Game Hardware Benchmark**: A dedicated stress-test available directly from the Graphics Settings menu (`⚡ Run Hardware Benchmark`). It generates a standardized world (seed `BENCHMARK`) and flies the camera across a 5km trajectory at 50 m/s using your active graphics settings.
 - **Telemetry Dashboard & Hardware Verdict**: Upon completing the benchmark, displays a comprehensive report (average FPS, 1% low FPS, p99 frametimes, peak RAM/VRAM, active chunks/geometry) and personalized optimization advice to fine-tune graphics settings for your hardware.
+
+### 5. Automated CI/CD & Cross-Platform Delivery
+- **Free-Tier Optimized Quality Gate**: Automated GitHub Actions pipeline verifying formatting (`cargo fmt --check`), strict pedantic linter (`cargo clippy --all-targets -- -D warnings`), and 100% test pass rate across 81 unit and property-based tests in ~1-2 minutes with caching (`swatinem/rust-cache`).
+- **Multi-Platform Bundles**: Automated release workflow building standalone, ready-to-play packages for **Linux** (`x86_64`), **Windows** (`x86_64`), and **macOS** (`Apple Silicon arm64`) complete with assets and shaders.
+- **Pull Request Standardization**: Automated PR templates enforcing quality checklists, architectural details, and performance telemetry reporting.
 
 ---
 

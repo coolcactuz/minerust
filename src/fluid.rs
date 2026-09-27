@@ -211,7 +211,13 @@ pub fn fluid_simulation_system(
                 } else {
                     (g.greedy_threshold as f32 * 16.0).powi(2)
                 };
-                (g.distance_lod, l_sq, g.greedy_meshing, g.greedy_threshold, g_sq)
+                (
+                    g.distance_lod,
+                    l_sq,
+                    g.greedy_meshing,
+                    g.greedy_threshold,
+                    g_sq,
+                )
             } else {
                 (true, 128.0 * 128.0, true, 2, 32.0 * 32.0)
             };

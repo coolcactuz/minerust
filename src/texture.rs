@@ -89,12 +89,7 @@ pub const fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
 
 #[inline(always)]
 pub const fn quad_uvs(width: f32, height: f32) -> [[f32; 2]; 4] {
-    [
-        [0.0, 0.0],
-        [0.0, height],
-        [width, height],
-        [width, 0.0],
-    ]
+    [[0.0, 0.0], [0.0, height], [width, height], [width, 0.0]]
 }
 
 #[inline(always)]

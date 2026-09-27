@@ -8,11 +8,13 @@ use crate::coords::{BlockPos, ChunkPos};
 use crate::error::WorldError;
 use crate::noise::NoiseGenerator;
 use crate::voxel_material::VoxelBlockMaterial;
-use crate::world::streaming::{chunk_distance_sq_to_player, determine_chunk_tier, update_chunk_mesh};
+use crate::world::streaming::{
+    chunk_distance_sq_to_player, determine_chunk_tier, update_chunk_mesh,
+};
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{CHUNK_CACHE_CAPACITY, WorldSeed};
 
-use crate::mesher::{SectionConnectivity, CHUNK_SECTIONS};
+use crate::mesher::{CHUNK_SECTIONS, SectionConnectivity};
 
 /// Component attached to sub-chunk section mesh entities.
 #[derive(Component, Copy, Clone, Debug, PartialEq, Eq, Hash, Reflect)]
@@ -337,14 +339,8 @@ impl WorldGrid {
         for coord in &initial_coords {
             let chunk_opt = self.chunks.get(coord);
             let dist_sq = chunk_distance_sq_to_player(*coord, player_pos, chunk_opt);
-            let (tier, _, _) = determine_chunk_tier(
-                dist_sq,
-                true,
-                128.0 * 128.0,
-                true,
-                2,
-                32.0 * 32.0,
-            );
+            let (tier, _, _) =
+                determine_chunk_tier(dist_sq, true, 128.0 * 128.0, true, 2, 32.0 * 32.0);
             update_chunk_mesh(coord, commands, self, meshes, materials, true, tier);
         }
     }

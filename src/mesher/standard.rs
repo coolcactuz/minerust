@@ -1,7 +1,7 @@
-use super::helpers::{add_quad, should_render_face, MeshBuffers};
+use super::helpers::{MeshBuffers, add_quad, should_render_face};
 use super::{
-    compute_section_connectivity, ChunkMeshes, SectionConnectivity, SectionMeshes,
-    CHUNK_SECTIONS, SECTION_HEIGHT,
+    CHUNK_SECTIONS, ChunkMeshes, SECTION_HEIGHT, SectionConnectivity, SectionMeshes,
+    compute_section_connectivity,
 };
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
@@ -51,7 +51,11 @@ pub fn build_section_mesh_standard(
                 };
                 if should_render_face(block, top_neighbor, BlockFace::Top) {
                     let layer = block_texture(block, BlockFace::Top).layer();
-                    let target = if block.is_water() { &mut water } else { &mut solid };
+                    let target = if block.is_water() {
+                        &mut water
+                    } else {
+                        &mut solid
+                    };
                     add_quad(
                         target,
                         [
@@ -89,7 +93,11 @@ pub fn build_section_mesh_standard(
                     let bottom_neighbor = chunk.get_fast(lx, ly - 1, lz);
                     if should_render_face(block, bottom_neighbor, BlockFace::Bottom) {
                         let layer = block_texture(block, BlockFace::Bottom).layer();
-                        let target = if block.is_water() { &mut water } else { &mut solid };
+                        let target = if block.is_water() {
+                            &mut water
+                        } else {
+                            &mut solid
+                        };
                         add_quad(
                             target,
                             [
@@ -118,7 +126,11 @@ pub fn build_section_mesh_standard(
                 };
                 if should_render_face(block, north_neighbor, BlockFace::North) {
                     let layer = block_texture(block, BlockFace::North).layer();
-                    let target = if block.is_water() { &mut water } else { &mut solid };
+                    let target = if block.is_water() {
+                        &mut water
+                    } else {
+                        &mut solid
+                    };
                     add_quad(
                         target,
                         [
@@ -146,7 +158,11 @@ pub fn build_section_mesh_standard(
                 };
                 if should_render_face(block, south_neighbor, BlockFace::South) {
                     let layer = block_texture(block, BlockFace::South).layer();
-                    let target = if block.is_water() { &mut water } else { &mut solid };
+                    let target = if block.is_water() {
+                        &mut water
+                    } else {
+                        &mut solid
+                    };
                     add_quad(
                         target,
                         [
@@ -174,7 +190,11 @@ pub fn build_section_mesh_standard(
                 };
                 if should_render_face(block, east_neighbor, BlockFace::East) {
                     let layer = block_texture(block, BlockFace::East).layer();
-                    let target = if block.is_water() { &mut water } else { &mut solid };
+                    let target = if block.is_water() {
+                        &mut water
+                    } else {
+                        &mut solid
+                    };
                     add_quad(
                         target,
                         [
@@ -202,7 +222,11 @@ pub fn build_section_mesh_standard(
                 };
                 if should_render_face(block, west_neighbor, BlockFace::West) {
                     let layer = block_texture(block, BlockFace::West).layer();
-                    let target = if block.is_water() { &mut water } else { &mut solid };
+                    let target = if block.is_water() {
+                        &mut water
+                    } else {
+                        &mut solid
+                    };
                     add_quad(
                         target,
                         [
@@ -242,5 +266,8 @@ pub fn build_chunk_mesh_standard(
         *section = build_section_mesh_standard(chunk, north, south, east, west, sy, max_y);
         connectivity[sy] = compute_section_connectivity(chunk, sy);
     }
-    ChunkMeshes { sections, connectivity }
+    ChunkMeshes {
+        sections,
+        connectivity,
+    }
 }

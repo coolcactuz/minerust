@@ -4,14 +4,14 @@ use bevy::text::FontSize;
 use super::types::{
     BenchmarkAvgFpsText, BenchmarkBannerText, BenchmarkChunksText, BenchmarkFrametimeText,
     BenchmarkMinMaxFrametimeText, BenchmarkOnePercentLowText, BenchmarkP99Text, BenchmarkRamText,
-    BenchmarkResultsRoot, BenchmarkRunningBanner, BenchmarkSettingsText,
-    BenchmarkVerdictDescText, BenchmarkVerdictTitleText, BenchmarkVertsText, BenchmarkVramText,
-    DebugHudBtnText, DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsCapTrack,
-    FullscreenBtnText, GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb,
-    GraphicsGreedyTrack, GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsLodTrack,
-    GraphicsSettings, MainMenuRoot, MenuButtonAction, PauseMenuRoot, ProfilerState, SeedInputBox,
-    SeedInputState, SeedInputText, SettingsMenuRoot, ShadowsBtnText, ViewDistanceBtnText,
-    ViewDistanceFill, ViewDistanceThumb, ViewDistanceTrack, VsyncBtnText,
+    BenchmarkResultsRoot, BenchmarkRunningBanner, BenchmarkSettingsText, BenchmarkVerdictDescText,
+    BenchmarkVerdictTitleText, BenchmarkVertsText, BenchmarkVramText, DebugHudBtnText,
+    DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsCapTrack, FullscreenBtnText,
+    GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsGreedyTrack,
+    GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsLodTrack, GraphicsSettings,
+    MainMenuRoot, MenuButtonAction, PauseMenuRoot, ProfilerState, SeedInputBox, SeedInputState,
+    SeedInputText, SettingsMenuRoot, ShadowsBtnText, ViewDistanceBtnText, ViewDistanceFill,
+    ViewDistanceThumb, ViewDistanceTrack, VsyncBtnText,
 };
 use super::widgets::{
     spawn_menu_button, spawn_menu_button_sized, spawn_option_tooltip_card, spawn_settings_button,
@@ -102,8 +102,7 @@ fn spawn_main_menu(commands: &mut Commands, initial_seed_str: &str) {
                 .with_children(|btn_col| {
                     // 1. Continue Saved World Button (if available)
                     let is_primary_new = if let Some(saved_seed) = maybe_saved_world {
-                        let btn_label =
-                            format!("Continue Saved World (Seed: {})", saved_seed);
+                        let btn_label = format!("Continue Saved World (Seed: {})", saved_seed);
                         spawn_menu_button(
                             btn_col,
                             &btn_label,
@@ -281,7 +280,12 @@ fn spawn_settings_menu(
         |g| (g.greedy_label(), g.greedy_ratio()),
     );
     let (lod_label, lod_ratio) = graphics_settings.map_or_else(
-        || ("Distant Sloped LOD: > 8 Chunks (128m)".to_string(), 7.0 / 15.0),
+        || {
+            (
+                "Distant Sloped LOD: > 8 Chunks (128m)".to_string(),
+                7.0 / 15.0,
+            )
+        },
         |g| (g.lod_label(), g.lod_ratio()),
     );
     let fog_label = graphics_settings.map_or_else(

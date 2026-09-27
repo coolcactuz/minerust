@@ -84,7 +84,11 @@ pub fn sync_graphics_settings_to_bevy(
     >,
     mut last_config: Local<Option<(bool, i32, bool)>>,
 ) {
-    let current_config = (settings.distance_fog, settings.view_distance, settings.shadows);
+    let current_config = (
+        settings.distance_fog,
+        settings.view_distance,
+        settings.shadows,
+    );
 
     // 1. If fog or view_distance changed, update Distance Fog in real-time
     if last_config.map_or(true, |last| {
@@ -336,7 +340,11 @@ pub fn update_benchmark_banner_system(
             BenchmarkPhase::FlightRecording => {
                 format!(
                     "[ BENCHMARK IN PROGRESS ] Distance: {:.0}m / {:.0}m ({:.2}km / {:.1}km - {:.0}%) | Press [ESC] to Cancel",
-                    dist, total_dist, dist / 1000.0, total_dist / 1000.0, pct
+                    dist,
+                    total_dist,
+                    dist / 1000.0,
+                    total_dist / 1000.0,
+                    pct
                 )
             }
             BenchmarkPhase::Completed => "[ BENCHMARK COMPLETED ]".to_string(),

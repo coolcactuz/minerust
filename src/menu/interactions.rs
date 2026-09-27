@@ -1,14 +1,16 @@
 use bevy::app::AppExit;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy::window::{CursorGrabMode, CursorOptions, MonitorSelection, PresentMode, PrimaryWindow, WindowMode};
+use bevy::window::{
+    CursorGrabMode, CursorOptions, MonitorSelection, PresentMode, PrimaryWindow, WindowMode,
+};
 
 use crate::benchmark::{BenchmarkConfig, BenchmarkScenario, BenchmarkState};
 use crate::inventory::Inventory;
 use crate::physics::PlayerPhysics;
-use crate::save::{load_player_from_disk, PlayerSaveData};
+use crate::save::{PlayerSaveData, load_player_from_disk};
 use crate::voxel_material::VoxelBlockMaterial;
-use crate::world::{find_safe_surface_spawn, WorldGrid, WorldSeed};
+use crate::world::{WorldGrid, WorldSeed, find_safe_surface_spawn};
 
 use super::types::{
     BenchmarkResultsRoot, FpsCapTrack, GraphicsGreedyTrack, GraphicsLodTrack, GraphicsSettings,
@@ -205,10 +207,17 @@ pub fn menu_button_click_system(
     mut window_query: Query<&mut Window, With<PrimaryWindow>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut exit_writer: MessageWriter<AppExit>,
-    mut player_query: Query<(&mut Transform, &mut crate::camera::FpsCamera, &mut PlayerPhysics)>,
+    mut player_query: Query<(
+        &mut Transform,
+        &mut crate::camera::FpsCamera,
+        &mut PlayerPhysics,
+    )>,
     mut inventory: Option<ResMut<Inventory>>,
     mut bench_control: MenuBenchmarkControl,
-    interaction_query: Query<(&Interaction, &MenuButtonAction), (Changed<Interaction>, With<Button>)>,
+    interaction_query: Query<
+        (&Interaction, &MenuButtonAction),
+        (Changed<Interaction>, With<Button>),
+    >,
 ) {
     let Ok(mut window) = window_query.single_mut() else {
         return;
@@ -238,23 +247,16 @@ pub fn menu_button_click_system(
                             w.reinitialize_with_seed(target_seed, &mut commands);
 
                             let player_save_file = w.player_save_path();
-                            let (player_pos, player_yaw, player_pitch) =
-                                if player_save_file.exists() {
-                                    if let Ok(data) = load_player_from_disk(&player_save_file) {
-                                        if let Some(ref mut inv) = inventory {
-                                            inv.hotbar = data.hotbar;
-                                            inv.main = data.main;
-                                            inv.selected_slot = data.selected_slot;
-                                        }
-                                        (Vec3::from_array(data.position), data.yaw, data.pitch)
-                                    } else {
-                                        let spawn_pos =
-                                            find_safe_surface_spawn(&w.noise, target_seed.0);
-                                        if let Some(ref mut inv) = inventory {
-                                            **inv = Inventory::default();
-                                        }
-                                        (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
+                            let (player_pos, player_yaw, player_pitch) = if player_save_file
+                                .exists()
+                            {
+                                if let Ok(data) = load_player_from_disk(&player_save_file) {
+                                    if let Some(ref mut inv) = inventory {
+                                        inv.hotbar = data.hotbar;
+                                        inv.main = data.main;
+                                        inv.selected_slot = data.selected_slot;
                                     }
+                                    (Vec3::from_array(data.position), data.yaw, data.pitch)
                                 } else {
                                     let spawn_pos =
                                         find_safe_surface_spawn(&w.noise, target_seed.0);
@@ -262,7 +264,14 @@ pub fn menu_button_click_system(
                                         **inv = Inventory::default();
                                     }
                                     (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
-                                };
+                                }
+                            } else {
+                                let spawn_pos = find_safe_surface_spawn(&w.noise, target_seed.0);
+                                if let Some(ref mut inv) = inventory {
+                                    **inv = Inventory::default();
+                                }
+                                (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
+                            };
 
                             if let Ok((mut transform, mut fps_cam, mut physics)) =
                                 player_query.single_mut()
@@ -308,31 +317,28 @@ pub fn menu_button_click_system(
                         w.reinitialize_with_seed(target_seed, &mut commands);
 
                         let player_save_file = w.player_save_path();
-                        let (player_pos, player_yaw, player_pitch) =
-                            if player_save_file.exists() {
-                                if let Ok(data) = load_player_from_disk(&player_save_file) {
-                                    if let Some(ref mut inv) = inventory {
-                                        inv.hotbar = data.hotbar;
-                                        inv.main = data.main;
-                                        inv.selected_slot = data.selected_slot;
-                                    }
-                                    (Vec3::from_array(data.position), data.yaw, data.pitch)
-                                } else {
-                                    let spawn_pos =
-                                        find_safe_surface_spawn(&w.noise, target_seed.0);
-                                    if let Some(ref mut inv) = inventory {
-                                        **inv = Inventory::default();
-                                    }
-                                    (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
+                        let (player_pos, player_yaw, player_pitch) = if player_save_file.exists() {
+                            if let Ok(data) = load_player_from_disk(&player_save_file) {
+                                if let Some(ref mut inv) = inventory {
+                                    inv.hotbar = data.hotbar;
+                                    inv.main = data.main;
+                                    inv.selected_slot = data.selected_slot;
                                 }
+                                (Vec3::from_array(data.position), data.yaw, data.pitch)
                             } else {
-                                let spawn_pos =
-                                    find_safe_surface_spawn(&w.noise, target_seed.0);
+                                let spawn_pos = find_safe_surface_spawn(&w.noise, target_seed.0);
                                 if let Some(ref mut inv) = inventory {
                                     **inv = Inventory::default();
                                 }
                                 (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
-                            };
+                            }
+                        } else {
+                            let spawn_pos = find_safe_surface_spawn(&w.noise, target_seed.0);
+                            if let Some(ref mut inv) = inventory {
+                                **inv = Inventory::default();
+                            }
+                            (spawn_pos, -std::f32::consts::FRAC_PI_2, -0.3)
+                        };
 
                         if let Ok((mut transform, mut fps_cam, mut physics)) =
                             player_query.single_mut()
@@ -471,11 +477,8 @@ pub fn menu_button_click_system(
                     if let Some(ref mut w) = world {
                         w.reinitialize_with_seed(target_seed, &mut commands);
 
-                        let spawn_pos = Vec3::new(
-                            0.0,
-                            BenchmarkScenario::DEFAULT_FLIGHT_ALTITUDE,
-                            0.0,
-                        );
+                        let spawn_pos =
+                            Vec3::new(0.0, BenchmarkScenario::DEFAULT_FLIGHT_ALTITUDE, 0.0);
                         let player_yaw = 0.0;
                         let player_pitch = -0.06;
 

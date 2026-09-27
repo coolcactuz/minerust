@@ -38,11 +38,7 @@ impl PlayerSaveData {
         }
     }
 
-    pub fn from_player(
-        transform: &Transform,
-        fps: &FpsCamera,
-        inventory: &Inventory,
-    ) -> Self {
+    pub fn from_player(transform: &Transform, fps: &FpsCamera, inventory: &Inventory) -> Self {
         Self::new(
             transform.translation,
             fps.yaw,

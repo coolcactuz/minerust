@@ -134,9 +134,10 @@ impl BlockPos {
 The project mandates standard, battle-tested Rust ecosystem crates across all modules:
 - **`tracing`**: Mandatory for all telemetry, performance spans, and diagnostic logging (`tracing::info!`, `warn!`, `debug!`, `info_span!`). Raw `println!` is strictly prohibited in runtime systems.
 - **`thiserror`**: Standard for strongly-typed, zero-overhead domain library errors with descriptive error messages.
-- **`anyhow`**: Standard for top-level application bootstrapping, CLI argument parsing, and outer error propagation where context layering is required.
 - **`serde` & `serde_json`**: Industry-standard data serialization format for world save files, player state, configuration files, and dev settings.
-- **`smallvec` & `arrayvec`**: Small, stack-allocated, fixed-capacity vector alternatives to eliminate heap allocations in hot loops (neighbor lookups, face quad vertices, flood queues).
+- **`lz4_flex`**: High-throughput compression for serialized chunk payloads.
+- **`quick_cache`**: Lock-free, concurrent LRU chunk cache.
+- **`mimalloc`**: High-performance, low-fragmentation global memory allocator.
 - **`criterion`** (dev): Benchmark framework for preventing performance regressions across commits.
 - **`proptest`** (dev): Property-based testing framework for generative fuzzing of noise algorithms, coordinate transforms, and serialization integrity.
 
@@ -260,6 +261,11 @@ cast_precision_loss = "allow"
 
 ### 7.2 Formatting Enforcement (`rustfmt.toml`)
 All source code must format cleanly with standard Rust formatting (`cargo fmt --check`).
+
+### 7.3 Automated CI/CD Pipeline & Pull Request Standards
+- **Automated CI Quality Gate (`.github/workflows/ci.yml`)**: Every pull request and push to `master` and `develop` triggers automated linting (`cargo clippy --all-targets -- -D warnings`), formatting validation (`cargo fmt --check`), and full test execution (`cargo test --all-targets`).
+- **PR Template Standardization (`.github/pull_request_template.md`)**: Pull requests must follow the standardized template providing a summary, type of change, architectural details, performance/graphics telemetry, and quality checklist verification.
+- **Multi-Platform Continuous Delivery (`.github/workflows/release.yml`)**: Builds cross-platform standalone packages for Linux (`x86_64`), Windows (`x86_64`), and macOS (`arm64`), attaching them to GitHub Releases upon tag creation (`v*`).
 
 ---
 

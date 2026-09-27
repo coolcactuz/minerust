@@ -43,14 +43,14 @@ pub struct ProfilerState {
 pub struct GraphicsSettings {
     pub vsync: bool,
     pub fullscreen: bool,
-    pub distance_fog: bool,   // Linear atmospheric distance fog
-    pub shadows: bool,        // Directional light shadow maps
-    pub fps_cap: Option<u32>, // None = Uncapped, Some(30)..Some(240)
-    pub view_distance: i32,   // 4 to 64 chunks (64m to 1024m)
-    pub greedy_meshing: bool, // Greedy coplanar quad merging beyond greedy threshold
+    pub distance_fog: bool,    // Linear atmospheric distance fog
+    pub shadows: bool,         // Directional light shadow maps
+    pub fps_cap: Option<u32>,  // None = Uncapped, Some(30)..Some(240)
+    pub view_distance: i32,    // 4 to 64 chunks (64m to 1024m)
+    pub greedy_meshing: bool,  // Greedy coplanar quad merging beyond greedy threshold
     pub greedy_threshold: i32, // Distance threshold in chunks: 2 (32m), 3 (48m), 4 (64m), 0 (all)
-    pub distance_lod: bool,   // Distant Sloped Heightfield LOD
-    pub lod_threshold: i32,   // 2 to 32 chunks
+    pub distance_lod: bool,    // Distant Sloped Heightfield LOD
+    pub lod_threshold: i32,    // 2 to 32 chunks
 }
 
 impl Default for GraphicsSettings {
@@ -103,9 +103,8 @@ pub const FPS_CAP_STEPS: &[Option<u32>] = &[
     None, // Uncapped
 ];
 
-pub const VIEW_DISTANCE_STEPS: &[i32] = &[
-    4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64,
-];
+pub const VIEW_DISTANCE_STEPS: &[i32] =
+    &[4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64];
 
 impl GraphicsSettings {
     #[must_use]

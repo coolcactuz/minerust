@@ -153,7 +153,10 @@ pub fn read_gpu_vram_from_drm_path<P: AsRef<std::path::Path>>(drm_path: P) -> Gp
         let mut best_mem = GpuMemory::default();
         for entry in entries.flatten() {
             let path = entry.path();
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
             if name.starts_with("card") && name[4..].chars().all(|c| c.is_ascii_digit()) {
                 let dev = path.join("device");
                 let used_path = dev.join("mem_info_vram_used");
@@ -407,9 +410,15 @@ pub fn update_profiling_hud_system(
                 } else {
                     format!("{:.1} MB", gpu_vram.total_mb)
                 };
-                format!("HW VRAM: {} / {} (Buffers: ~{})", used_str, tot_str, est_vram_str)
+                format!(
+                    "HW VRAM: {} / {} (Buffers: ~{})",
+                    used_str, tot_str, est_vram_str
+                )
             } else {
-                format!("Total: ~{} [Geom: {:.1} MB | Textures/FB: ~32.0 MB]", est_vram_str, geom_mb)
+                format!(
+                    "Total: ~{} [Geom: {:.1} MB | Textures/FB: ~32.0 MB]",
+                    est_vram_str, geom_mb
+                )
             };
 
             let verts_str = if total_verts >= 1_000_000 {
@@ -583,7 +592,8 @@ mod tests {
 
     #[test]
     fn test_read_gpu_vram_mock_drm() {
-        let temp_dir = std::env::temp_dir().join(format!("minerust_vram_test_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("minerust_vram_test_{}", std::process::id()));
         let card0_dev = temp_dir.join("card0").join("device");
         let card1_dev = temp_dir.join("card1").join("device");
         let _ = std::fs::create_dir_all(&card0_dev);
@@ -620,7 +630,8 @@ mod tests {
         assert_eq!(parsed, Some((Some(569), 1886944.0)));
 
         // Fallback to resident vram if memory-vram is absent
-        let fallback_sample = "drm-driver:\ti915\ndrm-client-id:\t42\ndrm-resident-vram:\t524288 KiB\n";
+        let fallback_sample =
+            "drm-driver:\ti915\ndrm-client-id:\t42\ndrm-resident-vram:\t524288 KiB\n";
         let parsed_fallback = parse_drm_fdinfo_content(fallback_sample);
         assert_eq!(parsed_fallback, Some((Some(42), 524288.0)));
 
@@ -631,7 +642,8 @@ mod tests {
 
     #[test]
     fn test_parse_process_vram_from_fdinfo_dir_deduplication() {
-        let temp_dir = std::env::temp_dir().join(format!("minerust_fdinfo_test_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("minerust_fdinfo_test_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&temp_dir);
 
         // FD 10: client 500 with 500 MiB
@@ -652,7 +664,11 @@ mod tests {
 
         let total_mb = parse_process_vram_from_fdinfo_dir(&temp_dir);
         // Client 500 (500 MB) + Client 600 (200 MB) = 700 MB
-        assert!((total_mb - 700.0).abs() < 1.0, "Expected ~700 MB but got {}", total_mb);
+        assert!(
+            (total_mb - 700.0).abs() < 1.0,
+            "Expected ~700 MB but got {}",
+            total_mb
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

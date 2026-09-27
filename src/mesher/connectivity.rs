@@ -1,5 +1,5 @@
-use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use super::SECTION_HEIGHT;
+use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 
 const TOTAL_VOXELS: usize = CHUNK_WIDTH * SECTION_HEIGHT * CHUNK_DEPTH; // 4096
 

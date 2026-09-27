@@ -92,7 +92,10 @@ pub fn add_quad(
     layer: f32,
     shade: f32,
 ) {
-    debug_assert!(buffers.positions.len() <= (u16::MAX - 4) as usize, "Chunk vertex count exceeds u16::MAX");
+    debug_assert!(
+        buffers.positions.len() <= (u16::MAX - 4) as usize,
+        "Chunk vertex count exceeds u16::MAX"
+    );
     let start_idx = buffers.positions.len() as u16;
 
     buffers.positions.extend_from_slice(&verts);
@@ -120,7 +123,10 @@ pub fn add_triangle(
     layer: f32,
     shade: f32,
 ) {
-    debug_assert!(buffers.positions.len() <= (u16::MAX - 3) as usize, "Chunk vertex count exceeds u16::MAX");
+    debug_assert!(
+        buffers.positions.len() <= (u16::MAX - 3) as usize,
+        "Chunk vertex count exceeds u16::MAX"
+    );
     let start_idx = buffers.positions.len() as u16;
 
     buffers.positions.extend_from_slice(&verts);
@@ -128,7 +134,9 @@ pub fn add_triangle(
     buffers.uvs_1.extend_from_slice(&[[layer, shade]; 3]);
     buffers.uvs.extend_from_slice(&tri_uvs);
 
-    buffers.indices.extend_from_slice(&[start_idx, start_idx + 1, start_idx + 2]);
+    buffers
+        .indices
+        .extend_from_slice(&[start_idx, start_idx + 1, start_idx + 2]);
 }
 
 #[inline(always)]
