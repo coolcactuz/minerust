@@ -133,24 +133,20 @@ fn main() {
     let benchmark_config = BenchmarkConfig::default();
 
     App::new()
-        .add_plugins(
-            DefaultPlugins
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: if opts.profile_mode {
-                            format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
-                        } else {
-                            format!("MineRust - Seed: {}", seed.0)
-                        },
-                        resolution: WindowResolution::new(1280, 720),
-                        present_mode,
-                        mode,
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .disable::<bevy::audio::AudioPlugin>(),
-        )
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: if opts.profile_mode {
+                    format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
+                } else {
+                    format!("MineRust - Seed: {}", seed.0)
+                },
+                resolution: WindowResolution::new(1280, 720),
+                present_mode,
+                mode,
+                ..default()
+            }),
+            ..default()
+        }))
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .insert_resource(graphics_settings)
