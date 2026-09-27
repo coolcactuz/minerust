@@ -112,7 +112,11 @@ pub struct BenchmarkSummary {
 
 impl BenchmarkSummary {
     #[must_use]
-    pub fn generate_verdict(avg_fps: f32, one_percent_low_fps: f32, _p99_ms: f32) -> (String, String) {
+    pub fn generate_verdict(
+        avg_fps: f32,
+        one_percent_low_fps: f32,
+        _p99_ms: f32,
+    ) -> (String, String) {
         if avg_fps >= 100.0 && one_percent_low_fps >= 60.0 {
             (
                 "PERFECT: Ultra-Smooth High Refresh Rate".to_string(),
@@ -229,7 +233,8 @@ pub fn benchmark_runner_system(
             };
 
             // Print status updates while background threads generate and mesh initial spawn chunks
-            let total_needed = (2 * config.scenario.view_distance + 1) * (2 * config.scenario.view_distance + 1);
+            let total_needed =
+                (2 * config.scenario.view_distance + 1) * (2 * config.scenario.view_distance + 1);
             if state.elapsed - state.last_status_print >= 0.5 {
                 state.last_status_print = state.elapsed;
                 println!(
@@ -258,7 +263,10 @@ pub fn benchmark_runner_system(
                 println!("\n============================================================");
                 println!("           MINERUST WORLD INITIALIZATION COMPLETE           ");
                 println!("============================================================");
-                println!("  Spawn Area Meshed    : {} / {} chunks", state.static_chunks, total_needed);
+                println!(
+                    "  Spawn Area Meshed    : {} / {} chunks",
+                    state.static_chunks, total_needed
+                );
                 println!(
                     "  Spawn Area Geometry  : {} vertices (~{} triangles)",
                     state.static_vertices,
@@ -330,10 +338,13 @@ pub fn benchmark_runner_system(
             if state.distance_traveled >= config.scenario.flight_distance {
                 state.phase = BenchmarkPhase::Completed;
                 state.completed = true;
-                let computed = compute_benchmark_summary(&state, &config, graphics_settings.as_deref());
+                let computed =
+                    compute_benchmark_summary(&state, &config, graphics_settings.as_deref());
                 *summary = computed;
 
-                println!("[BENCHMARK] In-game benchmark complete! Transitioning to results dashboard.");
+                println!(
+                    "[BENCHMARK] In-game benchmark complete! Transitioning to results dashboard."
+                );
                 config.enabled = false;
                 if let Some(ref mut m) = menu {
                     m.screen = crate::menu::MenuScreen::BenchmarkResults;
@@ -508,6 +519,8 @@ mod tests {
         assert!(summary.avg_fps > 90.0);
         assert!(summary.one_percent_low_fps > 45.0);
         assert_eq!(summary.tested_view_distance, 16);
-        assert!(summary.verdict_title.contains("GREAT") || summary.verdict_title.contains("PERFECT"));
+        assert!(
+            summary.verdict_title.contains("GREAT") || summary.verdict_title.contains("PERFECT")
+        );
     }
 }

@@ -1,0 +1,56 @@
+name: CD Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies (Bevy engine)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev pkg-config
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust dependency cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Package release artifact
+        run: |
+          VERSION="${GITHUB_REF_NAME:-manual}"
+          RELEASE_DIR="minerust-${VERSION}-linux-x86_64"
+          mkdir -p "$RELEASE_DIR"
+          cp target/release/minerust "$RELEASE_DIR/"
+          cp -r assets "$RELEASE_DIR/"
+          cp README.md LICENSE* "$RELEASE_DIR/" 2>/dev/null || true
+          tar -czf "${RELEASE_DIR}.tar.gz" "$RELEASE_DIR"
+          echo "ARCHIVE_PATH=${RELEASE_DIR}.tar.gz" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARCHIVE_PATH }}
+          generate_release_notes: true

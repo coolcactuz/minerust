@@ -31,7 +31,10 @@ fn test_procedural_chunk_greedy_reduces_vertices() {
     let meshes_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true);
     let std_v = meshes_standard.total_vertices();
     let greedy_v = meshes_greedy.total_vertices();
-    println!("PROCEDURAL CHUNK: Standard = {} verts, Greedy = {} verts", std_v, greedy_v);
+    println!(
+        "PROCEDURAL CHUNK: Standard = {} verts, Greedy = {} verts",
+        std_v, greedy_v
+    );
     assert!(greedy_v < std_v);
 }
 
@@ -70,7 +73,9 @@ fn test_waterfall_renders_sides_in_air() {
         chunk.set(5, ly, 5, BlockType::Water);
     }
     let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, true);
-    let water_mesh = meshes.first_water_mesh().expect("Water mesh must exist for waterfall");
+    let water_mesh = meshes
+        .first_water_mesh()
+        .expect("Water mesh must exist for waterfall");
     assert!(water_mesh.count_vertices() > 8);
 }
 
@@ -218,7 +223,7 @@ fn test_sloped_lod_groups_ores_on_mountain() {
 
 #[test]
 fn test_texture_array_properties_and_repeat_mode() {
-    use crate::texture::{create_texture_array, LAYER_COUNT, TILE_SIZE};
+    use crate::texture::{LAYER_COUNT, TILE_SIZE, create_texture_array};
     use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler};
     use bevy::render::render_resource::TextureDimension;
 
@@ -244,7 +249,7 @@ fn test_texture_array_properties_and_repeat_mode() {
 #[test]
 fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
     use crate::block::BlockFace;
-    use crate::texture::{block_texture, TextureId};
+    use crate::texture::{TextureId, block_texture};
     use bevy::render::mesh::VertexAttributeValues;
 
     let mut chunk = Chunk::new();
@@ -259,7 +264,9 @@ fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
     let mesh = meshes.first_solid_mesh().expect("Solid mesh must exist");
 
     // Verify ATTRIBUTE_UV_0 (repeating coordinates from 0..w and 0..h)
-    let uv0_values = mesh.attribute(Mesh::ATTRIBUTE_UV_0).expect("ATTRIBUTE_UV_0 must exist");
+    let uv0_values = mesh
+        .attribute(Mesh::ATTRIBUTE_UV_0)
+        .expect("ATTRIBUTE_UV_0 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv0_values {
         // Find max U and max V across vertices
         let max_u = uvs.iter().map(|uv| uv[0]).fold(0.0f32, f32::max);
@@ -276,13 +283,20 @@ fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
     }
 
     // Verify ATTRIBUTE_UV_1 (layer attribute)
-    let uv1_values = mesh.attribute(Mesh::ATTRIBUTE_UV_1).expect("ATTRIBUTE_UV_1 must exist");
+    let uv1_values = mesh
+        .attribute(Mesh::ATTRIBUTE_UV_1)
+        .expect("ATTRIBUTE_UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uv1s) = uv1_values {
         assert_eq!(uv1s.len(), mesh.count_vertices());
         let expected_stone_layer = block_texture(BlockType::Stone, BlockFace::Top).layer();
         assert!((expected_stone_layer - TextureId::Stone as usize as f32).abs() < f32::EPSILON);
-        let found_stone = uv1s.iter().any(|uv| (uv[0] - expected_stone_layer).abs() < 1e-4);
-        assert!(found_stone, "Expected at least one vertex with Stone layer ID");
+        let found_stone = uv1s
+            .iter()
+            .any(|uv| (uv[0] - expected_stone_layer).abs() < 1e-4);
+        assert!(
+            found_stone,
+            "Expected at least one vertex with Stone layer ID"
+        );
     } else {
         panic!("Expected Float32x2 for ATTRIBUTE_UV_1");
     }
@@ -295,13 +309,19 @@ fn test_all_meshers_use_u16_indices() {
     let mut chunk = Chunk::new();
     chunk.set(0, 10, 0, BlockType::Stone);
 
-    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).first_solid_mesh().unwrap();
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false)
+        .first_solid_mesh()
+        .unwrap();
     assert!(matches!(mesh_standard.indices(), Some(Indices::U16(_))));
 
-    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).first_solid_mesh().unwrap();
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true)
+        .first_solid_mesh()
+        .unwrap();
     assert!(matches!(mesh_greedy.indices(), Some(Indices::U16(_))));
 
-    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).first_solid_mesh().unwrap();
+    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15)
+        .first_solid_mesh()
+        .unwrap();
     assert!(matches!(mesh_lod.indices(), Some(Indices::U16(_))));
 }
 
@@ -312,25 +332,46 @@ fn test_all_meshers_omit_attribute_color_and_pack_shade() {
     let mut chunk = Chunk::new();
     chunk.set(0, 10, 0, BlockType::Stone);
 
-    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).first_solid_mesh().unwrap();
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false)
+        .first_solid_mesh()
+        .unwrap();
     assert!(mesh_standard.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
-    let uv1_std = mesh_standard.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
+    let uv1_std = mesh_standard
+        .attribute(Mesh::ATTRIBUTE_UV_1)
+        .expect("UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv1_std {
-        assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
+        assert!(
+            uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0),
+            "Shade must be packed in UV_1.y"
+        );
     }
 
-    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).first_solid_mesh().unwrap();
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true)
+        .first_solid_mesh()
+        .unwrap();
     assert!(mesh_greedy.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
-    let uv1_greedy = mesh_greedy.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
+    let uv1_greedy = mesh_greedy
+        .attribute(Mesh::ATTRIBUTE_UV_1)
+        .expect("UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv1_greedy {
-        assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
+        assert!(
+            uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0),
+            "Shade must be packed in UV_1.y"
+        );
     }
 
-    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).first_solid_mesh().unwrap();
+    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15)
+        .first_solid_mesh()
+        .unwrap();
     assert!(mesh_lod.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
-    let uv1_lod = mesh_lod.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
+    let uv1_lod = mesh_lod
+        .attribute(Mesh::ATTRIBUTE_UV_1)
+        .expect("UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv1_lod {
-        assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
+        assert!(
+            uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0),
+            "Shade must be packed in UV_1.y"
+        );
     }
 }
 

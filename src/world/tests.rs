@@ -462,7 +462,10 @@ fn test_determine_chunk_tier_near_mid_distant() {
         greedy_threshold,
         greedy_threshold_sq,
     );
-    assert_eq!(tier_no_lod, 1, "With LOD off, distant chunk should stay greedy meshed");
+    assert_eq!(
+        tier_no_lod, 1,
+        "With LOD off, distant chunk should stay greedy meshed"
+    );
     assert!(greedy_no_lod);
 }
 
@@ -490,22 +493,23 @@ fn test_subchunk_section_entities_lifecycle() {
         bevy::asset::RenderAssetUsages::RENDER_WORLD,
     ));
 
-    app.world_mut().resource_scope(|world, mut meshes: Mut<Assets<Mesh>>| {
-        world.resource_scope(
-            |world, mut materials: Mut<Assets<crate::voxel_material::VoxelBlockMaterial>>| {
-                let mut commands = world.commands();
-                crate::world::streaming::apply_chunk_mesh(
-                    coord,
-                    dummy_meshes,
-                    0,
-                    &mut commands,
-                    &mut world_grid,
-                    &mut meshes,
-                    &mut materials,
-                );
-            },
-        );
-    });
+    app.world_mut()
+        .resource_scope(|world, mut meshes: Mut<Assets<Mesh>>| {
+            world.resource_scope(
+                |world, mut materials: Mut<Assets<crate::voxel_material::VoxelBlockMaterial>>| {
+                    let mut commands = world.commands();
+                    crate::world::streaming::apply_chunk_mesh(
+                        coord,
+                        dummy_meshes,
+                        0,
+                        &mut commands,
+                        &mut world_grid,
+                        &mut meshes,
+                        &mut materials,
+                    );
+                },
+            );
+        });
 
     // Apply commands to app world
     app.update();
@@ -516,7 +520,10 @@ fn test_subchunk_section_entities_lifecycle() {
         .get(&coord)
         .expect("chunk_entities entry must exist");
     assert!(solid_secs[0].is_some(), "Section 0 must have solid entity");
-    assert!(solid_secs[1].is_none(), "Section 1 had no mesh and must be None");
+    assert!(
+        solid_secs[1].is_none(),
+        "Section 1 had no mesh and must be None"
+    );
     assert!(solid_secs[2].is_some(), "Section 2 must have solid entity");
 
     let water_secs = world_grid

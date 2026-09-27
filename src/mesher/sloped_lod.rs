@@ -1,5 +1,7 @@
-use super::helpers::{add_quad, add_triangle, simplify_block_for_lod, triangle_normal, MeshBuffers};
-use super::{ChunkMeshes, SectionConnectivity, SectionMeshes, CHUNK_SECTIONS};
+use super::helpers::{
+    MeshBuffers, add_quad, add_triangle, simplify_block_for_lod, triangle_normal,
+};
+use super::{CHUNK_SECTIONS, ChunkMeshes, SectionConnectivity, SectionMeshes};
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::texture::{block_texture, quad_uvs};
@@ -420,5 +422,8 @@ pub fn build_chunk_mesh_sloped_lod(
         water: water.to_mesh(),
     };
     let connectivity = [SectionConnectivity::full(); CHUNK_SECTIONS];
-    ChunkMeshes { sections, connectivity }
+    ChunkMeshes {
+        sections,
+        connectivity,
+    }
 }

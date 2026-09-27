@@ -1,8 +1,8 @@
-use std::collections::VecDeque;
-use bevy::prelude::*;
 use crate::chunk::CHUNK_HEIGHT;
-use crate::mesher::{SectionFace, CHUNK_SECTIONS, SECTION_HEIGHT};
-use crate::world::grid::{ChunkSection, WorldGrid, FULL_CHUNK_SECTION_INDEX};
+use crate::mesher::{CHUNK_SECTIONS, SECTION_HEIGHT, SectionFace};
+use crate::world::grid::{ChunkSection, FULL_CHUNK_SECTION_INDEX, WorldGrid};
+use bevy::prelude::*;
+use std::collections::VecDeque;
 
 pub const OCCLUSION_RADIUS: i32 = 8;
 pub const OCCLUSION_GRID_WIDTH: usize = (OCCLUSION_RADIUS * 2 + 1) as usize; // 17
@@ -29,7 +29,10 @@ impl OcclusionBitset {
     #[inline]
     #[must_use]
     pub fn is_visible(&self, dx: i32, dz: i32, section_y: u8) -> bool {
-        if dx.abs() > OCCLUSION_RADIUS || dz.abs() > OCCLUSION_RADIUS || section_y >= CHUNK_SECTIONS as u8 {
+        if dx.abs() > OCCLUSION_RADIUS
+            || dz.abs() > OCCLUSION_RADIUS
+            || section_y >= CHUNK_SECTIONS as u8
+        {
             return true; // Conservative: outside LOD0 radius is always visible
         }
         let ux = (dx + OCCLUSION_RADIUS) as usize;
@@ -40,7 +43,10 @@ impl OcclusionBitset {
 
     #[inline]
     pub fn mark_visible(&mut self, dx: i32, dz: i32, section_y: u8) {
-        if dx.abs() <= OCCLUSION_RADIUS && dz.abs() <= OCCLUSION_RADIUS && section_y < CHUNK_SECTIONS as u8 {
+        if dx.abs() <= OCCLUSION_RADIUS
+            && dz.abs() <= OCCLUSION_RADIUS
+            && section_y < CHUNK_SECTIONS as u8
+        {
             let ux = (dx + OCCLUSION_RADIUS) as usize;
             let uz = (dz + OCCLUSION_RADIUS) as usize;
             let idx = ux + uz * OCCLUSION_GRID_WIDTH;
@@ -90,10 +96,8 @@ pub fn compute_section_occlusion_with_queue(
     let mut bitset = OcclusionBitset::default();
     queue.clear();
 
-    let (player_chunk, _, _) = WorldGrid::world_to_chunk_coord(
-        cam_pos.x.floor() as i32,
-        cam_pos.z.floor() as i32,
-    );
+    let (player_chunk, _, _) =
+        WorldGrid::world_to_chunk_coord(cam_pos.x.floor() as i32, cam_pos.z.floor() as i32);
     let cam_sy_raw = (cam_pos.y / SECTION_HEIGHT as f32).floor() as i32;
     let outdoors = cam_sy_raw >= CHUNK_SECTIONS as i32 || is_under_open_sky(world, cam_pos);
 
@@ -106,7 +110,9 @@ pub fn compute_section_occlusion_with_queue(
                 let n_conn = world
                     .chunk_connectivity
                     .get(&chunk_coord)
-                    .map_or_else(crate::mesher::SectionConnectivity::full, |secs| secs[top_sy as usize]);
+                    .map_or_else(crate::mesher::SectionConnectivity::full, |secs| {
+                        secs[top_sy as usize]
+                    });
                 if !n_conn.is_solid && n_conn.mask[SectionFace::Up as usize] != 0 {
                     bitset.mark_visible(dx, dz, top_sy);
                     queue.push_back((chunk_coord, top_sy, Some(SectionFace::Up)));
@@ -133,7 +139,9 @@ pub fn compute_section_occlusion_with_queue(
         let conn = world
             .chunk_connectivity
             .get(&coord)
-            .map_or_else(crate::mesher::SectionConnectivity::full, |secs| secs[sy as usize]);
+            .map_or_else(crate::mesher::SectionConnectivity::full, |secs| {
+                secs[sy as usize]
+            });
 
         if conn.is_solid {
             continue;
@@ -182,7 +190,9 @@ pub fn compute_section_occlusion_with_queue(
             let n_conn = world
                 .chunk_connectivity
                 .get(&n_chunk)
-                .map_or_else(crate::mesher::SectionConnectivity::full, |secs| secs[n_sy as usize]);
+                .map_or_else(crate::mesher::SectionConnectivity::full, |secs| {
+                    secs[n_sy as usize]
+                });
 
             if n_conn.is_solid || n_conn.mask[entry_face as usize] == 0 {
                 // Neighbor section has a solid wall on this boundary face; light cannot penetrate!
@@ -218,13 +228,13 @@ pub fn section_occlusion_system(
     mut section_query: Query<(&ChunkSection, &mut Visibility)>,
 ) {
     let Some(world) = world_grid else { return };
-    let Ok(cam_transform) = camera_query.single() else { return };
+    let Ok(cam_transform) = camera_query.single() else {
+        return;
+    };
 
     let cam_pos = cam_transform.translation;
-    let (cam_chunk, _, _) = WorldGrid::world_to_chunk_coord(
-        cam_pos.x.floor() as i32,
-        cam_pos.z.floor() as i32,
-    );
+    let (cam_chunk, _, _) =
+        WorldGrid::world_to_chunk_coord(cam_pos.x.floor() as i32, cam_pos.z.floor() as i32);
     let cam_sy = (cam_pos.y / SECTION_HEIGHT as f32).floor() as i32;
     let outdoors = cam_sy >= CHUNK_SECTIONS as i32 || is_under_open_sky(&world, cam_pos);
 
@@ -387,7 +397,10 @@ mod tests {
         // Section 4 (water surface) MUST be visible
         assert!(bitset.is_visible(0, 0, 4), "Water surface must be visible");
         // Section 3 (seabed with sand and water) MUST be visible through the transparent water
-        assert!(bitset.is_visible(0, 0, 3), "Seabed section must be visible under water");
+        assert!(
+            bitset.is_visible(0, 0, 3),
+            "Seabed section must be visible under water"
+        );
         // Deep subterranean bedrock section 0 MUST be culled
         assert!(!bitset.is_visible(0, 0, 0), "Deep bedrock must be culled");
     }

@@ -10,9 +10,9 @@ use crate::camera::FpsCamera;
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
 use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
-use crate::mesher::{build_chunk_mesh_lod, ChunkMeshes, CHUNK_SECTIONS};
+use crate::mesher::{CHUNK_SECTIONS, ChunkMeshes, build_chunk_mesh_lod};
 use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
-use crate::world::grid::{ChunkSection, WorldGrid, FULL_CHUNK_SECTION_INDEX};
+use crate::world::grid::{ChunkSection, FULL_CHUNK_SECTION_INDEX, WorldGrid};
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{
     MAX_CHUNK_DISPATCH_PER_FRAME, MAX_MESHES_PER_FRAME, SEA_LEVEL, VIEW_DISTANCE,
@@ -89,7 +89,9 @@ pub fn apply_chunk_mesh(
 
     // Track vertex counts, LOD and connectivity
     world.chunk_lod.insert(coord, lod);
-    world.chunk_connectivity.insert(coord, meshes_res.connectivity);
+    world
+        .chunk_connectivity
+        .insert(coord, meshes_res.connectivity);
     let new_vert_count = meshes_res.total_vertices();
     let old_vert_count = world
         .chunk_vertices
@@ -531,7 +533,8 @@ pub fn world_streaming_system(
                 let n_diff = neighbor_coord - player_chunk;
                 if n_diff.x.abs() <= view_dist
                     && n_diff.y.abs() <= view_dist
-                    && (world.has_chunk_mesh(&neighbor_coord) || world.chunk_lod.contains_key(&neighbor_coord))
+                    && (world.has_chunk_mesh(&neighbor_coord)
+                        || world.chunk_lod.contains_key(&neighbor_coord))
                 {
                     world.queue_mesh(neighbor_coord);
                 }
@@ -594,7 +597,13 @@ pub fn world_streaming_system(
             } else {
                 (g.greedy_threshold as f32 * 16.0).powi(2)
             };
-            (g.distance_lod, l_sq, g.greedy_meshing, g.greedy_threshold, g_sq)
+            (
+                g.distance_lod,
+                l_sq,
+                g.greedy_meshing,
+                g.greedy_threshold,
+                g_sq,
+            )
         } else {
             (true, 128.0 * 128.0, true, 2, 32.0 * 32.0)
         };
@@ -604,9 +613,7 @@ pub fn world_streaming_system(
     for (&coord, chunk) in &world.chunks {
         let diff = coord - player_chunk;
         let dist_2d = diff.x.abs().max(diff.y.abs());
-        if dist_2d <= view_dist
-            && world.chunk_lod.contains_key(&coord)
-        {
+        if dist_2d <= view_dist && world.chunk_lod.contains_key(&coord) {
             let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
             let (target_tier, _, _) = determine_chunk_tier(
                 dist_sq,

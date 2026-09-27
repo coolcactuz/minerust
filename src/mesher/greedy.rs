@@ -1,7 +1,7 @@
-use super::helpers::{add_quad, can_merge_blocks, should_render_face, MeshBuffers};
+use super::helpers::{MeshBuffers, add_quad, can_merge_blocks, should_render_face};
 use super::{
-    compute_section_connectivity, ChunkMeshes, SectionConnectivity, SectionMeshes,
-    CHUNK_SECTIONS, SECTION_HEIGHT,
+    CHUNK_SECTIONS, ChunkMeshes, SECTION_HEIGHT, SectionConnectivity, SectionMeshes,
+    compute_section_connectivity,
 };
 use crate::block::{BlockFace, BlockType};
 use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
@@ -596,5 +596,8 @@ pub fn build_chunk_mesh_greedy(
         *section = build_section_mesh_greedy(chunk, north, south, east, west, sy, max_y);
         connectivity[sy] = compute_section_connectivity(chunk, sy);
     }
-    ChunkMeshes { sections, connectivity }
+    ChunkMeshes {
+        sections,
+        connectivity,
+    }
 }

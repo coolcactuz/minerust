@@ -231,12 +231,7 @@ fn setup(
 
     if menu_state.world_active {
         let center_chunk = WorldGrid::world_to_chunk_coord(0, 0).0;
-        world.pregenerate_spawn_grid(
-            center_chunk,
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-        );
+        world.pregenerate_spawn_grid(center_chunk, &mut commands, &mut meshes, &mut materials);
     }
 
     // 1. Spawn FPS camera with integrated AmbientLight, PlayerPhysics component, and DistanceFog (if enabled in settings)
