@@ -6,7 +6,9 @@ use crate::camera::FpsCamera;
 use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
 use crate::coords::LocalBlockPos;
 use crate::menu::GraphicsSettings;
+use crate::mesher::{CHUNK_SECTIONS, ChunkMeshes, MeshBuffers, SectionMeshes};
 use crate::noise::NoiseGenerator;
+use crate::voxel_material::VoxelBlockMaterial;
 
 #[test]
 #[allow(clippy::float_cmp)]
@@ -566,4 +568,112 @@ fn test_subchunk_section_entities_lifecycle() {
         app.world().get_entity(sec0_entity).is_err(),
         "Entity must be despawned from ECS"
     );
+}
+
+#[test]
+fn test_macro_chunk_lod1_consolidation_and_lifecycle() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .add_plugins(bevy::asset::AssetPlugin::default())
+        .init_asset::<Mesh>()
+        .add_plugins(MaterialPlugin::<VoxelBlockMaterial>::default());
+
+    let mut world_grid = WorldGrid::default();
+
+    // Create 4 dummy chunk meshes for coordinates (0,0), (1,0), (0,1), (1,1) in macro-chunk (0,0)
+    let coords = [
+        IVec2::new(0, 0),
+        IVec2::new(1, 0),
+        IVec2::new(0, 1),
+        IVec2::new(1, 1),
+    ];
+
+    for &coord in &coords {
+        let mut sections: [SectionMeshes; CHUNK_SECTIONS] = Default::default();
+        let mut solid = MeshBuffers::default();
+        solid.positions.push([0.0, 0.0, 0.0]);
+        solid.normals.push([0.0, 1.0, 0.0]);
+        solid.uvs.push([0.0, 0.0]);
+        solid.uvs_1.push([1.0, 1.0]);
+        solid.indices.push(0);
+
+        let mut water = MeshBuffers::default();
+        water.positions.push([0.0, 64.0, 0.0]);
+        water.normals.push([0.0, 1.0, 0.0]);
+        water.uvs.push([0.0, 0.0]);
+        water.uvs_1.push([1.0, 1.0]);
+        water.indices.push(0);
+
+        sections[0] = SectionMeshes {
+            solid: solid.to_cpu_mesh(),
+            water: water.to_cpu_mesh(),
+        };
+
+        let chunk_meshes = ChunkMeshes {
+            sections,
+            connectivity: Default::default(),
+        };
+
+        app.world_mut()
+            .resource_scope(|world, mut meshes: Mut<Assets<Mesh>>| {
+                world.resource_scope(|world, mut materials: Mut<Assets<VoxelBlockMaterial>>| {
+                    let mut commands = world.commands();
+                    crate::world::streaming::apply_chunk_mesh(
+                        coord,
+                        chunk_meshes,
+                        1, // LOD 1 (distant sloped heightfield)
+                        &mut commands,
+                        &mut world_grid,
+                        &mut meshes,
+                        &mut materials,
+                    );
+                });
+            });
+    }
+
+    // Flush dirty macro-chunks
+    app.world_mut()
+        .resource_scope(|world, mut meshes: Mut<Assets<Mesh>>| {
+            world.resource_scope(|world, mut materials: Mut<Assets<VoxelBlockMaterial>>| {
+                let mut commands = world.commands();
+                crate::world::macro_lod::flush_dirty_macro_chunks(
+                    &mut commands,
+                    &mut world_grid,
+                    &mut meshes,
+                    &mut materials,
+                );
+            });
+        });
+
+    app.update();
+
+    // 4 chunks meshed, but only 1 macro-chunk and 2 GPU entities total (1 solid, 1 water)!
+    assert_eq!(world_grid.total_meshed_chunks(), 4);
+    assert_eq!(world_grid.macro_chunks.len(), 1);
+    assert_eq!(world_grid.total_mesh_entities(), 2);
+    assert!(world_grid.chunk_entities.is_empty());
+    assert!(world_grid.water_entities.is_empty());
+
+    let macro_chunk = world_grid.macro_chunks.get(&IVec2::new(0, 0)).unwrap();
+    let solid_entity = macro_chunk.solid_entity.unwrap();
+    let water_entity = macro_chunk.water_entity.unwrap();
+
+    let solid_comp = app
+        .world()
+        .get::<crate::world::macro_lod::MacroChunkSection>(solid_entity)
+        .expect("MacroChunkSection component must exist on solid entity");
+    assert_eq!(solid_comp.macro_coord, IVec2::new(0, 0));
+
+    // Despawn all chunks and verify clean teardown
+    {
+        let mut commands = app.world_mut().commands();
+        world_grid.despawn_all_chunks(&mut commands);
+    }
+    app.update();
+
+    assert_eq!(world_grid.total_meshed_chunks(), 0);
+    assert_eq!(world_grid.total_mesh_entities(), 0);
+    assert!(world_grid.macro_chunks.is_empty());
+    assert!(app.world().get_entity(solid_entity).is_err());
+    assert!(app.world().get_entity(water_entity).is_err());
 }

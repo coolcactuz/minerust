@@ -2,6 +2,7 @@
 //! and background multi-threaded mesh/generation streaming.
 
 pub mod grid;
+pub mod macro_lod;
 pub mod occlusion;
 pub mod spawn;
 pub mod streaming;
@@ -12,6 +13,10 @@ pub mod types;
 mod tests;
 
 pub use grid::{ChunkSection, WorldGrid};
+pub use macro_lod::{
+    MACRO_CHUNK_AREA, MACRO_CHUNK_SIZE, MacroChunk, MacroChunkSection, chunk_to_macro_coord,
+    flush_dirty_macro_chunks, merge_chunk_meshes,
+};
 pub use occlusion::{SectionOcclusionCache, compute_section_occlusion, section_occlusion_system};
 pub use spawn::find_safe_surface_spawn;
 pub use streaming::{

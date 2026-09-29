@@ -47,6 +47,23 @@ impl MeshBuffers {
         mesh.insert_indices(Indices::U16(self.indices));
         Some(mesh)
     }
+
+    #[must_use]
+    pub fn to_cpu_mesh(self) -> Option<Mesh> {
+        if self.positions.is_empty() {
+            return None;
+        }
+        let mut mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, self.positions);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, self.uvs);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, self.uvs_1);
+        mesh.insert_indices(Indices::U16(self.indices));
+        Some(mesh)
+    }
 }
 
 #[inline(always)]

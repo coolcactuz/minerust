@@ -356,7 +356,7 @@ pub fn update_profiling_hud_system(
             ) = if let Some(ref w) = world {
                 (
                     w.chunks.len(),
-                    w.chunk_entities.len(),
+                    w.total_meshed_chunks(),
                     w.generation_queue.len(),
                     w.mesh_queue.len(),
                     w.total_vertices,

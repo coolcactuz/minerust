@@ -12,7 +12,7 @@ use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
 use crate::mesher::{CHUNK_SECTIONS, ChunkMeshes, build_chunk_mesh_lod};
 use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
-use crate::world::grid::{ChunkSection, FULL_CHUNK_SECTION_INDEX, WorldGrid};
+use crate::world::grid::{ChunkSection, WorldGrid};
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{
     MAX_CHUNK_DISPATCH_PER_FRAME, MAX_MESHES_PER_FRAME, SEA_LEVEL, VIEW_DISTANCE,
@@ -138,12 +138,34 @@ pub fn apply_chunk_mesh(
         .remove(&coord)
         .unwrap_or([None; CHUNK_SECTIONS]);
 
+    if lod == 1 {
+        // Despawn any existing LOD 0 sub-chunk entities if transitioning from near LOD 0
+        for entity in solid_entities.into_iter().flatten() {
+            commands.entity(entity).despawn();
+        }
+        for entity in water_entities.into_iter().flatten() {
+            commands.entity(entity).despawn();
+        }
+
+        // Insert into 4x4 macro-chunk cluster for consolidated rendering
+        let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+        let macro_chunk = world.macro_chunks.entry(macro_coord).or_default();
+        let s0 = meshes_res.sections.into_iter().next().unwrap_or_default();
+        macro_chunk.chunks[slot] = Some(s0);
+        macro_chunk.dirty = true;
+        return;
+    }
+
+    // LOD 0: remove from macro-chunk if transitioning from distant LOD 1
+    let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+    if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
+        if macro_chunk.chunks[slot].take().is_some() {
+            macro_chunk.dirty = true;
+        }
+    }
+
     for (sy, section_mesh) in meshes_res.sections.into_iter().enumerate() {
-        let section_y = if lod == 1 {
-            FULL_CHUNK_SECTION_INDEX
-        } else {
-            sy as u8
-        };
+        let section_y = sy as u8;
 
         // Solid terrain mesh entity
         if let Some(entity) = solid_entities[sy] {
@@ -361,6 +383,12 @@ pub fn world_streaming_system(
         }
 
         for coord in chunks_to_demesh {
+            let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+            if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
+                if macro_chunk.chunks[slot].take().is_some() {
+                    macro_chunk.dirty = true;
+                }
+            }
             if let Some(entities) = world.chunk_entities.remove(&coord) {
                 for entity in entities.into_iter().flatten() {
                     commands.entity(entity).despawn();
@@ -405,6 +433,12 @@ pub fn world_streaming_system(
             world.chunk_connectivity.remove(&coord);
             if let Some(old_v) = world.chunk_vertices.remove(&coord) {
                 world.total_vertices = world.total_vertices.saturating_sub(old_v);
+            }
+            let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+            if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
+                if macro_chunk.chunks[slot].take().is_some() {
+                    macro_chunk.dirty = true;
+                }
             }
             // Despawn 3D mesh entities from GPU
             if let Some(entities) = world.chunk_entities.remove(&coord) {
@@ -557,6 +591,12 @@ pub fn world_streaming_system(
             // discard the completed mesh immediately rather than spawning an off-screen entity.
             let diff = coord - player_chunk;
             if diff.x.abs() > view_dist || diff.y.abs() > view_dist {
+                let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+                if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
+                    if macro_chunk.chunks[slot].take().is_some() {
+                        macro_chunk.dirty = true;
+                    }
+                }
                 if let Some(entities) = world.chunk_entities.remove(&coord) {
                     for entity in entities.into_iter().flatten() {
                         commands.entity(entity).despawn();
@@ -709,6 +749,14 @@ pub fn world_streaming_system(
             }
         }
     }
+
+    // 5. Synchronize modified macro-chunk clusters with Bevy ECS and GPU assets
+    crate::world::macro_lod::flush_dirty_macro_chunks(
+        &mut commands,
+        &mut world,
+        &mut assets.meshes,
+        &mut assets.materials,
+    );
 }
 
 pub struct WorldPlugin;

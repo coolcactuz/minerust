@@ -15,6 +15,7 @@ use crate::world::terrain::generate_chunk;
 use crate::world::types::{CHUNK_CACHE_CAPACITY, WorldSeed};
 
 use crate::mesher::{CHUNK_SECTIONS, SectionConnectivity};
+use crate::world::macro_lod::{MacroChunk, chunk_to_macro_coord};
 
 /// Component attached to sub-chunk section mesh entities.
 #[derive(Component, Copy, Clone, Debug, PartialEq, Eq, Hash, Reflect)]
@@ -33,6 +34,7 @@ pub struct WorldGrid {
     pub chunk_cache: quick_cache::sync::Cache<IVec2, Chunk>,
     pub chunk_entities: HashMap<IVec2, [Option<Entity>; CHUNK_SECTIONS]>,
     pub water_entities: HashMap<IVec2, [Option<Entity>; CHUNK_SECTIONS]>,
+    pub macro_chunks: HashMap<IVec2, MacroChunk>,
     pub chunk_connectivity: HashMap<IVec2, [SectionConnectivity; CHUNK_SECTIONS]>,
     pub modified_chunks: HashSet<IVec2>,
     pub in_progress_chunks: HashSet<IVec2>,
@@ -66,6 +68,7 @@ impl WorldGrid {
             chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
             chunk_entities: HashMap::default(),
             water_entities: HashMap::default(),
+            macro_chunks: HashMap::default(),
             chunk_connectivity: HashMap::default(),
             modified_chunks: HashSet::default(),
             dirty_chunks: HashSet::default(),
@@ -233,7 +236,17 @@ impl WorldGrid {
 
     #[inline]
     pub fn has_chunk_mesh(&self, coord: &IVec2) -> bool {
-        self.chunk_entities.contains_key(coord) || self.water_entities.contains_key(coord)
+        self.chunk_entities.contains_key(coord)
+            || self.water_entities.contains_key(coord)
+            || self.has_macro_chunk_mesh(coord)
+    }
+
+    #[inline]
+    pub fn has_macro_chunk_mesh(&self, coord: &IVec2) -> bool {
+        let (macro_coord, slot) = chunk_to_macro_coord(*coord);
+        self.macro_chunks
+            .get(&macro_coord)
+            .is_some_and(|m| m.chunks[slot].is_some())
     }
 
     #[inline]
@@ -248,7 +261,22 @@ impl WorldGrid {
             .values()
             .map(|secs| secs.iter().flatten().count())
             .sum();
-        solid + water
+        let macro_solid: usize = self
+            .macro_chunks
+            .values()
+            .filter(|m| m.solid_entity.is_some())
+            .count();
+        let macro_water: usize = self
+            .macro_chunks
+            .values()
+            .filter(|m| m.water_entity.is_some())
+            .count();
+        solid + water + macro_solid + macro_water
+    }
+
+    #[inline]
+    pub fn total_meshed_chunks(&self) -> usize {
+        self.chunk_lod.len()
     }
 
     /// Despawns all active chunk meshes and clears loaded chunks and internal queues.
@@ -260,6 +288,14 @@ impl WorldGrid {
         }
         for (_, entities) in self.water_entities.drain() {
             for entity in entities.into_iter().flatten() {
+                commands.entity(entity).despawn();
+            }
+        }
+        for (_, macro_chunk) in self.macro_chunks.drain() {
+            if let Some(entity) = macro_chunk.solid_entity {
+                commands.entity(entity).despawn();
+            }
+            if let Some(entity) = macro_chunk.water_entity {
                 commands.entity(entity).despawn();
             }
         }
@@ -343,5 +379,7 @@ impl WorldGrid {
                 determine_chunk_tier(dist_sq, true, 128.0 * 128.0, true, 2, 32.0 * 32.0);
             update_chunk_mesh(coord, commands, self, meshes, materials, true, tier);
         }
+
+        crate::world::macro_lod::flush_dirty_macro_chunks(commands, self, meshes, materials);
     }
 }

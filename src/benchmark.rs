@@ -239,7 +239,7 @@ pub fn benchmark_runner_system(
                 state.last_status_print = state.elapsed;
                 println!(
                     "[BENCHMARK] Initializing world around spawn... Meshed: {} / {} chunks | Gen queue: {}, Mesh queue: {}",
-                    w.chunk_entities.len(),
+                    w.total_meshed_chunks(),
                     total_needed,
                     w.generation_queue.len(),
                     w.mesh_queue.len()
@@ -252,8 +252,8 @@ pub fn benchmark_runner_system(
                 && w.in_progress_meshes.is_empty();
 
             // Give at least 0.4s for frame 0 queues to register, then check queues empty and meshes spawned
-            if state.elapsed >= 0.4 && queues_empty && !w.chunk_entities.is_empty() {
-                state.static_chunks = w.chunk_entities.len();
+            if state.elapsed >= 0.4 && queues_empty && w.total_meshed_chunks() > 0 {
+                state.static_chunks = w.total_meshed_chunks();
                 state.static_vertices = w.total_vertices;
                 let current_vram = crate::profile::read_gpu_vram();
                 state.static_vram_mb = current_vram.used_mb;
@@ -332,7 +332,7 @@ pub fn benchmark_runner_system(
 
             if let Some(ref w) = world {
                 state.vertex_samples.push(w.total_vertices);
-                state.chunk_samples.push(w.chunk_entities.len());
+                state.chunk_samples.push(w.total_meshed_chunks());
             }
 
             if state.distance_traveled >= config.scenario.flight_distance {
