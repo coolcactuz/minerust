@@ -14,8 +14,53 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  verify-ci:
+    name: Verify CI Status
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Wait for CI workflow on this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking CI workflow status for commit $GITHUB_SHA in $GITHUB_REPOSITORY..."
+          RUN_ID=""
+          for i in {1..12}; do
+            RUN_ID=$(gh run list -R "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" --workflow "ci.yml" --json databaseId -q '.[0].databaseId // empty')
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+              echo "Found CI workflow run ID: $RUN_ID"
+              break
+            fi
+            echo "CI run not found yet, retrying in 5s ($i/12)..."
+            sleep 5
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "❌ No CI workflow run found for commit $GITHUB_SHA. Release aborted."
+            exit 1
+          fi
+
+          STATUS=$(gh run view -R "$GITHUB_REPOSITORY" "$RUN_ID" --json status -q '.status')
+          CONCLUSION=$(gh run view -R "$GITHUB_REPOSITORY" "$RUN_ID" --json conclusion -q '.conclusion')
+
+          if [ "$STATUS" = "completed" ]; then
+            if [ "$CONCLUSION" = "success" ]; then
+              echo "✅ CI workflow ($RUN_ID) has already passed with success for commit $GITHUB_SHA!"
+              exit 0
+            else
+              echo "❌ CI workflow ($RUN_ID) finished with conclusion: $CONCLUSION. Release aborted."
+              exit 1
+            fi
+          fi
+
+          echo "CI workflow ($RUN_ID) is currently $STATUS. Watching until completion..."
+          gh run watch -R "$GITHUB_REPOSITORY" "$RUN_ID" --exit-status
+          echo "✅ CI workflow completed successfully!"
+
   build-artifacts:
     name: Build Bundle (${{ matrix.platform }}-${{ matrix.arch }})
+    needs: verify-ci
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
