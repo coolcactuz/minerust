@@ -116,6 +116,8 @@ pub fn compute_section_occlusion_with_queue(
                 if !n_conn.is_solid && n_conn.mask[SectionFace::Up as usize] != 0 {
                     bitset.mark_visible(dx, dz, top_sy);
                     queue.push_back((chunk_coord, top_sy, Some(SectionFace::Up)));
+                } else if n_conn.is_solid || n_conn.mask[SectionFace::Up as usize] == 0 {
+                    bitset.mark_visible(dx, dz, top_sy);
                 }
             }
         }
@@ -195,7 +197,11 @@ pub fn compute_section_occlusion_with_queue(
                 });
 
             if n_conn.is_solid || n_conn.mask[entry_face as usize] == 0 {
-                // Neighbor section has a solid wall on this boundary face; light cannot penetrate!
+                // If line of sight or sunlight is traveling downward into a solid surface (ground or seabed),
+                // the top surface of n_sy is directly illuminated and visible from sy above.
+                if exit_face == SectionFace::Down {
+                    bitset.mark_visible(n_diff.x, n_diff.y, n_sy);
+                }
                 continue;
             }
 
@@ -208,13 +214,25 @@ pub fn compute_section_occlusion_with_queue(
 }
 
 /// Resource caching previous camera section to avoid redundant occlusion calculations when stationary.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct SectionOcclusionCache {
     pub last_chunk: IVec2,
     pub last_sy: i32,
     pub last_outdoors: bool,
     pub bitset: OcclusionBitset,
     pub queue: VecDeque<(IVec2, u8, Option<SectionFace>)>,
+}
+
+impl Default for SectionOcclusionCache {
+    fn default() -> Self {
+        Self {
+            last_chunk: IVec2::new(i32::MAX, i32::MAX),
+            last_sy: i32::MAX,
+            last_outdoors: false,
+            bitset: OcclusionBitset::default(),
+            queue: VecDeque::with_capacity(2048),
+        }
+    }
 }
 
 /// Bevy system executing the software occlusion culling pass.
@@ -403,5 +421,68 @@ mod tests {
         );
         // Deep subterranean bedrock section 0 MUST be culled
         assert!(!bitset.is_visible(0, 0, 0), "Deep bedrock must be culled");
+    }
+
+    #[test]
+    fn test_seabed_at_section_boundary_is_visible_under_ocean_water() {
+        let mut world = WorldGrid::new(crate::world::types::WorldSeed(12345));
+
+        // Create ocean chunk at (0, 0)
+        let mut chunk = Chunk::new();
+        // Seabed stone at y=0..47 (sections 0, 1, and section 2 are 100% solid stone/sand)
+        for y in 0..47 {
+            for z in 0..16 {
+                for x in 0..16 {
+                    chunk.set_fast(x, y, z, BlockType::Stone);
+                }
+            }
+        }
+        for z in 0..16 {
+            for x in 0..16 {
+                chunk.set_fast(x, 47, z, BlockType::Sand);
+            }
+        }
+        // Ocean water from y=48 to y=64 (sections 3 and 4)
+        for y in 48..=64 {
+            for z in 0..16 {
+                for x in 0..16 {
+                    chunk.set_fast(x, y, z, BlockType::Water);
+                }
+            }
+        }
+
+        let mut conns = [crate::mesher::SectionConnectivity::default(); CHUNK_SECTIONS];
+        for sy in 0..CHUNK_SECTIONS {
+            conns[sy] = compute_section_connectivity(&chunk, sy);
+        }
+
+        world.chunks.insert(IVec2::ZERO, chunk);
+        world.chunk_connectivity.insert(IVec2::ZERO, conns);
+
+        // Camera is on the surface looking down at the ocean at Y = 66.0
+        let cam_pos = Vec3::new(8.0, 66.0, 8.0);
+        let bitset = compute_section_occlusion(&world, cam_pos);
+
+        // Section 4 (water surface) MUST be visible
+        assert!(bitset.is_visible(0, 0, 4), "Water surface must be visible");
+        // Section 3 (ocean water body) MUST be visible
+        assert!(
+            bitset.is_visible(0, 0, 3),
+            "Ocean water section must be visible"
+        );
+        // Section 2 (seabed sand at y=47, even though section 2 is completely solid) MUST be visible!
+        assert!(
+            bitset.is_visible(0, 0, 2),
+            "Seabed section 2 at y=47 must be visible under water!"
+        );
+        // Deep subterranean bedrock sections 0 and 1 MUST be culled
+        assert!(
+            !bitset.is_visible(0, 0, 1),
+            "Deep stone section 1 must be culled"
+        );
+        assert!(
+            !bitset.is_visible(0, 0, 0),
+            "Deep bedrock section 0 must be culled"
+        );
     }
 }

@@ -174,7 +174,9 @@ pub fn apply_chunk_mesh(
         // Solid terrain mesh entity
         if let Some(entity) = solid_entities[sy] {
             if let Some(mesh) = section_mesh.solid {
-                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+                commands
+                    .entity(entity)
+                    .insert((Mesh3d(meshes.add(mesh)), Visibility::Inherited));
             } else {
                 commands.entity(entity).despawn();
                 solid_entities[sy] = None;
@@ -197,7 +199,9 @@ pub fn apply_chunk_mesh(
         // Water surface mesh entity
         if let Some(entity) = water_entities[sy] {
             if let Some(mesh) = section_mesh.water {
-                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+                commands
+                    .entity(entity)
+                    .insert((Mesh3d(meshes.add(mesh)), Visibility::Inherited));
             } else {
                 commands.entity(entity).despawn();
                 water_entities[sy] = None;
