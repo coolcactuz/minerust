@@ -40,6 +40,8 @@ pub struct WorldGrid {
     pub in_progress_chunks: HashSet<IVec2>,
     pub in_progress_meshes: HashSet<IVec2>,
     pub last_player_chunk: IVec2,
+    pub last_lod_player_pos: Vec3,
+    pub mesh_queue_dirty: bool,
     pub generation_queue: Vec<IVec2>,
     pub mesh_queue: Vec<IVec2>,
     pub queued_for_mesh: HashSet<IVec2>,
@@ -75,6 +77,8 @@ impl WorldGrid {
             in_progress_chunks: HashSet::default(),
             in_progress_meshes: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
+            last_lod_player_pos: Vec3::splat(f32::MAX),
+            mesh_queue_dirty: false,
             generation_queue: Vec::new(),
             mesh_queue: Vec::new(),
             queued_for_mesh: HashSet::default(),
@@ -94,6 +98,7 @@ impl WorldGrid {
         let c = coord.into().0;
         if self.queued_for_mesh.insert(c) {
             self.mesh_queue.push(c);
+            self.mesh_queue_dirty = true;
         }
     }
 
@@ -313,6 +318,8 @@ impl WorldGrid {
         self.modified_chunks.clear();
         self.chunk_cache = quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY);
         self.last_player_chunk = IVec2::new(i32::MAX, i32::MAX);
+        self.last_lod_player_pos = Vec3::splat(f32::MAX);
+        self.mesh_queue_dirty = false;
     }
 
     /// Despawns all active chunk meshes and resets world state to switch to a new seed.

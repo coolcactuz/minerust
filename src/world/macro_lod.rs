@@ -231,6 +231,7 @@ pub fn flush_dirty_macro_chunks(
                         Mesh3d(meshes.add(mesh)),
                         MeshMaterial3d(solid_material.clone()),
                         Transform::from_translation(world_pos),
+                        bevy::light::NotShadowCaster,
                         MacroChunkSection { macro_coord },
                     ))
                     .id();

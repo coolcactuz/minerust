@@ -656,44 +656,54 @@ pub fn world_streaming_system(
             (true, 128.0 * 128.0, true, 2, 32.0 * 32.0)
         };
 
-    // Dynamic 3D LOD transitions: check if any active chunks need to change mesh tier as player moves in 3D
-    let mut chunks_needing_lod_update = Vec::new();
-    for (&coord, chunk) in &world.chunks {
-        let diff = coord - player_chunk;
-        let dist_2d = diff.x.abs().max(diff.y.abs());
-        if dist_2d <= view_dist && world.chunk_lod.contains_key(&coord) {
-            let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-            let (target_tier, _, _) = determine_chunk_tier(
-                dist_sq,
-                distance_lod,
-                lod_threshold_sq,
-                greedy_meshing,
-                greedy_threshold,
-                greedy_threshold_sq,
-            );
+    // Dynamic 3D LOD transitions: check if any active chunks need to change mesh tier as player moves in 3D.
+    // Spatial throttling: only scan chunk LODs if graphics settings changed or player moved >= 2.0m (4.0m sq).
+    let should_check_lod =
+        settings_changed || player_pos.distance_squared(world.last_lod_player_pos) >= 4.0;
 
-            if world.chunk_lod.get(&coord) != Some(&target_tier)
-                && !world.queued_for_mesh.contains(&coord)
-                && !world.in_progress_meshes.contains(&coord)
-            {
-                chunks_needing_lod_update.push(coord);
+    if should_check_lod {
+        world.last_lod_player_pos = player_pos;
+        let mut chunks_needing_lod_update = Vec::new();
+        for (&coord, chunk) in &world.chunks {
+            let diff = coord - player_chunk;
+            let dist_2d = diff.x.abs().max(diff.y.abs());
+            if dist_2d <= view_dist && world.chunk_lod.contains_key(&coord) {
+                let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
+                let (target_tier, _, _) = determine_chunk_tier(
+                    dist_sq,
+                    distance_lod,
+                    lod_threshold_sq,
+                    greedy_meshing,
+                    greedy_threshold,
+                    greedy_threshold_sq,
+                );
+
+                if world.chunk_lod.get(&coord) != Some(&target_tier)
+                    && !world.queued_for_mesh.contains(&coord)
+                    && !world.in_progress_meshes.contains(&coord)
+                {
+                    chunks_needing_lod_update.push(coord);
+                }
             }
         }
-    }
 
-    for coord in chunks_needing_lod_update {
-        world.queue_mesh(coord);
+        for coord in chunks_needing_lod_update {
+            world.queue_mesh(coord);
+        }
     }
 
     // 4. Process mesh queue with frame budget, asynchronous dispatch, and 3D distance priority
     if !world.mesh_queue.is_empty() {
-        let world_ref = &mut *world;
-        let chunks = &world_ref.chunks;
-        world_ref.mesh_queue.sort_unstable_by_key(|c| {
-            let chunk_opt = chunks.get(c);
-            let d_sq = chunk_distance_sq_to_player(*c, player_pos, chunk_opt);
-            -(d_sq as i64)
-        });
+        if world.mesh_queue_dirty || should_check_lod {
+            let world_ref = &mut *world;
+            let chunks = &world_ref.chunks;
+            world_ref.mesh_queue.sort_unstable_by_key(|c| {
+                let chunk_opt = chunks.get(c);
+                let d_sq = chunk_distance_sq_to_player(*c, player_pos, chunk_opt);
+                -(d_sq as i64)
+            });
+            world.mesh_queue_dirty = false;
+        }
 
         let max_meshes_per_frame = if is_bench_initializing {
             48
