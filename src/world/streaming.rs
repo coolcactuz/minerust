@@ -71,11 +71,15 @@ pub fn chunk_distance_sq_to_player(coord: IVec2, player_pos: Vec3, chunk: Option
     dx * dx + dy * dy + dz * dz
 }
 
+pub const TIER_STANDARD_VOXEL: u8 = 0;
+pub const TIER_GREEDY_VOXEL: u8 = 1;
+pub const TIER_SLOPED_LOD: u8 = 2;
+
 /// Applies or despawns chunk meshes (solid terrain and water) on the GPU
 pub fn apply_chunk_mesh(
     coord: IVec2,
     meshes_res: ChunkMeshes,
-    lod: u8,
+    tier: u8,
     commands: &mut Commands,
     world: &mut WorldGrid,
     meshes: &mut Assets<Mesh>,
@@ -88,7 +92,7 @@ pub fn apply_chunk_mesh(
     );
 
     // Track vertex counts, LOD and connectivity
-    world.chunk_lod.insert(coord, lod);
+    world.chunk_lod.insert(coord, tier);
     world
         .chunk_connectivity
         .insert(coord, meshes_res.connectivity);
@@ -138,7 +142,7 @@ pub fn apply_chunk_mesh(
         .remove(&coord)
         .unwrap_or([None; CHUNK_SECTIONS]);
 
-    if lod == 1 {
+    if tier >= TIER_SLOPED_LOD {
         // Despawn any existing LOD 0 sub-chunk entities if transitioning from near LOD 0
         for entity in solid_entities.into_iter().flatten() {
             commands.entity(entity).despawn();
@@ -156,7 +160,7 @@ pub fn apply_chunk_mesh(
         return;
     }
 
-    // LOD 0: remove from macro-chunk if transitioning from distant LOD 1
+    // LOD 0 (tier 0 or 1): remove from macro-chunk if transitioning from distant LOD 1
     let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
     if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
         if macro_chunk.chunks[slot].take().is_some() {

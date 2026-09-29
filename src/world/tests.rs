@@ -621,7 +621,7 @@ fn test_macro_chunk_lod1_consolidation_and_lifecycle() {
                     crate::world::streaming::apply_chunk_mesh(
                         coord,
                         chunk_meshes,
-                        1, // LOD 1 (distant sloped heightfield)
+                        crate::world::streaming::TIER_SLOPED_LOD, // Tier 2 (distant sloped heightfield)
                         &mut commands,
                         &mut world_grid,
                         &mut meshes,
