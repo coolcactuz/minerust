@@ -683,20 +683,23 @@ pub fn world_streaming_system(
             // Only queue neighbor chunks if they are within visual range and need seam updates (voxel tiers only).
             // Tier 2 (Sloped LOD) macro-chunks use skirts and do not cull block faces against neighbors;
             // skipping them avoids tens of thousands of redundant re-meshes and macro-chunk invalidations.
-            for neighbor_coord in [
-                coord + IVec2::new(-1, 0),
-                coord + IVec2::new(1, 0),
-                coord + IVec2::new(0, -1),
-                coord + IVec2::new(0, 1),
-            ] {
-                let n_diff = neighbor_coord - player_chunk;
-                if n_diff.x.abs() <= view_dist && n_diff.y.abs() <= view_dist {
-                    let needs_voxel_seam_update = match world.chunk_lod.get(&neighbor_coord) {
-                        Some(&t) => t < TIER_SLOPED_LOD,
-                        None => world.has_chunk_mesh(&neighbor_coord),
-                    };
-                    if needs_voxel_seam_update {
-                        world.queue_mesh(neighbor_coord);
+            let lod_thresh = settings.graphics.as_ref().map_or(8, |s| s.lod_threshold);
+            if diff.x.abs() <= lod_thresh + 1 && diff.y.abs() <= lod_thresh + 1 {
+                for neighbor_coord in [
+                    coord + IVec2::new(-1, 0),
+                    coord + IVec2::new(1, 0),
+                    coord + IVec2::new(0, -1),
+                    coord + IVec2::new(0, 1),
+                ] {
+                    let n_diff = neighbor_coord - player_chunk;
+                    if n_diff.x.abs() <= view_dist && n_diff.y.abs() <= view_dist {
+                        let needs_voxel_seam_update = world
+                            .chunk_lod
+                            .get(&neighbor_coord)
+                            .is_some_and(|&t| t < TIER_SLOPED_LOD);
+                        if needs_voxel_seam_update {
+                            world.queue_mesh(neighbor_coord);
+                        }
                     }
                 }
             }
