@@ -1,3 +1,5 @@
+use bevy::camera::primitives::Aabb;
+use bevy::camera::visibility::NoAutoAabb;
 use bevy::ecs::system::SystemParam;
 use bevy::light::NotShadowCaster;
 use bevy::pbr::ExtendedMaterial;
@@ -177,13 +179,17 @@ pub fn apply_chunk_mesh(
 
     for (sy, section_mesh) in meshes_res.sections.into_iter().enumerate() {
         let section_y = sy as u8;
+        let aabb = Aabb::from_min_max(
+            Vec3::new(0.0, (sy * 16) as f32, 0.0),
+            Vec3::new(16.0, ((sy + 1) * 16) as f32, 16.0),
+        );
 
         // Solid terrain mesh entity
         if let Some(entity) = solid_entities[sy] {
             if let Some(mesh) = section_mesh.solid {
                 commands
                     .entity(entity)
-                    .insert((Mesh3d(meshes.add(mesh)), Visibility::Inherited));
+                    .insert((Mesh3d(meshes.add(mesh)), aabb, NoAutoAabb, Visibility::Inherited));
             } else {
                 commands.entity(entity).despawn();
                 solid_entities[sy] = None;
@@ -194,6 +200,8 @@ pub fn apply_chunk_mesh(
                     Mesh3d(meshes.add(mesh)),
                     MeshMaterial3d(solid_material.clone()),
                     Transform::from_translation(world_pos),
+                    aabb,
+                    NoAutoAabb,
                     ChunkSection {
                         chunk: coord,
                         section_y,
@@ -208,7 +216,7 @@ pub fn apply_chunk_mesh(
             if let Some(mesh) = section_mesh.water {
                 commands
                     .entity(entity)
-                    .insert((Mesh3d(meshes.add(mesh)), Visibility::Inherited));
+                    .insert((Mesh3d(meshes.add(mesh)), aabb, NoAutoAabb, Visibility::Inherited));
             } else {
                 commands.entity(entity).despawn();
                 water_entities[sy] = None;
@@ -220,6 +228,8 @@ pub fn apply_chunk_mesh(
                     MeshMaterial3d(water_material.clone()),
                     Transform::from_translation(world_pos),
                     NotShadowCaster,
+                    aabb,
+                    NoAutoAabb,
                     ChunkSection {
                         chunk: coord,
                         section_y,

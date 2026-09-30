@@ -1,4 +1,6 @@
 use bevy::asset::RenderAssetUsages;
+use bevy::camera::primitives::Aabb;
+use bevy::camera::visibility::NoAutoAabb;
 use bevy::pbr::ExtendedMaterial;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
@@ -223,9 +225,13 @@ pub fn flush_dirty_macro_chunks(
             },
         ));
 
+        let macro_aabb = Aabb::from_min_max(Vec3::ZERO, Vec3::new(64.0, 128.0, 64.0));
+
         if let Some(mesh) = solid_mesh_opt {
             if let Some(entity) = macro_chunk.solid_entity {
-                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+                commands
+                    .entity(entity)
+                    .insert((Mesh3d(meshes.add(mesh)), macro_aabb, NoAutoAabb));
             } else {
                 let entity = commands
                     .spawn((
@@ -233,6 +239,8 @@ pub fn flush_dirty_macro_chunks(
                         MeshMaterial3d(solid_material.clone()),
                         Transform::from_translation(world_pos),
                         bevy::light::NotShadowCaster,
+                        macro_aabb,
+                        NoAutoAabb,
                         MacroChunkSection { macro_coord },
                     ))
                     .id();
@@ -253,7 +261,9 @@ pub fn flush_dirty_macro_chunks(
 
         if let Some(mesh) = water_mesh_opt {
             if let Some(entity) = macro_chunk.water_entity {
-                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+                commands
+                    .entity(entity)
+                    .insert((Mesh3d(meshes.add(mesh)), macro_aabb, NoAutoAabb));
             } else {
                 let entity = commands
                     .spawn((
@@ -261,6 +271,8 @@ pub fn flush_dirty_macro_chunks(
                         MeshMaterial3d(water_material.clone()),
                         Transform::from_translation(world_pos),
                         bevy::light::NotShadowCaster,
+                        macro_aabb,
+                        NoAutoAabb,
                         MacroChunkSection { macro_coord },
                     ))
                     .id();

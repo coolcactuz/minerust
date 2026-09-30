@@ -198,9 +198,9 @@ impl Default for BenchmarkState {
             static_fps: 0.0,
             static_frametime_ms: 0.0,
             static_vram_mb: 0.0,
-            frame_times_ms: Vec::with_capacity(32768),
-            vertex_samples: Vec::with_capacity(32768),
-            chunk_samples: Vec::with_capacity(32768),
+            frame_times_ms: Vec::with_capacity(131_072),
+            vertex_samples: Vec::with_capacity(16),
+            chunk_samples: Vec::with_capacity(16),
             peak_rss_mb: 0.0,
             peak_vram_mb: 0.0,
             last_telemetry_sample: 0.0,
@@ -361,8 +361,19 @@ pub fn benchmark_runner_system(
             state.frame_times_ms.push(frame_ms);
 
             if let Some(ref w) = world {
-                state.vertex_samples.push(w.total_vertices);
-                state.chunk_samples.push(w.total_meshed_chunks());
+                let v = w.total_vertices;
+                if state.vertex_samples.is_empty() {
+                    state.vertex_samples.push(v);
+                } else if v > state.vertex_samples[0] {
+                    state.vertex_samples[0] = v;
+                }
+
+                let c = w.total_meshed_chunks();
+                if state.chunk_samples.is_empty() {
+                    state.chunk_samples.push(c);
+                } else if c > state.chunk_samples[0] {
+                    state.chunk_samples[0] = c;
+                }
             }
 
             if state.distance_traveled >= config.scenario.flight_distance {
