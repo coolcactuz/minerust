@@ -103,6 +103,38 @@ pub fn apply_chunk_mesh(
         .unwrap_or(0);
     world.total_vertices = world.total_vertices.saturating_sub(old_vert_count) + new_vert_count;
 
+    if tier >= TIER_SLOPED_LOD {
+        // Despawn any existing LOD 0 sub-chunk entities if transitioning from near LOD 0
+        if let Some(solid_entities) = world.chunk_entities.remove(&coord) {
+            for entity in solid_entities.into_iter().flatten() {
+                commands.entity(entity).despawn();
+            }
+        }
+        if let Some(water_entities) = world.water_entities.remove(&coord) {
+            for entity in water_entities.into_iter().flatten() {
+                commands.entity(entity).despawn();
+            }
+        }
+
+        // Insert into 4x4 macro-chunk cluster for consolidated rendering
+        let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+        let macro_chunk = world.macro_chunks.entry(macro_coord).or_default();
+        let s0 = meshes_res.sections.into_iter().next().unwrap_or_default();
+        macro_chunk.chunks[slot] = Some(s0);
+        macro_chunk.dirty = true;
+        world.dirty_macro_chunks.insert(macro_coord);
+        return;
+    }
+
+    // LOD 0 (tier 0 or 1): remove from macro-chunk if transitioning from distant LOD 2
+    let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+    if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
+        if macro_chunk.chunks[slot].take().is_some() {
+            macro_chunk.dirty = true;
+            world.dirty_macro_chunks.insert(macro_coord);
+        }
+    }
+
     let solid_material = world.block_material.clone().unwrap_or_else(|| {
         materials.add(ExtendedMaterial {
             base: StandardMaterial {
@@ -141,34 +173,6 @@ pub fn apply_chunk_mesh(
         .water_entities
         .remove(&coord)
         .unwrap_or([None; CHUNK_SECTIONS]);
-
-    if tier >= TIER_SLOPED_LOD {
-        // Despawn any existing LOD 0 sub-chunk entities if transitioning from near LOD 0
-        for entity in solid_entities.into_iter().flatten() {
-            commands.entity(entity).despawn();
-        }
-        for entity in water_entities.into_iter().flatten() {
-            commands.entity(entity).despawn();
-        }
-
-        // Insert into 4x4 macro-chunk cluster for consolidated rendering
-        let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
-        let macro_chunk = world.macro_chunks.entry(macro_coord).or_default();
-        let s0 = meshes_res.sections.into_iter().next().unwrap_or_default();
-        macro_chunk.chunks[slot] = Some(s0);
-        macro_chunk.dirty = true;
-        world.dirty_macro_chunks.insert(macro_coord);
-        return;
-    }
-
-    // LOD 0 (tier 0 or 1): remove from macro-chunk if transitioning from distant LOD 1
-    let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
-    if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
-        if macro_chunk.chunks[slot].take().is_some() {
-            macro_chunk.dirty = true;
-            world.dirty_macro_chunks.insert(macro_coord);
-        }
-    }
 
     for (sy, section_mesh) in meshes_res.sections.into_iter().enumerate() {
         let section_y = sy as u8;
@@ -400,12 +404,19 @@ pub fn world_streaming_system(
         // 2-Tier streaming lifecycle:
         // Tier 1 (within visual view_dist): ensure mesh is queued if missing
         // Tier 2 (outside view_dist): despawn GPU mesh to save draw calls & VRAM, keep voxels in RAM
+        // Beyond unload_dist: persist modified chunks and unload to LRU cache
         let mut chunks_to_queue = Vec::new();
         let mut chunks_to_demesh = Vec::new();
+        let mut chunks_to_remove = Vec::new();
 
-        for (&coord, _) in &world.chunks {
+        for &coord in world.chunks.keys() {
             let diff = coord - player_chunk;
-            if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
+            let dx = diff.x.abs();
+            let dz = diff.y.abs();
+
+            if dx > unload_dist || dz > unload_dist {
+                chunks_to_remove.push(coord);
+            } else if dx <= view_dist && dz <= view_dist {
                 if !world.chunk_lod.contains_key(&coord) {
                     chunks_to_queue.push(coord);
                 }
@@ -454,14 +465,6 @@ pub fn world_streaming_system(
             let diff = *c - player_chunk;
             diff.x.abs() <= view_dist && diff.y.abs() <= view_dist
         });
-
-        let mut chunks_to_remove = Vec::new();
-        for coord in world.chunks.keys() {
-            let diff = *coord - player_chunk;
-            if diff.x.abs() > unload_dist || diff.y.abs() > unload_dist {
-                chunks_to_remove.push(*coord);
-            }
-        }
 
         for coord in chunks_to_remove {
             world.queued_for_mesh.remove(&coord);
@@ -768,10 +771,10 @@ pub fn world_streaming_system(
 
     // 4. Process mesh queue with frame budget, asynchronous dispatch, and 3D distance priority
     if !world.mesh_queue.is_empty() {
-        if world.mesh_queue_dirty || should_check_lod {
+        if world.mesh_queue.len() > 1 && (world.mesh_queue_dirty || should_check_lod) {
             let world_ref = &mut *world;
             let chunks = &world_ref.chunks;
-            world_ref.mesh_queue.sort_unstable_by_key(|c| {
+            world_ref.mesh_queue.sort_by_cached_key(|c| {
                 let chunk_opt = chunks.get(c);
                 let d_sq = chunk_distance_sq_to_player(*c, player_pos, chunk_opt);
                 -(d_sq as i64)

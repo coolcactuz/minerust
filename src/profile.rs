@@ -25,13 +25,16 @@ pub fn read_process_memory() -> ProcessMemory {
     parse_process_memory_from_str(&std::fs::read_to_string("/proc/self/status").unwrap_or_default())
 }
 
+static TOTAL_HW_VRAM: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+
 /// Safely queries the current GPU VRAM usage.
 /// Uses per-process DRM fdinfo (`/proc/self/fdinfo/*`) to measure physical dedicated VRAM allocated
 /// exclusively to MineRust (matching `nvtop`'s source of truth).
 /// Falls back to global DRM sysfs if `/proc/self/fdinfo` is unavailable or reports zero.
 pub fn read_gpu_vram() -> GpuMemory {
     let process_vram_mb = parse_process_vram_from_fdinfo_dir("/proc/self/fdinfo");
-    let total_hw_vram_mb = read_total_hardware_vram_from_drm_path("/sys/class/drm");
+    let total_hw_vram_mb =
+        *TOTAL_HW_VRAM.get_or_init(|| read_total_hardware_vram_from_drm_path("/sys/class/drm"));
 
     if process_vram_mb > 0.0 {
         GpuMemory {

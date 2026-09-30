@@ -179,6 +179,7 @@ pub struct BenchmarkState {
     pub chunk_samples: Vec<usize>,
     pub peak_rss_mb: f32,
     pub peak_vram_mb: f32,
+    pub last_telemetry_sample: f32,
     pub completed: bool,
 }
 
@@ -201,14 +202,17 @@ pub fn benchmark_runner_system(
     let dt = time.delta_secs();
     state.elapsed += dt;
 
-    // Track peak physical RAM (VmRSS) and GPU VRAM from OS
-    let mem = read_process_memory();
-    if mem.rss_mb > state.peak_rss_mb {
-        state.peak_rss_mb = mem.rss_mb;
-    }
-    let vram = crate::profile::read_gpu_vram();
-    if vram.used_mb > state.peak_vram_mb {
-        state.peak_vram_mb = vram.used_mb;
+    // Periodically (4 Hz, every 250ms) sample OS memory footprint and GPU VRAM instead of issuing blocking sysfs/procfs syscalls every frame
+    if state.last_telemetry_sample <= 0.0 || state.elapsed - state.last_telemetry_sample >= 0.25 {
+        state.last_telemetry_sample = state.elapsed;
+        let mem = read_process_memory();
+        if mem.rss_mb > state.peak_rss_mb {
+            state.peak_rss_mb = mem.rss_mb;
+        }
+        let vram = crate::profile::read_gpu_vram();
+        if vram.used_mb > state.peak_vram_mb {
+            state.peak_vram_mb = vram.used_mb;
+        }
     }
 
     let Ok((mut transform, mut fps, mut physics)) = player_query.single_mut() else {
@@ -338,6 +342,16 @@ pub fn benchmark_runner_system(
             if state.distance_traveled >= config.scenario.flight_distance {
                 state.phase = BenchmarkPhase::Completed;
                 state.completed = true;
+
+                let mem = read_process_memory();
+                if mem.rss_mb > state.peak_rss_mb {
+                    state.peak_rss_mb = mem.rss_mb;
+                }
+                let vram = crate::profile::read_gpu_vram();
+                if vram.used_mb > state.peak_vram_mb {
+                    state.peak_vram_mb = vram.used_mb;
+                }
+
                 let computed =
                     compute_benchmark_summary(&state, &config, graphics_settings.as_deref());
                 *summary = computed;
