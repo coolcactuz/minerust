@@ -42,10 +42,8 @@ impl NoiseGenerator {
 
     /// Standard 2D Perlin noise in [-1.0, 1.0]
     pub fn perlin_2d(&self, x: f64, y: f64) -> f64 {
-        let x_floor = x.floor();
-        let y_floor = y.floor();
-        let xi = (x_floor as i64 & 255) as usize;
-        let yi = (y_floor as i64 & 255) as usize;
+        let (x_floor, xi) = fast_floor(x);
+        let (y_floor, yi) = fast_floor(y);
 
         let xf = x - x_floor;
         let yf = y - y_floor;
@@ -66,12 +64,9 @@ impl NoiseGenerator {
 
     /// Standard 3D Perlin noise in [-1.0, 1.0]
     pub fn perlin_3d(&self, x: f64, y: f64, z: f64) -> f64 {
-        let x_floor = x.floor();
-        let y_floor = y.floor();
-        let z_floor = z.floor();
-        let xi = (x_floor as i64 & 255) as usize;
-        let yi = (y_floor as i64 & 255) as usize;
-        let zi = (z_floor as i64 & 255) as usize;
+        let (x_floor, xi) = fast_floor(x);
+        let (y_floor, yi) = fast_floor(y);
+        let (z_floor, zi) = fast_floor(z);
 
         let xf = x - x_floor;
         let yf = y - y_floor;
@@ -151,6 +146,7 @@ impl NoiseGenerator {
     }
 
     /// 3D FBM for underground caves and tunnels
+    #[inline]
     pub fn fbm_3d(
         &self,
         x: f64,
@@ -160,6 +156,15 @@ impl NoiseGenerator {
         persistence: f64,
         lacunarity: f64,
     ) -> f64 {
+        if octaves == 2
+            && (persistence - 0.5).abs() < 1e-6
+            && (lacunarity - 2.0).abs() < 1e-6
+        {
+            let o1 = self.perlin_3d(x, y, z);
+            let o2 = self.perlin_3d(x * 2.0, y * 2.0, z * 2.0);
+            return (o1 + 0.5 * o2) / 1.5;
+        }
+
         let mut total = 0.0;
         let mut frequency = 1.0;
         let mut amplitude = 1.0;
@@ -174,6 +179,14 @@ impl NoiseGenerator {
 
         total / max_value
     }
+}
+
+#[inline(always)]
+fn fast_floor(x: f64) -> (f64, usize) {
+    let xi = x as i64;
+    let offset = (x < xi as f64) as i64;
+    let floor_val = xi - offset;
+    (floor_val as f64, (floor_val & 255) as usize)
 }
 
 #[inline(always)]
@@ -196,21 +209,24 @@ const fn grad2(hash: u8, x: f64, y: f64) -> f64 {
         4 => x,
         5 => -x,
         6 => y,
-        7 => -y,
-        _ => 0.0,
+        _ => -y,
     }
 }
 
 #[inline(always)]
 const fn grad3(hash: u8, x: f64, y: f64, z: f64) -> f64 {
-    let h = hash & 15;
-    let u = if h < 8 { x } else { y };
-    let v = if h < 4 {
-        y
-    } else if h == 12 || h == 14 {
-        x
-    } else {
-        z
-    };
-    (if (h & 1) == 0 { u } else { -u }) + (if (h & 2) == 0 { v } else { -v })
+    match hash & 15 {
+        0 | 12 => x + y,
+        1 | 14 => -x + y,
+        2 => x - y,
+        3 => -x - y,
+        4 => x + z,
+        5 => -x + z,
+        6 => x - z,
+        7 => -x - z,
+        8 => y + z,
+        9 | 13 => -y + z,
+        10 => y - z,
+        _ => -y - z,
+    }
 }

@@ -862,11 +862,20 @@ pub fn world_streaming_system(
         if world.mesh_queue.len() > 1 && world.mesh_queue_dirty {
             let world_ref = &mut *world;
             let chunks = &world_ref.chunks;
-            world_ref.mesh_queue.sort_unstable_by(|a, b| {
-                let d_a = chunk_distance_sq_to_player(*a, player_pos, chunks.get(a));
-                let d_b = chunk_distance_sq_to_player(*b, player_pos, chunks.get(b));
-                d_b.total_cmp(&d_a)
-            });
+            let mut keyed: Vec<(IVec2, f32)> = world_ref
+                .mesh_queue
+                .iter()
+                .map(|&coord| {
+                    (
+                        coord,
+                        chunk_distance_sq_to_player(coord, player_pos, chunks.get(&coord)),
+                    )
+                })
+                .collect();
+            keyed.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+            for (i, (coord, _)) in keyed.into_iter().enumerate() {
+                world_ref.mesh_queue[i] = coord;
+            }
             world.mesh_queue_dirty = false;
         }
 

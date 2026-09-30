@@ -163,15 +163,20 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                 if in_cave_zone {
                     let wy = y as f64;
                     let n1 = noise.fbm_3d(wx_f * 0.025, wy * 0.035, wz_f * 0.025, 2, 0.5, 2.0);
-                    let n2 = noise.fbm_3d(
-                        wx_f * 0.025 + 31.4,
-                        wy * 0.035,
-                        wz_f * 0.025 + 73.1,
-                        2,
-                        0.5,
-                        2.0,
-                    );
-                    let is_tunnel = (n1 * n1 + n2 * n2) < 0.013;
+                    let n1_sq = n1 * n1;
+                    let is_tunnel = if n1_sq < 0.013 {
+                        let n2 = noise.fbm_3d(
+                            wx_f * 0.025 + 31.4,
+                            wy * 0.035,
+                            wz_f * 0.025 + 73.1,
+                            2,
+                            0.5,
+                            2.0,
+                        );
+                        n1_sq + n2 * n2 < 0.013
+                    } else {
+                        false
+                    };
 
                     let is_cave = if is_tunnel {
                         true
