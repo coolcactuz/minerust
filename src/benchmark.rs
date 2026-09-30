@@ -71,6 +71,7 @@ pub struct BenchmarkConfig {
     pub enabled: bool,
     pub seed: u64,
     pub scenario: BenchmarkScenario,
+    pub auto_exit: bool,
 }
 
 impl Default for BenchmarkConfig {
@@ -79,6 +80,7 @@ impl Default for BenchmarkConfig {
             enabled: false,
             seed: DEFAULT_BENCHMARK_SEED,
             scenario: BenchmarkScenario::production(16),
+            auto_exit: false,
         }
     }
 }
@@ -156,7 +158,7 @@ pub enum BenchmarkPhase {
 }
 
 /// Dynamic runtime state tracking benchmark progress and statistical telemetry.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct BenchmarkState {
     pub phase: BenchmarkPhase,
     pub elapsed: f32,
@@ -179,7 +181,34 @@ pub struct BenchmarkState {
     pub chunk_samples: Vec<usize>,
     pub peak_rss_mb: f32,
     pub peak_vram_mb: f32,
+    pub last_telemetry_sample: f32,
     pub completed: bool,
+}
+
+impl Default for BenchmarkState {
+    fn default() -> Self {
+        Self {
+            phase: BenchmarkPhase::default(),
+            elapsed: 0.0,
+            stationary_timer: 0.0,
+            last_status_print: 0.0,
+            start_pos: None,
+            distance_traveled: 0.0,
+            static_frame_times_ms: Vec::with_capacity(2048),
+            static_chunks: 0,
+            static_vertices: 0,
+            static_fps: 0.0,
+            static_frametime_ms: 0.0,
+            static_vram_mb: 0.0,
+            frame_times_ms: Vec::with_capacity(131_072),
+            vertex_samples: Vec::with_capacity(16),
+            chunk_samples: Vec::with_capacity(16),
+            peak_rss_mb: 0.0,
+            peak_vram_mb: 0.0,
+            last_telemetry_sample: 0.0,
+            completed: false,
+        }
+    }
 }
 
 /// System that executes the automated deterministic benchmark trajectory and records frame latencies.
@@ -201,14 +230,17 @@ pub fn benchmark_runner_system(
     let dt = time.delta_secs();
     state.elapsed += dt;
 
-    // Track peak physical RAM (VmRSS) and GPU VRAM from OS
-    let mem = read_process_memory();
-    if mem.rss_mb > state.peak_rss_mb {
-        state.peak_rss_mb = mem.rss_mb;
-    }
-    let vram = crate::profile::read_gpu_vram();
-    if vram.used_mb > state.peak_vram_mb {
-        state.peak_vram_mb = vram.used_mb;
+    // Periodically (1 Hz, every 1.0s) sample OS memory footprint and GPU VRAM instead of issuing blocking sysfs/procfs syscalls every frame
+    if state.last_telemetry_sample <= 0.0 || state.elapsed - state.last_telemetry_sample >= 1.0 {
+        state.last_telemetry_sample = state.elapsed;
+        let mem = read_process_memory();
+        if mem.rss_mb > state.peak_rss_mb {
+            state.peak_rss_mb = mem.rss_mb;
+        }
+        let vram = crate::profile::read_gpu_vram();
+        if vram.used_mb > state.peak_vram_mb {
+            state.peak_vram_mb = vram.used_mb;
+        }
     }
 
     let Ok((mut transform, mut fps, mut physics)) = player_query.single_mut() else {
@@ -239,7 +271,7 @@ pub fn benchmark_runner_system(
                 state.last_status_print = state.elapsed;
                 println!(
                     "[BENCHMARK] Initializing world around spawn... Meshed: {} / {} chunks | Gen queue: {}, Mesh queue: {}",
-                    w.chunk_entities.len(),
+                    w.total_meshed_chunks(),
                     total_needed,
                     w.generation_queue.len(),
                     w.mesh_queue.len()
@@ -252,8 +284,8 @@ pub fn benchmark_runner_system(
                 && w.in_progress_meshes.is_empty();
 
             // Give at least 0.4s for frame 0 queues to register, then check queues empty and meshes spawned
-            if state.elapsed >= 0.4 && queues_empty && !w.chunk_entities.is_empty() {
-                state.static_chunks = w.chunk_entities.len();
+            if state.elapsed >= 0.4 && queues_empty && w.total_meshed_chunks() > 0 {
+                state.static_chunks = w.total_meshed_chunks();
                 state.static_vertices = w.total_vertices;
                 let current_vram = crate::profile::read_gpu_vram();
                 state.static_vram_mb = current_vram.used_mb;
@@ -331,13 +363,34 @@ pub fn benchmark_runner_system(
             state.frame_times_ms.push(frame_ms);
 
             if let Some(ref w) = world {
-                state.vertex_samples.push(w.total_vertices);
-                state.chunk_samples.push(w.chunk_entities.len());
+                let v = w.total_vertices;
+                if state.vertex_samples.is_empty() {
+                    state.vertex_samples.push(v);
+                } else if v > state.vertex_samples[0] {
+                    state.vertex_samples[0] = v;
+                }
+
+                let c = w.total_meshed_chunks();
+                if state.chunk_samples.is_empty() {
+                    state.chunk_samples.push(c);
+                } else if c > state.chunk_samples[0] {
+                    state.chunk_samples[0] = c;
+                }
             }
 
             if state.distance_traveled >= config.scenario.flight_distance {
                 state.phase = BenchmarkPhase::Completed;
                 state.completed = true;
+
+                let mem = read_process_memory();
+                if mem.rss_mb > state.peak_rss_mb {
+                    state.peak_rss_mb = mem.rss_mb;
+                }
+                let vram = crate::profile::read_gpu_vram();
+                if vram.used_mb > state.peak_vram_mb {
+                    state.peak_vram_mb = vram.used_mb;
+                }
+
                 let computed =
                     compute_benchmark_summary(&state, &config, graphics_settings.as_deref());
                 *summary = computed;
@@ -345,6 +398,12 @@ pub fn benchmark_runner_system(
                 println!(
                     "[BENCHMARK] In-game benchmark complete! Transitioning to results dashboard."
                 );
+                if config.auto_exit {
+                    println!(
+                        "[BENCHMARK] Automated profiling run complete (--benchmark-exit). Exiting..."
+                    );
+                    std::process::exit(0);
+                }
                 config.enabled = false;
                 if let Some(ref mut m) = menu {
                     m.screen = crate::menu::MenuScreen::BenchmarkResults;

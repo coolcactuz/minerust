@@ -30,6 +30,9 @@ struct CliOptions {
     profile_mode: bool,
     quickstart: bool,
     view_distance: Option<i32>,
+    benchmark: bool,
+    benchmark_distance: Option<f32>,
+    benchmark_exit: bool,
 }
 
 impl CliOptions {
@@ -51,6 +54,21 @@ impl CliOptions {
                 }
                 "-q" | "--quickstart" => {
                     opts.quickstart = true;
+                }
+                "-b" | "--benchmark" => {
+                    opts.benchmark = true;
+                    opts.quickstart = true;
+                }
+                "--benchmark-distance" => {
+                    i += 1;
+                    if i < args.len() {
+                        if let Ok(dist) = args[i].parse::<f32>() {
+                            opts.benchmark_distance = Some(dist.max(50.0));
+                        }
+                    }
+                }
+                "--benchmark-exit" => {
+                    opts.benchmark_exit = true;
                 }
                 "--view-distance" => {
                     i += 1;
@@ -77,7 +95,10 @@ impl CliOptions {
         Options:\n  \
           -s, --seed <SEED>              Set world generation seed (string or integer)\n  \
           -p, --profile                  Enable Real-time Performance Profiler HUD (F3)\n  \
-          -q, --quickstart               Start directly in-game bypassing the main menu\n      \
+          -q, --quickstart               Start directly in-game bypassing the main menu\n  \
+          -b, --benchmark                Run automated flight benchmark directly\n      \
+              --benchmark-distance <m>   Flight distance in meters (default 5000m)\n      \
+              --benchmark-exit           Exit engine automatically when benchmark finishes\n      \
               --view-distance <chunks>   Render distance (2 to 64 chunks)\n  \
           -h, --help                     Print help information"
             .to_string()
@@ -119,6 +140,18 @@ fn main() {
         graphics_settings.view_distance = vd;
     }
 
+    let mut benchmark_config = BenchmarkConfig::default();
+    if opts.benchmark {
+        benchmark_config.enabled = true;
+        benchmark_config.auto_exit = opts.benchmark_exit;
+        let vd = opts.view_distance.unwrap_or(graphics_settings.view_distance);
+        benchmark_config.scenario = minerust::benchmark::BenchmarkScenario::production(vd);
+        if let Some(dist) = opts.benchmark_distance {
+            benchmark_config.scenario.flight_distance = dist;
+        }
+        benchmark_config.scenario.apply(&mut graphics_settings);
+    }
+
     let present_mode = if graphics_settings.vsync {
         bevy::window::PresentMode::AutoVsync
     } else {
@@ -129,8 +162,6 @@ fn main() {
     } else {
         bevy::window::WindowMode::Windowed
     };
-
-    let benchmark_config = BenchmarkConfig::default();
 
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -291,15 +322,7 @@ mod tests {
     #[test]
     fn test_cli_options_defaults() {
         let opts = CliOptions::parse_from_args(vec!["minerust".to_string()]).unwrap();
-        assert_eq!(
-            opts,
-            CliOptions {
-                seed: None,
-                profile_mode: false,
-                quickstart: false,
-                view_distance: None,
-            }
-        );
+        assert_eq!(opts, CliOptions::default());
     }
 
     #[test]
@@ -335,6 +358,26 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(opts2.view_distance, Some(64)); // Max clamp is 64
+    }
+
+    #[test]
+    fn test_cli_options_benchmark_flags() {
+        let opts = CliOptions::parse_from_args(vec![
+            "minerust".to_string(),
+            "-b".to_string(),
+            "--benchmark-distance".to_string(),
+            "1000".to_string(),
+            "--benchmark-exit".to_string(),
+            "--view-distance".to_string(),
+            "32".to_string(),
+        ])
+        .unwrap();
+
+        assert!(opts.benchmark);
+        assert!(opts.quickstart);
+        assert_eq!(opts.benchmark_distance, Some(1000.0));
+        assert!(opts.benchmark_exit);
+        assert_eq!(opts.view_distance, Some(32));
     }
 
     #[test]

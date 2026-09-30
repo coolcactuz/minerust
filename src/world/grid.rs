@@ -15,6 +15,7 @@ use crate::world::terrain::generate_chunk;
 use crate::world::types::{CHUNK_CACHE_CAPACITY, WorldSeed};
 
 use crate::mesher::{CHUNK_SECTIONS, SectionConnectivity};
+use crate::world::macro_lod::{MacroChunk, chunk_to_macro_coord};
 
 /// Component attached to sub-chunk section mesh entities.
 #[derive(Component, Copy, Clone, Debug, PartialEq, Eq, Hash, Reflect)]
@@ -33,15 +34,19 @@ pub struct WorldGrid {
     pub chunk_cache: quick_cache::sync::Cache<IVec2, Chunk>,
     pub chunk_entities: HashMap<IVec2, [Option<Entity>; CHUNK_SECTIONS]>,
     pub water_entities: HashMap<IVec2, [Option<Entity>; CHUNK_SECTIONS]>,
+    pub macro_chunks: HashMap<IVec2, MacroChunk>,
     pub chunk_connectivity: HashMap<IVec2, [SectionConnectivity; CHUNK_SECTIONS]>,
     pub modified_chunks: HashSet<IVec2>,
     pub in_progress_chunks: HashSet<IVec2>,
     pub in_progress_meshes: HashSet<IVec2>,
     pub last_player_chunk: IVec2,
+    pub last_lod_player_pos: Vec3,
+    pub mesh_queue_dirty: bool,
     pub generation_queue: Vec<IVec2>,
     pub mesh_queue: Vec<IVec2>,
     pub queued_for_mesh: HashSet<IVec2>,
     pub dirty_chunks: HashSet<IVec2>,
+    pub dirty_macro_chunks: HashSet<IVec2>,
     pub save_dir: PathBuf,
     pub seed: WorldSeed,
     pub noise: NoiseGenerator,
@@ -66,12 +71,16 @@ impl WorldGrid {
             chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
             chunk_entities: HashMap::default(),
             water_entities: HashMap::default(),
+            macro_chunks: HashMap::default(),
             chunk_connectivity: HashMap::default(),
             modified_chunks: HashSet::default(),
             dirty_chunks: HashSet::default(),
+            dirty_macro_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
             in_progress_meshes: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
+            last_lod_player_pos: Vec3::splat(f32::MAX),
+            mesh_queue_dirty: false,
             generation_queue: Vec::new(),
             mesh_queue: Vec::new(),
             queued_for_mesh: HashSet::default(),
@@ -87,10 +96,19 @@ impl WorldGrid {
     }
 
     #[inline]
+    pub fn mark_macro_chunk_dirty(&mut self, macro_coord: IVec2) {
+        self.dirty_macro_chunks.insert(macro_coord);
+        if let Some(macro_chunk) = self.macro_chunks.get_mut(&macro_coord) {
+            macro_chunk.dirty = true;
+        }
+    }
+
+    #[inline]
     pub fn queue_mesh(&mut self, coord: impl Into<ChunkPos>) {
         let c = coord.into().0;
         if self.queued_for_mesh.insert(c) {
             self.mesh_queue.push(c);
+            self.mesh_queue_dirty = true;
         }
     }
 
@@ -233,7 +251,17 @@ impl WorldGrid {
 
     #[inline]
     pub fn has_chunk_mesh(&self, coord: &IVec2) -> bool {
-        self.chunk_entities.contains_key(coord) || self.water_entities.contains_key(coord)
+        self.chunk_entities.contains_key(coord)
+            || self.water_entities.contains_key(coord)
+            || self.has_macro_chunk_mesh(coord)
+    }
+
+    #[inline]
+    pub fn has_macro_chunk_mesh(&self, coord: &IVec2) -> bool {
+        let (macro_coord, slot) = chunk_to_macro_coord(*coord);
+        self.macro_chunks
+            .get(&macro_coord)
+            .is_some_and(|m| m.chunks[slot].is_some())
     }
 
     #[inline]
@@ -248,7 +276,22 @@ impl WorldGrid {
             .values()
             .map(|secs| secs.iter().flatten().count())
             .sum();
-        solid + water
+        let macro_solid: usize = self
+            .macro_chunks
+            .values()
+            .filter(|m| m.solid_entity.is_some())
+            .count();
+        let macro_water: usize = self
+            .macro_chunks
+            .values()
+            .filter(|m| m.water_entity.is_some())
+            .count();
+        solid + water + macro_solid + macro_water
+    }
+
+    #[inline]
+    pub fn total_meshed_chunks(&self) -> usize {
+        self.chunk_lod.len()
     }
 
     /// Despawns all active chunk meshes and clears loaded chunks and internal queues.
@@ -263,6 +306,14 @@ impl WorldGrid {
                 commands.entity(entity).despawn();
             }
         }
+        for (_, macro_chunk) in self.macro_chunks.drain() {
+            if let Some(entity) = macro_chunk.solid_entity {
+                commands.entity(entity).despawn();
+            }
+            if let Some(entity) = macro_chunk.water_entity {
+                commands.entity(entity).despawn();
+            }
+        }
         self.chunks.clear();
         self.chunk_lod.clear();
         self.chunk_connectivity.clear();
@@ -274,9 +325,12 @@ impl WorldGrid {
         self.mesh_queue.clear();
         self.queued_for_mesh.clear();
         self.dirty_chunks.clear();
+        self.dirty_macro_chunks.clear();
         self.modified_chunks.clear();
         self.chunk_cache = quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY);
         self.last_player_chunk = IVec2::new(i32::MAX, i32::MAX);
+        self.last_lod_player_pos = Vec3::splat(f32::MAX);
+        self.mesh_queue_dirty = false;
     }
 
     /// Despawns all active chunk meshes and resets world state to switch to a new seed.
@@ -343,5 +397,7 @@ impl WorldGrid {
                 determine_chunk_tier(dist_sq, true, 128.0 * 128.0, true, 2, 32.0 * 32.0);
             update_chunk_mesh(coord, commands, self, meshes, materials, true, tier);
         }
+
+        crate::world::macro_lod::flush_dirty_macro_chunks(commands, self, meshes, materials);
     }
 }

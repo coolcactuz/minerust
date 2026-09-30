@@ -30,6 +30,12 @@ pub fn update_settings_button_text_system(
         Option<&GraphicsLodBtnText>,
     )>,
 ) {
+    let settings_changed = settings.is_changed();
+    let profiler_changed = profiler_state.as_ref().map_or(false, |p| p.is_changed());
+    if !settings_changed && !profiler_changed {
+        return;
+    }
+
     let hud_visible = profiler_state.as_ref().is_some_and(|p| p.visible);
 
     for (mut text, vsync, fs, shadows, fog, hud, fps, dist, greedy, lod) in &mut query {
@@ -294,6 +300,8 @@ pub fn fps_limiter_system(
 }
 
 pub fn update_benchmark_banner_system(
+    time: Res<Time>,
+    mut timer: Local<f32>,
     config: Option<Res<BenchmarkConfig>>,
     state: Option<Res<BenchmarkState>>,
     mut banner_query: Query<&mut Visibility, With<BenchmarkRunningBanner>>,
@@ -316,6 +324,11 @@ pub fn update_benchmark_banner_system(
     }
 
     if is_running {
+        *timer += time.delta_secs();
+        if *timer < 0.1 && state.phase != BenchmarkPhase::Completed {
+            return;
+        }
+        *timer = 0.0;
         let total_dist = config.scenario.flight_distance;
         let dist = state.distance_traveled.min(total_dist);
         let pct = if total_dist > 0.0 {
@@ -351,7 +364,9 @@ pub fn update_benchmark_banner_system(
         };
 
         for mut text in &mut text_query {
-            *text = Text::new(&status_str);
+            if text.0 != status_str {
+                *text = Text::new(&status_str);
+            }
         }
     }
 }
