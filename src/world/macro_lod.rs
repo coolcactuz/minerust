@@ -181,14 +181,15 @@ pub fn flush_dirty_macro_chunks(
         })
     });
 
+    // Fast path: if no macro-chunks were marked dirty this frame, skip completely
+    if world.dirty_macro_chunks.is_empty() {
+        return;
+    }
+
     let mut empty_macros = Vec::new();
 
-    // Collect keys of dirty macro-chunks to satisfy borrow checker
-    let dirty_keys: Vec<IVec2> = world
-        .macro_chunks
-        .iter()
-        .filter_map(|(&k, m)| if m.dirty { Some(k) } else { None })
-        .collect();
+    // Drain keys of dirty macro-chunks to avoid iterating all macro-chunks every frame
+    let dirty_keys: Vec<IVec2> = world.dirty_macro_chunks.drain().collect();
 
     for macro_coord in dirty_keys {
         let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) else {

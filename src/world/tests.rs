@@ -677,3 +677,42 @@ fn test_macro_chunk_lod1_consolidation_and_lifecycle() {
     assert!(app.world().get_entity(solid_entity).is_err());
     assert!(app.world().get_entity(water_entity).is_err());
 }
+
+#[test]
+fn test_calculate_lod_scan_radius() {
+    use crate::world::streaming::calculate_lod_scan_radius;
+
+    // Distance LOD enabled: 128m threshold (8 chunks) + 2 chunk safety margin = 10 chunks
+    let r = calculate_lod_scan_radius(true, 128.0 * 128.0, true, 32.0 * 32.0, 64);
+    assert_eq!(r, 10);
+
+    // Clamped by view distance when view distance is small
+    let r_clamped = calculate_lod_scan_radius(true, 128.0 * 128.0, true, 32.0 * 32.0, 8);
+    assert_eq!(r_clamped, 8);
+
+    // Distance LOD disabled, Greedy meshing enabled: 32m threshold (2 chunks) + 2 = 4 chunks
+    let r_greedy = calculate_lod_scan_radius(false, 0.0, true, 32.0 * 32.0, 32);
+    assert_eq!(r_greedy, 4);
+
+    // Both disabled: no LOD transitions can occur
+    let r_none = calculate_lod_scan_radius(false, 0.0, false, 0.0, 32);
+    assert_eq!(r_none, 0);
+}
+
+#[test]
+fn test_dirty_macro_chunks_tracking() {
+    let mut world = WorldGrid::new(crate::world::types::WorldSeed(42));
+    assert!(world.dirty_macro_chunks.is_empty());
+
+    // Mark macro chunk dirty
+    let coord = IVec2::new(3, -2);
+    world.mark_macro_chunk_dirty(coord);
+    assert!(world.dirty_macro_chunks.contains(&coord));
+
+    // Despawning all chunks clears dirty macro chunks
+    let mut app = App::new();
+    let mut commands = app.world_mut().commands();
+    world.despawn_all_chunks(&mut commands);
+    assert!(world.dirty_macro_chunks.is_empty());
+}
+

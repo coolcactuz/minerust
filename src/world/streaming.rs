@@ -157,6 +157,7 @@ pub fn apply_chunk_mesh(
         let s0 = meshes_res.sections.into_iter().next().unwrap_or_default();
         macro_chunk.chunks[slot] = Some(s0);
         macro_chunk.dirty = true;
+        world.dirty_macro_chunks.insert(macro_coord);
         return;
     }
 
@@ -165,6 +166,7 @@ pub fn apply_chunk_mesh(
     if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
         if macro_chunk.chunks[slot].take().is_some() {
             macro_chunk.dirty = true;
+            world.dirty_macro_chunks.insert(macro_coord);
         }
     }
 
@@ -256,6 +258,32 @@ pub fn determine_chunk_tier(
     } else {
         (0, false, 0) // Tier 0: Standard 1x1 Voxel Meshing
     }
+}
+
+/// Computes the maximum chunk radius around the player where LOD transitions between tiers can occur.
+/// Any chunk farther than this radius is mathematically guaranteed to remain in Tier 2 (Sloped LOD).
+#[inline]
+pub fn calculate_lod_scan_radius(
+    distance_lod: bool,
+    lod_threshold_sq: f32,
+    greedy_meshing: bool,
+    greedy_threshold_sq: f32,
+    view_dist: i32,
+) -> i32 {
+    let max_threshold_sq = if distance_lod {
+        lod_threshold_sq
+    } else if greedy_meshing {
+        greedy_threshold_sq
+    } else {
+        0.0
+    };
+    if max_threshold_sq <= 0.0 {
+        return 0;
+    }
+    let threshold_world = max_threshold_sq.sqrt();
+    let threshold_chunks = (threshold_world / 16.0).ceil() as i32;
+    // Add safety margin of 2 chunks to account for sub-chunk player offset within chunk bounds
+    (threshold_chunks + 2).min(view_dist)
 }
 
 /// Updates or creates the mesh for the specified chunk synchronously
@@ -395,6 +423,7 @@ pub fn world_streaming_system(
             if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
                 if macro_chunk.chunks[slot].take().is_some() {
                     macro_chunk.dirty = true;
+                    world.dirty_macro_chunks.insert(macro_coord);
                 }
             }
             if let Some(entities) = world.chunk_entities.remove(&coord) {
@@ -446,6 +475,7 @@ pub fn world_streaming_system(
             if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
                 if macro_chunk.chunks[slot].take().is_some() {
                     macro_chunk.dirty = true;
+                    world.dirty_macro_chunks.insert(macro_coord);
                 }
             }
             // Despawn 3D mesh entities from GPU
@@ -565,7 +595,9 @@ pub fn world_streaming_system(
                 world.queue_mesh(coord);
             }
 
-            // Only queue neighbor chunks if they are within visual range and already have an active GPU mesh that needs seam update
+            // Only queue neighbor chunks if they are within visual range and need seam updates (voxel tiers only).
+            // Tier 2 (Sloped LOD) macro-chunks use skirts and do not cull block faces against neighbors;
+            // skipping them avoids tens of thousands of redundant re-meshes and macro-chunk invalidations.
             for neighbor_coord in [
                 coord + IVec2::new(-1, 0),
                 coord + IVec2::new(1, 0),
@@ -573,12 +605,14 @@ pub fn world_streaming_system(
                 coord + IVec2::new(0, 1),
             ] {
                 let n_diff = neighbor_coord - player_chunk;
-                if n_diff.x.abs() <= view_dist
-                    && n_diff.y.abs() <= view_dist
-                    && (world.has_chunk_mesh(&neighbor_coord)
-                        || world.chunk_lod.contains_key(&neighbor_coord))
-                {
-                    world.queue_mesh(neighbor_coord);
+                if n_diff.x.abs() <= view_dist && n_diff.y.abs() <= view_dist {
+                    let needs_voxel_seam_update = match world.chunk_lod.get(&neighbor_coord) {
+                        Some(&t) => t < TIER_SLOPED_LOD,
+                        None => world.has_chunk_mesh(&neighbor_coord),
+                    };
+                    if needs_voxel_seam_update {
+                        world.queue_mesh(neighbor_coord);
+                    }
                 }
             }
         }
@@ -603,6 +637,7 @@ pub fn world_streaming_system(
                 if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
                     if macro_chunk.chunks[slot].take().is_some() {
                         macro_chunk.dirty = true;
+                        world.dirty_macro_chunks.insert(macro_coord);
                     }
                 }
                 if let Some(entities) = world.chunk_entities.remove(&coord) {
@@ -664,25 +699,64 @@ pub fn world_streaming_system(
     if should_check_lod {
         world.last_lod_player_pos = player_pos;
         let mut chunks_needing_lod_update = Vec::new();
-        for (&coord, chunk) in &world.chunks {
-            let diff = coord - player_chunk;
-            let dist_2d = diff.x.abs().max(diff.y.abs());
-            if dist_2d <= view_dist && world.chunk_lod.contains_key(&coord) {
-                let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-                let (target_tier, _, _) = determine_chunk_tier(
-                    dist_sq,
-                    distance_lod,
-                    lod_threshold_sq,
-                    greedy_meshing,
-                    greedy_threshold,
-                    greedy_threshold_sq,
-                );
 
-                if world.chunk_lod.get(&coord) != Some(&target_tier)
-                    && !world.queued_for_mesh.contains(&coord)
-                    && !world.in_progress_meshes.contains(&coord)
-                {
-                    chunks_needing_lod_update.push(coord);
+        if settings_changed {
+            // Full sweep across loaded chunks when graphics settings change
+            for (&coord, chunk) in &world.chunks {
+                let diff = coord - player_chunk;
+                let dist_2d = diff.x.abs().max(diff.y.abs());
+                if dist_2d <= view_dist && world.chunk_lod.contains_key(&coord) {
+                    let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
+                    let (target_tier, _, _) = determine_chunk_tier(
+                        dist_sq,
+                        distance_lod,
+                        lod_threshold_sq,
+                        greedy_meshing,
+                        greedy_threshold,
+                        greedy_threshold_sq,
+                    );
+
+                    if world.chunk_lod.get(&coord) != Some(&target_tier)
+                        && !world.queued_for_mesh.contains(&coord)
+                        && !world.in_progress_meshes.contains(&coord)
+                    {
+                        chunks_needing_lod_update.push(coord);
+                    }
+                }
+            }
+        } else {
+            // Candidate frontier sweep: only scan coordinates within reach of LOD tier transitions
+            let scan_radius = calculate_lod_scan_radius(
+                distance_lod,
+                lod_threshold_sq,
+                greedy_meshing,
+                greedy_threshold_sq,
+                view_dist,
+            );
+            for dz in -scan_radius..=scan_radius {
+                for dx in -scan_radius..=scan_radius {
+                    let coord = player_chunk + IVec2::new(dx, dz);
+                    if let Some(chunk) = world.chunks.get(&coord) {
+                        if world.chunk_lod.contains_key(&coord) {
+                            let dist_sq =
+                                chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
+                            let (target_tier, _, _) = determine_chunk_tier(
+                                dist_sq,
+                                distance_lod,
+                                lod_threshold_sq,
+                                greedy_meshing,
+                                greedy_threshold,
+                                greedy_threshold_sq,
+                            );
+
+                            if world.chunk_lod.get(&coord) != Some(&target_tier)
+                                && !world.queued_for_mesh.contains(&coord)
+                                && !world.in_progress_meshes.contains(&coord)
+                            {
+                                chunks_needing_lod_update.push(coord);
+                            }
+                        }
+                    }
                 }
             }
         }

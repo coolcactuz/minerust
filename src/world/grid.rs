@@ -46,6 +46,7 @@ pub struct WorldGrid {
     pub mesh_queue: Vec<IVec2>,
     pub queued_for_mesh: HashSet<IVec2>,
     pub dirty_chunks: HashSet<IVec2>,
+    pub dirty_macro_chunks: HashSet<IVec2>,
     pub save_dir: PathBuf,
     pub seed: WorldSeed,
     pub noise: NoiseGenerator,
@@ -74,6 +75,7 @@ impl WorldGrid {
             chunk_connectivity: HashMap::default(),
             modified_chunks: HashSet::default(),
             dirty_chunks: HashSet::default(),
+            dirty_macro_chunks: HashSet::default(),
             in_progress_chunks: HashSet::default(),
             in_progress_meshes: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
@@ -90,6 +92,14 @@ impl WorldGrid {
             total_vertices: 0,
             chunk_vertices: HashMap::default(),
             chunk_lod: HashMap::default(),
+        }
+    }
+
+    #[inline]
+    pub fn mark_macro_chunk_dirty(&mut self, macro_coord: IVec2) {
+        self.dirty_macro_chunks.insert(macro_coord);
+        if let Some(macro_chunk) = self.macro_chunks.get_mut(&macro_coord) {
+            macro_chunk.dirty = true;
         }
     }
 
@@ -315,6 +325,7 @@ impl WorldGrid {
         self.mesh_queue.clear();
         self.queued_for_mesh.clear();
         self.dirty_chunks.clear();
+        self.dirty_macro_chunks.clear();
         self.modified_chunks.clear();
         self.chunk_cache = quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY);
         self.last_player_chunk = IVec2::new(i32::MAX, i32::MAX);
