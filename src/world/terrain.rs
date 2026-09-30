@@ -1,5 +1,5 @@
 use crate::block::BlockType;
-use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
+use crate::chunk::{CHUNK_BLOCKS, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH, Chunk};
 use crate::noise::NoiseGenerator;
 use crate::world::types::{BiomeType, SEA_LEVEL};
 
@@ -127,6 +127,8 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
     let mut biomes = [[BiomeType::Plains; CHUNK_DEPTH]; CHUNK_WIDTH];
     let mut river_flags = [[false; CHUNK_DEPTH]; CHUNK_WIDTH];
 
+    let blocks = chunk.blocks_mut();
+
     // Single-pass loop fusion: biomes, terrain stratification, 3D caves, ores, and liquids.
     // Traverses column-by-column, writing each voxel directly into contiguous memory without redundant reads or overwrites.
     for lx in 0..CHUNK_WIDTH {
@@ -142,10 +144,10 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
             river_flags[lx][lz] = is_river;
 
             // Indestructible bedrock at world base
-            chunk.set_fast(lx, 0, lz, BlockType::Bedrock);
+            blocks[Chunk::index(lx, 0, lz)] = BlockType::Bedrock;
             let bedrock_1 = pseudo_hash_3d(wx_i, 1, wz_i, seed).is_multiple_of(2);
             if bedrock_1 {
-                chunk.set_fast(lx, 1, lz, BlockType::Bedrock);
+                blocks[Chunk::index(lx, 1, lz)] = BlockType::Bedrock;
             }
 
             let max_cave_y = (h - 4).min(110);
@@ -273,7 +275,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     base_block
                 };
 
-                chunk.set_fast(lx, y as usize, lz, block);
+                blocks[Chunk::index(lx, y as usize, lz)] = block;
             }
 
             // Liquid filling up to SEA_LEVEL for oceans, lakes, and rivers
@@ -284,7 +286,7 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                     } else {
                         BlockType::Water
                     };
-                    chunk.set_fast(lx, y as usize, lz, liquid);
+                    blocks[Chunk::index(lx, y as usize, lz)] = liquid;
                 }
             }
         }
@@ -309,45 +311,45 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
                 BiomeType::Desert => {
                     // Desert cacti
                     if hash.is_multiple_of(41)
-                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Sand
+                        && blocks[Chunk::index(lx, h as usize, lz)] == BlockType::Sand
                     {
                         let cactus_h = 2 + (hash % 2) as i32;
                         for cy in 1..=cactus_h {
-                            chunk.set(lx as i32, h + cy, lz as i32, BlockType::Cactus);
+                            blocks[Chunk::index(lx, (h + cy) as usize, lz)] = BlockType::Cactus;
                         }
                     }
                 }
                 BiomeType::Forest => {
                     // Dense forest trees
                     if hash.is_multiple_of(16)
-                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass
+                        && blocks[Chunk::index(lx, h as usize, lz)] == BlockType::Grass
                     {
-                        spawn_tree(&mut chunk, lx as i32, h, lz as i32, false);
+                        spawn_tree(blocks, lx as i32, h, lz as i32, false);
                     }
                 }
                 BiomeType::Plains => {
                     // Scattered plains trees
                     if hash.is_multiple_of(45)
-                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass
+                        && blocks[Chunk::index(lx, h as usize, lz)] == BlockType::Grass
                     {
-                        spawn_tree(&mut chunk, lx as i32, h, lz as i32, false);
+                        spawn_tree(blocks, lx as i32, h, lz as i32, false);
                     }
                 }
                 BiomeType::SnowyTundra => {
                     // Conical pine trees in snowy tundra
                     if hash.is_multiple_of(35)
-                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Snow
+                        && blocks[Chunk::index(lx, h as usize, lz)] == BlockType::Snow
                     {
-                        spawn_tree(&mut chunk, lx as i32, h, lz as i32, true);
+                        spawn_tree(blocks, lx as i32, h, lz as i32, true);
                     }
                 }
                 BiomeType::Mountains => {
                     // Conical pine trees in lower mountain foothills below the alpine tree line
                     if h <= 84
                         && hash.is_multiple_of(30)
-                        && chunk.get(lx as i32, h, lz as i32) == BlockType::Grass
+                        && blocks[Chunk::index(lx, h as usize, lz)] == BlockType::Grass
                     {
-                        spawn_tree(&mut chunk, lx as i32, h, lz as i32, true);
+                        spawn_tree(blocks, lx as i32, h, lz as i32, true);
                     }
                 }
                 _ => {}
@@ -355,13 +357,29 @@ pub fn generate_chunk(cx: i32, cz: i32, noise: &NoiseGenerator, seed: u64) -> Ch
         }
     }
 
+    // Compute exact max_y by scanning down from the top in sections
+    let mut max_y = 0;
+    for y in (0..CHUNK_HEIGHT).rev() {
+        let y_offset = y * (CHUNK_WIDTH * CHUNK_DEPTH);
+        if blocks[y_offset..y_offset + (CHUNK_WIDTH * CHUNK_DEPTH)]
+            .iter()
+            .any(|&b| b != BlockType::Air)
+        {
+            max_y = y;
+            break;
+        }
+    }
+    chunk.max_y = max_y;
+
     chunk
 }
 
-fn spawn_tree(chunk: &mut Chunk, lx: i32, h: i32, lz: i32, is_pine: bool) {
+fn spawn_tree(blocks: &mut [BlockType; CHUNK_BLOCKS], lx: i32, h: i32, lz: i32, is_pine: bool) {
     let trunk_h = if is_pine { 5 } else { 4 };
     for ty in (h + 1)..=(h + trunk_h) {
-        chunk.set(lx, ty, lz, BlockType::Wood);
+        if Chunk::in_bounds(lx, ty, lz) {
+            blocks[Chunk::index(lx as usize, ty as usize, lz as usize)] = BlockType::Wood;
+        }
     }
 
     if is_pine {
@@ -381,8 +399,11 @@ fn spawn_tree(chunk: &mut Chunk, lx: i32, h: i32, lz: i32, is_pine: bool) {
                     }
                     let tx = lx + dx;
                     let tz = lz + dz;
-                    if Chunk::in_bounds(tx, dy, tz) && chunk.get(tx, dy, tz) == BlockType::Air {
-                        chunk.set(tx, dy, tz, BlockType::Leaves);
+                    if Chunk::in_bounds(tx, dy, tz) {
+                        let idx = Chunk::index(tx as usize, dy as usize, tz as usize);
+                        if blocks[idx] == BlockType::Air {
+                            blocks[idx] = BlockType::Leaves;
+                        }
                     }
                 }
             }
@@ -400,8 +421,11 @@ fn spawn_tree(chunk: &mut Chunk, lx: i32, h: i32, lz: i32, is_pine: bool) {
                     }
                     let tx = lx + dx;
                     let tz = lz + dz;
-                    if Chunk::in_bounds(tx, dy, tz) && chunk.get(tx, dy, tz) == BlockType::Air {
-                        chunk.set(tx, dy, tz, BlockType::Leaves);
+                    if Chunk::in_bounds(tx, dy, tz) {
+                        let idx = Chunk::index(tx as usize, dy as usize, tz as usize);
+                        if blocks[idx] == BlockType::Air {
+                            blocks[idx] = BlockType::Leaves;
+                        }
                     }
                 }
             }

@@ -71,6 +71,7 @@ pub struct BenchmarkConfig {
     pub enabled: bool,
     pub seed: u64,
     pub scenario: BenchmarkScenario,
+    pub auto_exit: bool,
 }
 
 impl Default for BenchmarkConfig {
@@ -79,6 +80,7 @@ impl Default for BenchmarkConfig {
             enabled: false,
             seed: DEFAULT_BENCHMARK_SEED,
             scenario: BenchmarkScenario::production(16),
+            auto_exit: false,
         }
     }
 }
@@ -396,6 +398,12 @@ pub fn benchmark_runner_system(
                 println!(
                     "[BENCHMARK] In-game benchmark complete! Transitioning to results dashboard."
                 );
+                if config.auto_exit {
+                    println!(
+                        "[BENCHMARK] Automated profiling run complete (--benchmark-exit). Exiting..."
+                    );
+                    std::process::exit(0);
+                }
                 config.enabled = false;
                 if let Some(ref mut m) = menu {
                     m.screen = crate::menu::MenuScreen::BenchmarkResults;
