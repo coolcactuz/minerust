@@ -104,7 +104,18 @@ impl NoiseGenerator {
     }
 
     /// 2D Fractal Brownian Motion (FBM) for terrain elevation and biomes
+    #[inline]
     pub fn fbm_2d(&self, x: f64, y: f64, octaves: usize, persistence: f64, lacunarity: f64) -> f64 {
+        if octaves == 3
+            && (persistence - 0.5).abs() < 1e-6
+            && (lacunarity - 2.0).abs() < 1e-6
+        {
+            let o1 = self.perlin_2d(x, y);
+            let o2 = self.perlin_2d(x * 2.0, y * 2.0);
+            let o3 = self.perlin_2d(x * 4.0, y * 4.0);
+            return (o1 + 0.5 * o2 + 0.25 * o3) / 1.75;
+        }
+
         let mut total = 0.0;
         let mut frequency = 1.0;
         let mut amplitude = 1.0;
@@ -121,6 +132,7 @@ impl NoiseGenerator {
     }
 
     /// 2D Ridged Multi-Fractal: ideal for mountain peaks and rocky ridges
+    #[inline]
     pub fn ridged_fbm_2d(
         &self,
         x: f64,
@@ -129,6 +141,17 @@ impl NoiseGenerator {
         persistence: f64,
         lacunarity: f64,
     ) -> f64 {
+        if octaves == 4
+            && (persistence - 0.5).abs() < 1e-6
+            && (lacunarity - 2.0).abs() < 1e-6
+        {
+            let n1 = 1.0 - self.perlin_2d(x, y).abs();
+            let n2 = 1.0 - self.perlin_2d(x * 2.0, y * 2.0).abs();
+            let n3 = 1.0 - self.perlin_2d(x * 4.0, y * 4.0).abs();
+            let n4 = 1.0 - self.perlin_2d(x * 8.0, y * 8.0).abs();
+            return (n1 * n1 + 0.5 * (n2 * n2) + 0.25 * (n3 * n3) + 0.125 * (n4 * n4)) / 1.875;
+        }
+
         let mut total = 0.0;
         let mut frequency = 1.0;
         let mut amplitude = 1.0;

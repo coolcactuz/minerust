@@ -300,6 +300,8 @@ pub fn fps_limiter_system(
 }
 
 pub fn update_benchmark_banner_system(
+    time: Res<Time>,
+    mut timer: Local<f32>,
     config: Option<Res<BenchmarkConfig>>,
     state: Option<Res<BenchmarkState>>,
     mut banner_query: Query<&mut Visibility, With<BenchmarkRunningBanner>>,
@@ -322,6 +324,11 @@ pub fn update_benchmark_banner_system(
     }
 
     if is_running {
+        *timer += time.delta_secs();
+        if *timer < 0.1 && state.phase != BenchmarkPhase::Completed {
+            return;
+        }
+        *timer = 0.0;
         let total_dist = config.scenario.flight_distance;
         let dist = state.distance_traveled.min(total_dist);
         let pct = if total_dist > 0.0 {
