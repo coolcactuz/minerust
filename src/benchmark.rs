@@ -156,7 +156,7 @@ pub enum BenchmarkPhase {
 }
 
 /// Dynamic runtime state tracking benchmark progress and statistical telemetry.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct BenchmarkState {
     pub phase: BenchmarkPhase,
     pub elapsed: f32,
@@ -183,6 +183,32 @@ pub struct BenchmarkState {
     pub completed: bool,
 }
 
+impl Default for BenchmarkState {
+    fn default() -> Self {
+        Self {
+            phase: BenchmarkPhase::default(),
+            elapsed: 0.0,
+            stationary_timer: 0.0,
+            last_status_print: 0.0,
+            start_pos: None,
+            distance_traveled: 0.0,
+            static_frame_times_ms: Vec::with_capacity(2048),
+            static_chunks: 0,
+            static_vertices: 0,
+            static_fps: 0.0,
+            static_frametime_ms: 0.0,
+            static_vram_mb: 0.0,
+            frame_times_ms: Vec::with_capacity(32768),
+            vertex_samples: Vec::with_capacity(32768),
+            chunk_samples: Vec::with_capacity(32768),
+            peak_rss_mb: 0.0,
+            peak_vram_mb: 0.0,
+            last_telemetry_sample: 0.0,
+            completed: false,
+        }
+    }
+}
+
 /// System that executes the automated deterministic benchmark trajectory and records frame latencies.
 pub fn benchmark_runner_system(
     time: Res<Time>,
@@ -202,8 +228,8 @@ pub fn benchmark_runner_system(
     let dt = time.delta_secs();
     state.elapsed += dt;
 
-    // Periodically (4 Hz, every 250ms) sample OS memory footprint and GPU VRAM instead of issuing blocking sysfs/procfs syscalls every frame
-    if state.last_telemetry_sample <= 0.0 || state.elapsed - state.last_telemetry_sample >= 0.25 {
+    // Periodically (1 Hz, every 1.0s) sample OS memory footprint and GPU VRAM instead of issuing blocking sysfs/procfs syscalls every frame
+    if state.last_telemetry_sample <= 0.0 || state.elapsed - state.last_telemetry_sample >= 1.0 {
         state.last_telemetry_sample = state.elapsed;
         let mem = read_process_memory();
         if mem.rss_mb > state.peak_rss_mb {

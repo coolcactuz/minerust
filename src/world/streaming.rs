@@ -492,9 +492,15 @@ pub fn world_streaming_system(
         for coord in chunks_to_demesh {
             let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
             if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
-                if macro_chunk.chunks[slot].take().is_some() {
-                    macro_chunk.dirty = true;
-                    world.dirty_macro_chunks.insert(macro_coord);
+                macro_chunk.chunks[slot] = None;
+                if !macro_chunk.has_any_chunk() {
+                    if let Some(e) = macro_chunk.solid_entity.take() {
+                        commands.entity(e).despawn();
+                    }
+                    if let Some(e) = macro_chunk.water_entity.take() {
+                        commands.entity(e).despawn();
+                    }
+                    world.dirty_macro_chunks.remove(&macro_coord);
                 }
             }
             if let Some(entities) = world.chunk_entities.remove(&coord) {
@@ -536,9 +542,15 @@ pub fn world_streaming_system(
             }
             let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
             if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
-                if macro_chunk.chunks[slot].take().is_some() {
-                    macro_chunk.dirty = true;
-                    world.dirty_macro_chunks.insert(macro_coord);
+                macro_chunk.chunks[slot] = None;
+                if !macro_chunk.has_any_chunk() {
+                    if let Some(e) = macro_chunk.solid_entity.take() {
+                        commands.entity(e).despawn();
+                    }
+                    if let Some(e) = macro_chunk.water_entity.take() {
+                        commands.entity(e).despawn();
+                    }
+                    world.dirty_macro_chunks.remove(&macro_coord);
                 }
             }
             // Despawn 3D mesh entities from GPU
@@ -698,9 +710,15 @@ pub fn world_streaming_system(
             if diff.x.abs() > view_dist || diff.y.abs() > view_dist {
                 let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
                 if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
-                    if macro_chunk.chunks[slot].take().is_some() {
-                        macro_chunk.dirty = true;
-                        world.dirty_macro_chunks.insert(macro_coord);
+                    macro_chunk.chunks[slot] = None;
+                    if !macro_chunk.has_any_chunk() {
+                        if let Some(e) = macro_chunk.solid_entity.take() {
+                            commands.entity(e).despawn();
+                        }
+                        if let Some(e) = macro_chunk.water_entity.take() {
+                            commands.entity(e).despawn();
+                        }
+                        world.dirty_macro_chunks.remove(&macro_coord);
                     }
                 }
                 if let Some(entities) = world.chunk_entities.remove(&coord) {
