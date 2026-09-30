@@ -80,7 +80,18 @@ pub fn merge_chunk_meshes<'a>(
     let mut merged_normals = Vec::with_capacity(total_verts);
     let mut merged_uvs = Vec::with_capacity(total_verts);
     let mut merged_uvs_1 = Vec::with_capacity(total_verts);
-    let mut merged_indices = Vec::with_capacity(total_indices);
+
+    let use_u16 = u16::try_from(total_verts).is_ok();
+    let mut merged_indices_u16 = if use_u16 {
+        Some(Vec::with_capacity(total_indices))
+    } else {
+        None
+    };
+    let mut merged_indices_u32 = if !use_u16 {
+        Some(Vec::with_capacity(total_indices))
+    } else {
+        None
+    };
 
     for (slot, mesh) in items {
         let lx = (slot % (MACRO_CHUNK_SIZE as usize)) as f32;
@@ -113,15 +124,30 @@ pub fn merge_chunk_meshes<'a>(
         }
 
         if let Some(indices) = mesh.indices() {
-            match indices {
-                Indices::U16(idx) => {
-                    for i in idx {
-                        merged_indices.push(base_vertex + (*i as u32));
+            if let Some(ref mut idx_vec) = merged_indices_u16 {
+                match indices {
+                    Indices::U16(idx) => {
+                        for i in idx {
+                            idx_vec.push((base_vertex + (*i as u32)) as u16);
+                        }
+                    }
+                    Indices::U32(idx) => {
+                        for i in idx {
+                            idx_vec.push((base_vertex + *i) as u16);
+                        }
                     }
                 }
-                Indices::U32(idx) => {
-                    for i in idx {
-                        merged_indices.push(base_vertex + *i);
+            } else if let Some(ref mut idx_vec) = merged_indices_u32 {
+                match indices {
+                    Indices::U16(idx) => {
+                        for i in idx {
+                            idx_vec.push(base_vertex + (*i as u32));
+                        }
+                    }
+                    Indices::U32(idx) => {
+                        for i in idx {
+                            idx_vec.push(base_vertex + *i);
+                        }
                     }
                 }
             }
@@ -137,11 +163,10 @@ pub fn merge_chunk_meshes<'a>(
     merged_mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, merged_uvs);
     merged_mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, merged_uvs_1);
 
-    if u16::try_from(total_verts).is_ok() {
-        let u16_indices: Vec<u16> = merged_indices.into_iter().map(|i| i as u16).collect();
-        merged_mesh.insert_indices(Indices::U16(u16_indices));
-    } else {
-        merged_mesh.insert_indices(Indices::U32(merged_indices));
+    if let Some(idx16) = merged_indices_u16 {
+        merged_mesh.insert_indices(Indices::U16(idx16));
+    } else if let Some(idx32) = merged_indices_u32 {
+        merged_mesh.insert_indices(Indices::U32(idx32));
     }
 
     Some(merged_mesh)

@@ -862,10 +862,10 @@ pub fn world_streaming_system(
         if world.mesh_queue.len() > 1 && world.mesh_queue_dirty {
             let world_ref = &mut *world;
             let chunks = &world_ref.chunks;
-            world_ref.mesh_queue.sort_by_cached_key(|c| {
-                let chunk_opt = chunks.get(c);
-                let d_sq = chunk_distance_sq_to_player(*c, player_pos, chunk_opt);
-                -(d_sq as i64)
+            world_ref.mesh_queue.sort_unstable_by(|a, b| {
+                let d_a = chunk_distance_sq_to_player(*a, player_pos, chunks.get(a));
+                let d_b = chunk_distance_sq_to_player(*b, player_pos, chunks.get(b));
+                d_b.total_cmp(&d_a)
             });
             world.mesh_queue_dirty = false;
         }
