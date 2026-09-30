@@ -1,6 +1,7 @@
 //! Voxel world management, procedural terrain generation, chunk storage,
 //! and background multi-threaded mesh/generation streaming.
 
+pub mod frontier;
 pub mod grid;
 pub mod macro_lod;
 pub mod occlusion;
@@ -12,6 +13,7 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
+pub use frontier::{get_entered_chunks, get_exited_chunks};
 pub use grid::{ChunkSection, WorldGrid};
 pub use macro_lod::{
     MACRO_CHUNK_AREA, MACRO_CHUNK_SIZE, MacroChunk, MacroChunkSection, chunk_to_macro_coord,

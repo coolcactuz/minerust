@@ -12,6 +12,7 @@ use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
 use crate::mesher::{CHUNK_SECTIONS, ChunkMeshes, build_chunk_mesh_lod};
 use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
+use crate::world::frontier::{get_entered_chunks, get_exited_chunks};
 use crate::world::grid::{ChunkSection, WorldGrid};
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{
@@ -379,51 +380,110 @@ pub fn world_streaming_system(
     }
 
     if player_chunk != world.last_player_chunk || settings_changed {
+        let prev_player_chunk = world.last_player_chunk;
         world.last_player_chunk = player_chunk;
 
-        let mut needed_chunks = Vec::new();
-        for dx in -gen_dist..=gen_dist {
-            for dz in -gen_dist..=gen_dist {
-                let coord = player_chunk + IVec2::new(dx, dz);
-                // Chunk needs to be generated if it is not already loaded or in progress
-                if !world.chunks.contains_key(&coord) && !world.in_progress_chunks.contains(&coord)
+        let delta = player_chunk - prev_player_chunk;
+        let is_initial_or_teleport = settings_changed || delta.x.abs() > 4 || delta.y.abs() > 4;
+
+        let (chunks_to_queue, chunks_to_demesh, chunks_to_remove) = if is_initial_or_teleport {
+            let mut needed_chunks = Vec::new();
+            for dx in -gen_dist..=gen_dist {
+                for dz in -gen_dist..=gen_dist {
+                    let coord = player_chunk + IVec2::new(dx, dz);
+                    // Chunk needs to be generated if it is not already loaded or in progress
+                    if !world.chunks.contains_key(&coord)
+                        && !world.in_progress_chunks.contains(&coord)
+                    {
+                        needed_chunks.push(coord);
+                    }
+                }
+            }
+
+            // Sort descending so pop() takes the closest chunks first
+            needed_chunks.sort_by_key(|c| {
+                let diff = *c - player_chunk;
+                -(diff.x * diff.x + diff.y * diff.y)
+            });
+
+            world.generation_queue = needed_chunks;
+
+            let mut to_queue = Vec::new();
+            let mut to_demesh = Vec::new();
+            let mut to_remove = Vec::new();
+
+            for &coord in world.chunks.keys() {
+                let diff = coord - player_chunk;
+                let dx = diff.x.abs();
+                let dz = diff.y.abs();
+
+                if dx > unload_dist || dz > unload_dist {
+                    to_remove.push(coord);
+                } else if dx <= view_dist && dz <= view_dist {
+                    if !world.chunk_lod.contains_key(&coord) {
+                        to_queue.push(coord);
+                    }
+                } else if world.chunk_lod.contains_key(&coord) {
+                    to_demesh.push(coord);
+                }
+            }
+
+            (to_queue, to_demesh, to_remove)
+        } else {
+            // Incremental frontier scanning: only scan newly entered / exited boundaries
+            let entered_gen = get_entered_chunks(prev_player_chunk, player_chunk, gen_dist);
+            let mut newly_needed = Vec::new();
+            for coord in entered_gen {
+                if !world.chunks.contains_key(&coord)
+                    && !world.in_progress_chunks.contains(&coord)
                 {
-                    needed_chunks.push(coord);
+                    newly_needed.push(coord);
                 }
             }
-        }
 
-        // Sort descending so pop() takes the closest chunks first
-        needed_chunks.sort_by_key(|c| {
-            let diff = *c - player_chunk;
-            -(diff.x * diff.x + diff.y * diff.y)
-        });
+            // Prune any chunks in generation_queue that are now outside gen_dist
+            world.generation_queue.retain(|c| {
+                let diff = *c - player_chunk;
+                diff.x.abs() <= gen_dist && diff.y.abs() <= gen_dist
+            });
 
-        world.generation_queue = needed_chunks;
+            newly_needed.sort_by_key(|c| {
+                let diff = *c - player_chunk;
+                -(diff.x * diff.x + diff.y * diff.y)
+            });
 
-        // 2-Tier streaming lifecycle:
-        // Tier 1 (within visual view_dist): ensure mesh is queued if missing
-        // Tier 2 (outside view_dist): despawn GPU mesh to save draw calls & VRAM, keep voxels in RAM
-        // Beyond unload_dist: persist modified chunks and unload to LRU cache
-        let mut chunks_to_queue = Vec::new();
-        let mut chunks_to_demesh = Vec::new();
-        let mut chunks_to_remove = Vec::new();
+            // Prepend new frontier chunks to the front of generation_queue
+            // so closer chunks remain at the back and are popped first
+            let mut new_queue = newly_needed;
+            new_queue.append(&mut world.generation_queue);
+            world.generation_queue = new_queue;
 
-        for &coord in world.chunks.keys() {
-            let diff = coord - player_chunk;
-            let dx = diff.x.abs();
-            let dz = diff.y.abs();
-
-            if dx > unload_dist || dz > unload_dist {
-                chunks_to_remove.push(coord);
-            } else if dx <= view_dist && dz <= view_dist {
-                if !world.chunk_lod.contains_key(&coord) {
-                    chunks_to_queue.push(coord);
+            let entered_view = get_entered_chunks(prev_player_chunk, player_chunk, view_dist);
+            let mut to_queue = Vec::new();
+            for coord in entered_view {
+                if world.chunks.contains_key(&coord) && !world.chunk_lod.contains_key(&coord) {
+                    to_queue.push(coord);
                 }
-            } else if world.chunk_lod.contains_key(&coord) {
-                chunks_to_demesh.push(coord);
             }
-        }
+
+            let exited_view = get_exited_chunks(prev_player_chunk, player_chunk, view_dist);
+            let mut to_demesh = Vec::new();
+            for coord in exited_view {
+                if world.chunk_lod.contains_key(&coord) {
+                    to_demesh.push(coord);
+                }
+            }
+
+            let exited_unload = get_exited_chunks(prev_player_chunk, player_chunk, unload_dist);
+            let mut to_remove = Vec::new();
+            for coord in exited_unload {
+                if world.chunks.contains_key(&coord) {
+                    to_remove.push(coord);
+                }
+            }
+
+            (to_queue, to_demesh, to_remove)
+        };
 
         for coord in chunks_to_queue {
             world.queue_mesh(coord);
@@ -771,7 +831,7 @@ pub fn world_streaming_system(
 
     // 4. Process mesh queue with frame budget, asynchronous dispatch, and 3D distance priority
     if !world.mesh_queue.is_empty() {
-        if world.mesh_queue.len() > 1 && (world.mesh_queue_dirty || should_check_lod) {
+        if world.mesh_queue.len() > 1 && world.mesh_queue_dirty {
             let world_ref = &mut *world;
             let chunks = &world_ref.chunks;
             world_ref.mesh_queue.sort_by_cached_key(|c| {
