@@ -231,18 +231,29 @@ pub fn block_interaction_system(
 
             let player_pos = cam_transform.translation;
 
-            let (distance_lod, lod_threshold_sq, greedy_meshing, greedy_threshold, greedy_threshold_sq) =
-                if let Some(ref g) = context.graphics {
-                    let l_sq = (g.lod_threshold as f32 * 16.0).powi(2);
-                    let g_sq = if g.greedy_threshold <= 0 {
-                        0.0
-                    } else {
-                        (g.greedy_threshold as f32 * 16.0).powi(2)
-                    };
-                    (g.distance_lod, l_sq, g.greedy_meshing, g.greedy_threshold, g_sq)
+            let (
+                distance_lod,
+                lod_threshold_sq,
+                greedy_meshing,
+                greedy_threshold,
+                greedy_threshold_sq,
+            ) = if let Some(ref g) = context.graphics {
+                let l_sq = (g.lod_threshold as f32 * 16.0).powi(2);
+                let g_sq = if g.greedy_threshold <= 0 {
+                    0.0
                 } else {
-                    (true, 128.0 * 128.0, true, 2, 32.0 * 32.0)
+                    (g.greedy_threshold as f32 * 16.0).powi(2)
                 };
+                (
+                    g.distance_lod,
+                    l_sq,
+                    g.greedy_meshing,
+                    g.greedy_threshold,
+                    g_sq,
+                )
+            } else {
+                (true, 128.0 * 128.0, true, 2, 32.0 * 32.0)
+            };
 
             for coord in dirty_coords {
                 let chunk_opt = world.chunks.get(&coord);

@@ -3,4 +3,6 @@ saves/
 benchmark_results.json
 benchmark_results/
 benchmark_results*/
+benchmark_telemetry.json
 test_*.json
+docs/adr/

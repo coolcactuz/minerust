@@ -1,8 +1,5 @@
-use std::fs::File;
-use std::io::Write;
-
-use bevy::app::AppExit;
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::camera::FpsCamera;
 use crate::menu::GraphicsSettings;
@@ -10,36 +7,8 @@ use crate::physics::PlayerPhysics;
 use crate::profile::read_process_memory;
 use crate::world::WorldGrid;
 
-/// Standard predefined flight benchmark profiles.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BenchmarkPreset {
-    Flight5km,
-}
-
-impl BenchmarkPreset {
-    pub const ALL: [Self; 1] = [Self::Flight5km];
-
-    pub fn from_str_name(name: &str) -> Option<Self> {
-        match name.to_lowercase().as_str() {
-            "flight" | "standard" | "production" | "5km" | "1km" | "bench" | "baseline" | "culling" | "greedy" | "sloped_lod" => {
-                Some(Self::Flight5km)
-            }
-            _ => None,
-        }
-    }
-
-    pub fn id(self) -> &'static str {
-        "flight_5km"
-    }
-
-    pub fn name(self) -> &'static str {
-        "5km Flight Benchmark"
-    }
-
-    pub fn into_scenario(self, view_distance: i32) -> BenchmarkScenario {
-        BenchmarkScenario::standard(view_distance)
-    }
-}
+/// Default deterministic seed used for hardware benchmarking.
+pub const DEFAULT_BENCHMARK_SEED: u64 = 133742;
 
 /// Fully-encapsulated configuration for an individual benchmark run.
 ///
@@ -53,7 +22,7 @@ pub struct BenchmarkScenario {
     pub name: &'static str,
     /// Render distance in chunks (radius)
     pub view_distance: i32,
-    /// Target flight distance in meters (default 1000m / 1km)
+    /// Target flight distance in meters (default 5000m / 5km)
     pub flight_distance: f32,
     /// Flight speed in m/s (default 50m/s = 180km/h)
     pub flight_speed: f32,
@@ -63,8 +32,6 @@ pub struct BenchmarkScenario {
     pub warmup_duration_secs: f32,
     /// Enable atmospheric distance fog
     pub distance_fog: bool,
-    /// Output file path for JSON metrics report
-    pub output_path: Option<String>,
 }
 
 impl BenchmarkScenario {
@@ -83,20 +50,11 @@ impl BenchmarkScenario {
             flight_altitude: Self::DEFAULT_FLIGHT_ALTITUDE,
             warmup_duration_secs: Self::DEFAULT_WARMUP_SECS,
             distance_fog: false,
-            output_path: Some("benchmark_results/flight_benchmark.json".to_string()),
         }
     }
 
     pub fn production(view_distance: i32) -> Self {
         Self::standard(view_distance)
-    }
-
-    pub fn from_preset(preset: BenchmarkPreset, view_distance: i32) -> Self {
-        preset.into_scenario(view_distance)
-    }
-
-    pub fn from_preset_name(name: &str, view_distance: i32) -> Option<Self> {
-        BenchmarkPreset::from_str_name(name).map(|p| p.into_scenario(view_distance))
     }
 
     /// Directly configures Bevy's GraphicsSettings according to this scenario.
@@ -108,46 +66,28 @@ impl BenchmarkScenario {
     }
 }
 
-/// A collection of benchmark scenarios executed deterministically against a fixed seed.
-#[derive(Clone, Debug, PartialEq)]
-pub struct BenchmarkSuite {
-    pub seed: u64,
-    pub scenarios: Vec<BenchmarkScenario>,
-}
-
-impl BenchmarkSuite {
-    pub const DEFAULT_SEED: u64 = 133742;
-
-    pub fn standard(view_distance: i32) -> Self {
-        Self {
-            seed: Self::DEFAULT_SEED,
-            scenarios: vec![BenchmarkScenario::standard(view_distance)],
-        }
-    }
-}
-
 /// Runtime resource controlling the automated benchmark runner.
 #[derive(Resource, Clone, Debug)]
 pub struct BenchmarkConfig {
     pub enabled: bool,
-    pub is_cli: bool,
     pub seed: u64,
     pub scenario: BenchmarkScenario,
+    pub auto_exit: bool,
 }
 
 impl Default for BenchmarkConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            is_cli: false,
-            seed: BenchmarkSuite::DEFAULT_SEED,
+            seed: DEFAULT_BENCHMARK_SEED,
             scenario: BenchmarkScenario::production(16),
+            auto_exit: false,
         }
     }
 }
 
 /// Comprehensive summary of benchmark metrics presented to the user on completion.
-#[derive(Resource, Clone, Debug, Default, PartialEq)]
+#[derive(Resource, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BenchmarkSummary {
     pub has_results: bool,
     pub total_duration_secs: f32,
@@ -158,6 +98,15 @@ pub struct BenchmarkSummary {
     pub avg_frametime_ms: f32,
     pub min_frametime_ms: f32,
     pub max_frametime_ms: f32,
+    pub static_fps: f32,
+    pub static_frametime_ms: f32,
+    pub avg_streaming_cpu_us: f32,
+    pub p99_streaming_cpu_us: f32,
+    pub max_streaming_cpu_us: f32,
+    pub avg_occlusion_cpu_us: f32,
+    pub avg_render_and_gpu_us: f32,
+    pub total_macro_rebuilds: usize,
+    pub macro_rebuilds_per_sec: f32,
     pub peak_rss_mb: f32,
     pub peak_vram_mb: f32,
     pub total_chunks_meshed: usize,
@@ -175,7 +124,11 @@ pub struct BenchmarkSummary {
 
 impl BenchmarkSummary {
     #[must_use]
-    pub fn generate_verdict(avg_fps: f32, one_percent_low_fps: f32, _p99_ms: f32) -> (String, String) {
+    pub fn generate_verdict(
+        avg_fps: f32,
+        one_percent_low_fps: f32,
+        _p99_ms: f32,
+    ) -> (String, String) {
         if avg_fps >= 100.0 && one_percent_low_fps >= 60.0 {
             (
                 "PERFECT: Ultra-Smooth High Refresh Rate".to_string(),
@@ -215,13 +168,13 @@ pub enum BenchmarkPhase {
 }
 
 /// Dynamic runtime state tracking benchmark progress and statistical telemetry.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct BenchmarkState {
     pub phase: BenchmarkPhase,
     pub elapsed: f32,
     pub stationary_timer: f32,
     pub last_status_print: f32,
-    pub start_z: Option<f32>,
+    pub start_pos: Option<Vec3>,
     pub distance_traveled: f32,
 
     // Phase 2: Static baseline metrics (100% loaded world, zero streaming/generation CPU load)
@@ -236,9 +189,44 @@ pub struct BenchmarkState {
     pub frame_times_ms: Vec<f32>,
     pub vertex_samples: Vec<usize>,
     pub chunk_samples: Vec<usize>,
+    pub streaming_cpu_samples: Vec<f32>,
+    pub occlusion_cpu_samples: Vec<f32>,
+    pub start_macro_rebuilds: usize,
+    pub end_macro_rebuilds: usize,
     pub peak_rss_mb: f32,
     pub peak_vram_mb: f32,
+    pub last_telemetry_sample: f32,
     pub completed: bool,
+}
+
+impl Default for BenchmarkState {
+    fn default() -> Self {
+        Self {
+            phase: BenchmarkPhase::default(),
+            elapsed: 0.0,
+            stationary_timer: 0.0,
+            last_status_print: 0.0,
+            start_pos: None,
+            distance_traveled: 0.0,
+            static_frame_times_ms: Vec::with_capacity(2048),
+            static_chunks: 0,
+            static_vertices: 0,
+            static_fps: 0.0,
+            static_frametime_ms: 0.0,
+            static_vram_mb: 0.0,
+            frame_times_ms: Vec::with_capacity(131_072),
+            vertex_samples: Vec::with_capacity(16),
+            chunk_samples: Vec::with_capacity(16),
+            streaming_cpu_samples: Vec::with_capacity(131_072),
+            occlusion_cpu_samples: Vec::with_capacity(131_072),
+            start_macro_rebuilds: 0,
+            end_macro_rebuilds: 0,
+            peak_rss_mb: 0.0,
+            peak_vram_mb: 0.0,
+            last_telemetry_sample: 0.0,
+            completed: false,
+        }
+    }
 }
 
 /// System that executes the automated deterministic benchmark trajectory and records frame latencies.
@@ -252,7 +240,7 @@ pub fn benchmark_runner_system(
     mut cursor_options: Query<&mut bevy::window::CursorOptions, With<bevy::window::PrimaryWindow>>,
     mut player_query: Query<(&mut Transform, &mut FpsCamera, &mut PlayerPhysics)>,
     world: Option<Res<WorldGrid>>,
-    mut exit_writer: MessageWriter<AppExit>,
+    occlusion_cache: Option<Res<crate::world::occlusion::SectionOcclusionCache>>,
 ) {
     if !config.enabled || state.completed {
         return;
@@ -261,14 +249,17 @@ pub fn benchmark_runner_system(
     let dt = time.delta_secs();
     state.elapsed += dt;
 
-    // Track peak physical RAM (VmRSS) and GPU VRAM from OS
-    let mem = read_process_memory();
-    if mem.rss_mb > state.peak_rss_mb {
-        state.peak_rss_mb = mem.rss_mb;
-    }
-    let vram = crate::profile::read_gpu_vram();
-    if vram.used_mb > state.peak_vram_mb {
-        state.peak_vram_mb = vram.used_mb;
+    // Periodically (1 Hz, every 1.0s) sample OS memory footprint and GPU VRAM instead of issuing blocking sysfs/procfs syscalls every frame
+    if state.last_telemetry_sample <= 0.0 || state.elapsed - state.last_telemetry_sample >= 1.0 {
+        state.last_telemetry_sample = state.elapsed;
+        let mem = read_process_memory();
+        if mem.rss_mb > state.peak_rss_mb {
+            state.peak_rss_mb = mem.rss_mb;
+        }
+        let vram = crate::profile::read_gpu_vram();
+        if vram.used_mb > state.peak_vram_mb {
+            state.peak_vram_mb = vram.used_mb;
+        }
     }
 
     let Ok((mut transform, mut fps, mut physics)) = player_query.single_mut() else {
@@ -293,12 +284,13 @@ pub fn benchmark_runner_system(
             };
 
             // Print status updates while background threads generate and mesh initial spawn chunks
-            let total_needed = (2 * config.scenario.view_distance + 1) * (2 * config.scenario.view_distance + 1);
+            let total_needed =
+                (2 * config.scenario.view_distance + 1) * (2 * config.scenario.view_distance + 1);
             if state.elapsed - state.last_status_print >= 0.5 {
                 state.last_status_print = state.elapsed;
                 println!(
                     "[BENCHMARK] Initializing world around spawn... Meshed: {} / {} chunks | Gen queue: {}, Mesh queue: {}",
-                    w.chunk_entities.len(),
+                    w.total_meshed_chunks(),
                     total_needed,
                     w.generation_queue.len(),
                     w.mesh_queue.len()
@@ -311,8 +303,8 @@ pub fn benchmark_runner_system(
                 && w.in_progress_meshes.is_empty();
 
             // Give at least 0.4s for frame 0 queues to register, then check queues empty and meshes spawned
-            if state.elapsed >= 0.4 && queues_empty && !w.chunk_entities.is_empty() {
-                state.static_chunks = w.chunk_entities.len();
+            if state.elapsed >= 0.4 && queues_empty && w.total_meshed_chunks() > 0 {
+                state.static_chunks = w.total_meshed_chunks();
                 state.static_vertices = w.total_vertices;
                 let current_vram = crate::profile::read_gpu_vram();
                 state.static_vram_mb = current_vram.used_mb;
@@ -322,7 +314,10 @@ pub fn benchmark_runner_system(
                 println!("\n============================================================");
                 println!("           MINERUST WORLD INITIALIZATION COMPLETE           ");
                 println!("============================================================");
-                println!("  Spawn Area Meshed    : {} / {} chunks", state.static_chunks, total_needed);
+                println!(
+                    "  Spawn Area Meshed    : {} / {} chunks",
+                    state.static_chunks, total_needed
+                );
                 println!(
                     "  Spawn Area Geometry  : {} vertices (~{} triangles)",
                     state.static_vertices,
@@ -368,8 +363,9 @@ pub fn benchmark_runner_system(
                 );
 
                 state.phase = BenchmarkPhase::FlightRecording;
-                state.start_z = Some(transform.translation.z);
+                state.start_pos = Some(transform.translation);
                 state.distance_traveled = 0.0;
+                state.start_macro_rebuilds = world.as_ref().map_or(0, |w| w.macro_rebuilds_count);
             }
         }
         BenchmarkPhase::FlightRecording => {
@@ -379,37 +375,81 @@ pub fn benchmark_runner_system(
             let forward = forward.normalize_or_zero();
             transform.translation += forward * config.scenario.flight_speed * dt;
 
-            let start = state.start_z.get_or_insert(0.0);
-            state.distance_traveled = (transform.translation.z - *start).abs();
+            let start = state.start_pos.get_or_insert(transform.translation);
+            let diff = transform.translation - *start;
+            state.distance_traveled = Vec2::new(diff.x, diff.z).length();
 
             let frame_ms = dt * 1000.0;
             state.frame_times_ms.push(frame_ms);
 
             if let Some(ref w) = world {
-                state.vertex_samples.push(w.total_vertices);
-                state.chunk_samples.push(w.chunk_entities.len());
+                state.streaming_cpu_samples.push(w.last_streaming_us);
+                let v = w.total_vertices;
+                if state.vertex_samples.is_empty() {
+                    state.vertex_samples.push(v);
+                } else if v > state.vertex_samples[0] {
+                    state.vertex_samples[0] = v;
+                }
+
+                let c = w.total_meshed_chunks();
+                if state.chunk_samples.is_empty() {
+                    state.chunk_samples.push(c);
+                } else if c > state.chunk_samples[0] {
+                    state.chunk_samples[0] = c;
+                }
+            }
+
+            if let Some(ref occ) = occlusion_cache {
+                state.occlusion_cpu_samples.push(occ.last_occlusion_us);
             }
 
             if state.distance_traveled >= config.scenario.flight_distance {
                 state.phase = BenchmarkPhase::Completed;
                 state.completed = true;
-                let computed = compute_benchmark_summary(&state, &config, graphics_settings.as_deref());
-                *summary = computed;
+                state.end_macro_rebuilds = world.as_ref().map_or(0, |w| w.macro_rebuilds_count);
 
-                if config.is_cli {
-                    print_and_save_benchmark_report(&state, &config);
-                    exit_writer.write(AppExit::Success);
-                } else {
-                    println!("[BENCHMARK] In-game benchmark complete! Transitioning to results dashboard.");
-                    config.enabled = false;
-                    if let Some(ref mut m) = menu {
-                        m.screen = crate::menu::MenuScreen::BenchmarkResults;
-                        m.world_active = true;
+                let mem = read_process_memory();
+                if mem.rss_mb > state.peak_rss_mb {
+                    state.peak_rss_mb = mem.rss_mb;
+                }
+                let vram = crate::profile::read_gpu_vram();
+                if vram.used_mb > state.peak_vram_mb {
+                    state.peak_vram_mb = vram.used_mb;
+                }
+
+                let computed =
+                    compute_benchmark_summary(&state, &config, graphics_settings.as_deref());
+                *summary = computed.clone();
+
+                if let Ok(json_str) = serde_json::to_string_pretty(&computed) {
+                    if let Err(e) = std::fs::write("benchmark_telemetry.json", json_str) {
+                        tracing::warn!("Failed to write benchmark_telemetry.json: {e}");
+                    } else {
+                        println!(
+                            "[BENCHMARK] Telemetry exported to \x1b[1;36mbenchmark_telemetry.json\x1b[0m"
+                        );
                     }
-                    if let Ok(mut cursor) = cursor_options.single_mut() {
-                        cursor.grab_mode = bevy::window::CursorGrabMode::None;
-                        cursor.visible = true;
-                    }
+                }
+
+                print_benchmark_terminal_report(&computed);
+
+                println!(
+                    "[BENCHMARK] In-game benchmark complete! Transitioning to results dashboard."
+                );
+                if config.auto_exit {
+                    println!(
+                        "[BENCHMARK] Automated profiling run complete (--benchmark-exit). Exiting..."
+                    );
+                    std::process::exit(0);
+                }
+                config.enabled = false;
+                if let Some(ref mut m) = menu {
+                    m.screen = crate::menu::MenuScreen::BenchmarkResults;
+                    m.world_active = true;
+                }
+                if let Ok(mut cursor) = cursor_options.single_mut() {
+                    cursor.grab_mode = bevy::window::CursorGrabMode::None;
+                    cursor.visible = true;
                 }
             }
         }
@@ -483,6 +523,34 @@ pub fn compute_benchmark_summary(
     let (verdict_title, verdict_desc) =
         BenchmarkSummary::generate_verdict(avg_fps, one_percent_low_fps, p99_frametime_ms);
 
+    let avg_streaming_cpu_us = if !state.streaming_cpu_samples.is_empty() {
+        state.streaming_cpu_samples.iter().sum::<f32>() / state.streaming_cpu_samples.len() as f32
+    } else {
+        0.0
+    };
+    let mut sorted_streaming = state.streaming_cpu_samples.clone();
+    sorted_streaming.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p99_stream_idx = ((sorted_streaming.len() as f32 * 0.99) as usize)
+        .min(sorted_streaming.len().saturating_sub(1));
+    let p99_streaming_cpu_us = sorted_streaming.get(p99_stream_idx).copied().unwrap_or(0.0);
+    let max_streaming_cpu_us = sorted_streaming.last().copied().unwrap_or(0.0);
+
+    let avg_occlusion_cpu_us = if !state.occlusion_cpu_samples.is_empty() {
+        state.occlusion_cpu_samples.iter().sum::<f32>() / state.occlusion_cpu_samples.len() as f32
+    } else {
+        0.0
+    };
+    let avg_render_and_gpu_us =
+        ((avg_frametime_ms * 1000.0) - avg_streaming_cpu_us - avg_occlusion_cpu_us).max(0.0);
+    let total_macro_rebuilds = state
+        .end_macro_rebuilds
+        .saturating_sub(state.start_macro_rebuilds);
+    let macro_rebuilds_per_sec = if total_duration_secs > 0.0 {
+        total_macro_rebuilds as f32 / total_duration_secs
+    } else {
+        0.0
+    };
+
     BenchmarkSummary {
         has_results: true,
         total_duration_secs,
@@ -493,6 +561,15 @@ pub fn compute_benchmark_summary(
         avg_frametime_ms,
         min_frametime_ms,
         max_frametime_ms,
+        static_fps: state.static_fps,
+        static_frametime_ms: state.static_frametime_ms,
+        avg_streaming_cpu_us,
+        p99_streaming_cpu_us,
+        max_streaming_cpu_us,
+        avg_occlusion_cpu_us,
+        avg_render_and_gpu_us,
+        total_macro_rebuilds,
+        macro_rebuilds_per_sec,
         peak_rss_mb: state.peak_rss_mb,
         peak_vram_mb: state.peak_vram_mb,
         total_chunks_meshed: state.static_chunks,
@@ -509,147 +586,85 @@ pub fn compute_benchmark_summary(
     }
 }
 
-/// Analyzes collected frame latency distributions and outputs a comprehensive scientific report.
-fn print_and_save_benchmark_report(state: &BenchmarkState, config: &BenchmarkConfig) {
-    let total_frames = state.frame_times_ms.len();
-    if total_frames == 0 {
-        println!("[BENCHMARK] Error: No frames were recorded during benchmark flight.");
-        return;
-    }
-
-    let total_time_ms: f32 = state.frame_times_ms.iter().sum();
-    let total_duration_secs = total_time_ms / 1000.0;
-    let avg_fps = total_frames as f32 / total_duration_secs;
-    let avg_frametime_ms = total_time_ms / total_frames as f32;
-
-    let min_frametime_ms = state
-        .frame_times_ms
-        .iter()
-        .copied()
-        .reduce(f32::min)
-        .unwrap_or(0.0);
-    let max_frametime_ms = state
-        .frame_times_ms
-        .iter()
-        .copied()
-        .reduce(f32::max)
-        .unwrap_or(0.0);
-
-    let max_fps = if min_frametime_ms > 0.0 { 1000.0 / min_frametime_ms } else { 0.0 };
-    let min_fps = if max_frametime_ms > 0.0 { 1000.0 / max_frametime_ms } else { 0.0 };
-
-    let mut sorted_times = state.frame_times_ms.clone();
-    sorted_times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-
-    let p99_idx = ((total_frames as f32 * 0.99) as usize).min(total_frames.saturating_sub(1));
-    let p99_ms = sorted_times[p99_idx];
-    let one_percent_low_fps = if p99_ms > 0.0 { 1000.0 / p99_ms } else { 0.0 };
-
-    let p999_idx = ((total_frames as f32 * 0.999) as usize).min(total_frames.saturating_sub(1));
-    let p999_ms = sorted_times[p999_idx];
-    let point_one_percent_low_fps = if p999_ms > 0.0 { 1000.0 / p999_ms } else { 0.0 };
-
-    let variance = state
-        .frame_times_ms
-        .iter()
-        .map(|t| (t - avg_frametime_ms).powi(2))
-        .sum::<f32>()
-        / total_frames as f32;
-    let stdev_ms = variance.sqrt();
-
-    let avg_verts = if !state.vertex_samples.is_empty() {
-        state.vertex_samples.iter().sum::<usize>() / state.vertex_samples.len()
+/// Formats and prints a comprehensive scientific benchmark report directly to stdout.
+pub fn print_benchmark_terminal_report(summary: &BenchmarkSummary) {
+    println!("\n================================================================================");
+    println!("                   MINERUST SCIENTIFIC BENCHMARK REPORT                         ");
+    println!("================================================================================");
+    println!(
+        "  Flight Traversal       : {:.0}m @ 50.0 m/s (Duration: {:.2}s)",
+        summary.distance_traveled, summary.total_duration_secs
+    );
+    println!(
+        "  Render Distance        : {} chunks (Radius: {}m)",
+        summary.tested_view_distance,
+        summary.tested_view_distance * 16
+    );
+    println!("  Total Recorded Frames  : {} frames", summary.total_frames);
+    println!("--------------------------------------------------------------------------------");
+    println!(
+        "  STATIC BASELINE RENDER : \x1b[1;32m{:.1} FPS\x1b[0m ({:.2} ms frametime)",
+        summary.static_fps, summary.static_frametime_ms
+    );
+    println!(
+        "  FLIGHT TRAVERSAL (AVG) : \x1b[1;33m{:.1} FPS\x1b[0m ({:.2} ms frametime)",
+        summary.avg_fps, summary.avg_frametime_ms
+    );
+    println!(
+        "  1% LOW FRAMERATE       : \x1b[1;31m{:.1} FPS\x1b[0m (P99: {:.2} ms)",
+        summary.one_percent_low_fps, summary.p99_frametime_ms
+    );
+    println!("--------------------------------------------------------------------------------");
+    println!(" [ CPU & GPU TIME BUDGET BREAKDOWN ]");
+    let total_us = summary.avg_frametime_ms * 1000.0;
+    let stream_pct = if total_us > 0.0 {
+        (summary.avg_streaming_cpu_us / total_us) * 100.0
     } else {
-        0
+        0.0
     };
-    let peak_verts = state.vertex_samples.iter().copied().max().unwrap_or(0);
-    let peak_chunks = state.chunk_samples.iter().copied().max().unwrap_or(0);
-
-    println!("\n============================================================");
-    println!("             MINERUST SCIENTIFIC BENCHMARK REPORT            ");
-    println!("============================================================");
-    println!("  Preset Profile       : \x1b[1;36m{}\x1b[0m", config.scenario.name);
-    println!("  World Seed           : {} (Render Distance: {} chunks)", config.seed, config.scenario.view_distance);
-    println!("------------------------------------------------------------");
-    println!("  [PHASE 1: STATIC SCENE - PURE GPU RENDER (ZERO STREAMING)]");
-    println!("  Static Meshed Chunks : {} chunks", state.static_chunks);
+    let occ_pct = if total_us > 0.0 {
+        (summary.avg_occlusion_cpu_us / total_us) * 100.0
+    } else {
+        0.0
+    };
+    let gpu_pct = if total_us > 0.0 {
+        (summary.avg_render_and_gpu_us / total_us) * 100.0
+    } else {
+        0.0
+    };
+    println!("  * Total Frame Budget   : {:>7.1} µs (100.0%)", total_us);
     println!(
-        "  Static Geometry      : {} vertices (~{} triangles)",
-        state.static_vertices,
-        state.static_vertices / 2
+        "  - World Streaming Sys  : {:>7.1} µs ({:>5.1}%) [P99: {:.1} µs, Max: {:.1} µs]",
+        summary.avg_streaming_cpu_us,
+        stream_pct,
+        summary.p99_streaming_cpu_us,
+        summary.max_streaming_cpu_us
     );
-    if state.static_vram_mb > 0.0 {
-        println!("  Static GPU VRAM      : {:.1} MB", state.static_vram_mb);
-    }
     println!(
-        "  Static Framerate     : \x1b[1;32m{:.1} FPS\x1b[0m ({:.2} ms frametime)",
-        state.static_fps, state.static_frametime_ms
+        "  - Section Occlusion Sys: {:>7.1} µs ({:>5.1}%)",
+        summary.avg_occlusion_cpu_us, occ_pct
     );
-    println!("------------------------------------------------------------");
-    println!("  [PHASE 2: DYNAMIC FLIGHT - 5KM TRAJECTORY STREAMING]");
     println!(
-        "  Distance Traveled    : \x1b[1;32m{:.1} m ({:.2} km)\x1b[0m in {:.2} s (Speed: {:.1} m/s)",
-        state.distance_traveled,
-        state.distance_traveled / 1000.0,
-        total_duration_secs,
-        config.scenario.flight_speed
+        "  - Bevy Engine & GPU    : {:>7.1} µs ({:>5.1}%)",
+        summary.avg_render_and_gpu_us, gpu_pct
     );
-    println!("  Recorded Frames      : {} frames", total_frames);
-    println!("  AVERAGE FRAMERATE    : \x1b[1;32m{:.1} FPS\x1b[0m", avg_fps);
-    println!("  1% LOW FRAMERATE     : \x1b[1;33m{:.1} FPS\x1b[0m (p99 latency: {:.2} ms)", one_percent_low_fps, p99_ms);
-    println!("  0.1% LOW FRAMERATE   : \x1b[1;31m{:.1} FPS\x1b[0m (p99.9 latency: {:.2} ms)", point_one_percent_low_fps, p999_ms);
-    println!("  Average Frametime    : {:.2} ms (Jitter StDev: {:.2} ms)", avg_frametime_ms, stdev_ms);
-    println!("  Frametime Min / Max  : {:.2} ms ({:.1} FPS) / {:.2} ms ({:.1} FPS)", min_frametime_ms, max_fps, max_frametime_ms, min_fps);
-    println!("  Active GPU Chunks    : Peak {} chunks", peak_chunks);
+    println!("--------------------------------------------------------------------------------");
+    println!(" [ GPU PIPELINE & MEMORY TELEMETRY ]");
     println!(
-        "  Active Geometry      : Avg {} verts / Peak {} verts (~{} tris)",
-        avg_verts,
-        peak_verts,
-        peak_verts / 2
+        "  * Macro-Chunk Rebuilds : {} clusters ({:.1} rebuilds/sec)",
+        summary.total_macro_rebuilds, summary.macro_rebuilds_per_sec
     );
-    println!("  Peak RAM (VmRSS)     : {:.1} MB", state.peak_rss_mb);
-    if state.peak_vram_mb > 0.0 {
-        println!("  Peak GPU VRAM        : \x1b[1;35m{:.1} MB\x1b[0m", state.peak_vram_mb);
-    }
-    println!("============================================================\n");
-
-    if let Some(ref path) = config.scenario.output_path {
-        let json = format!(
-            "{{\n  \"preset\": \"{}\",\n  \"preset_id\": \"{}\",\n  \"seed\": {},\n  \"view_distance\": {},\n  \"static_fps\": {:.2},\n  \"static_frametime_ms\": {:.3},\n  \"static_chunks\": {},\n  \"static_vertices\": {},\n  \"static_triangles\": {},\n  \"static_vram_mb\": {:.2},\n  \"distance_meters\": {:.1},\n  \"flight_duration_secs\": {:.3},\n  \"flight_frames\": {},\n  \"flight_avg_fps\": {:.2},\n  \"flight_one_percent_low_fps\": {:.2},\n  \"flight_point_one_percent_low_fps\": {:.2},\n  \"flight_avg_frametime_ms\": {:.3},\n  \"flight_min_frametime_ms\": {:.3},\n  \"flight_max_frametime_ms\": {:.3},\n  \"flight_frametime_stdev_ms\": {:.3},\n  \"flight_avg_vertices\": {},\n  \"flight_peak_vertices\": {},\n  \"flight_peak_chunks\": {},\n  \"flight_peak_rss_mb\": {:.2},\n  \"flight_peak_vram_mb\": {:.2}\n}}\n",
-            config.scenario.name,
-            config.scenario.id,
-            config.seed,
-            config.scenario.view_distance,
-            state.static_fps,
-            state.static_frametime_ms,
-            state.static_chunks,
-            state.static_vertices,
-            state.static_vertices / 2,
-            state.static_vram_mb,
-            state.distance_traveled,
-            total_duration_secs,
-            total_frames,
-            avg_fps,
-            one_percent_low_fps,
-            point_one_percent_low_fps,
-            avg_frametime_ms,
-            min_frametime_ms,
-            max_frametime_ms,
-            stdev_ms,
-            avg_verts,
-            peak_verts,
-            peak_chunks,
-            state.peak_rss_mb,
-            state.peak_vram_mb,
-        );
-        if let Some(parent) = std::path::Path::new(path).parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Ok(mut file) = File::create(path) {
-            let _ = file.write_all(json.as_bytes());
-            println!("[BENCHMARK] Saved structured JSON results to: {}", path);
-        }
-    }
+    println!(
+        "  * Peak Geometry        : {} vertices (~{} triangles)",
+        summary.peak_vertices,
+        summary.peak_vertices / 2
+    );
+    println!("  * Peak Host RAM (RSS)  : {:.1} MB", summary.peak_rss_mb);
+    println!("  * Peak GPU VRAM        : {:.1} MB", summary.peak_vram_mb);
+    println!("================================================================================");
+    println!("  VERDICT: {}", summary.verdict_title);
+    println!("  {}", summary.verdict_desc);
+    println!("================================================================================\n");
 }
 
 /// Plugin that integrates benchmark systems into Bevy.
@@ -694,36 +709,6 @@ mod tests {
     }
 
     #[test]
-    fn test_benchmark_suite_standard_contains_scenario() {
-        let suite = BenchmarkSuite::standard(32);
-        assert_eq!(suite.scenarios.len(), 1);
-        assert_eq!(suite.seed, BenchmarkSuite::DEFAULT_SEED);
-        assert_eq!(suite.scenarios[0].view_distance, 32);
-        assert!((suite.scenarios[0].flight_distance - 5000.0).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn test_benchmark_preset_from_str_name() {
-        assert_eq!(
-            BenchmarkPreset::from_str_name("flight"),
-            Some(BenchmarkPreset::Flight5km)
-        );
-        assert_eq!(
-            BenchmarkPreset::from_str_name("PRODUCTION"),
-            Some(BenchmarkPreset::Flight5km)
-        );
-        assert_eq!(
-            BenchmarkPreset::from_str_name("standard"),
-            Some(BenchmarkPreset::Flight5km)
-        );
-        assert_eq!(
-            BenchmarkPreset::from_str_name("5km"),
-            Some(BenchmarkPreset::Flight5km)
-        );
-        assert_eq!(BenchmarkPreset::from_str_name("invalid_preset"), None);
-    }
-
-    #[test]
     fn test_compute_benchmark_summary_and_verdict() {
         let mut frame_times = vec![10.0; 100];
         // Inject 1 frame of 20ms to test 1% low
@@ -749,6 +734,8 @@ mod tests {
         assert!(summary.avg_fps > 90.0);
         assert!(summary.one_percent_low_fps > 45.0);
         assert_eq!(summary.tested_view_distance, 16);
-        assert!(summary.verdict_title.contains("GREAT") || summary.verdict_title.contains("PERFECT"));
+        assert!(
+            summary.verdict_title.contains("GREAT") || summary.verdict_title.contains("PERFECT")
+        );
     }
 }

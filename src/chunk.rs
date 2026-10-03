@@ -65,6 +65,11 @@ impl Chunk {
         self.blocks[Self::index(x, y, z)]
     }
 
+    #[inline(always)]
+    pub fn blocks_mut(&mut self) -> &mut [BlockType; CHUNK_BLOCKS] {
+        Arc::make_mut(&mut self.blocks)
+    }
+
     #[inline]
     pub fn set(&mut self, x: i32, y: i32, z: i32, block: BlockType) {
         if Self::in_bounds(x, y, z) {

@@ -12,11 +12,20 @@ fn test_graphics_settings_defaults() {
     assert!(gs.distance_fog, "distance fog must default to true");
     assert!(gs.shadows, "shadows must default to true");
     assert_eq!(gs.fps_cap, None, "fps cap must default to uncapped");
-    assert_eq!(gs.view_distance, 16, "view distance must default to 16 chunks");
+    assert_eq!(
+        gs.view_distance, 16,
+        "view distance must default to 16 chunks"
+    );
     assert!(gs.greedy_meshing, "greedy meshing must default to true");
-    assert_eq!(gs.greedy_threshold, 2, "greedy threshold must default to 2 chunks (32m)");
+    assert_eq!(
+        gs.greedy_threshold, 2,
+        "greedy threshold must default to 2 chunks (32m)"
+    );
     assert!(gs.distance_lod, "distance lod must default to true");
-    assert_eq!(gs.lod_threshold, 8, "lod threshold must default to 8 chunks (128m)");
+    assert_eq!(
+        gs.lod_threshold, 8,
+        "lod threshold must default to 8 chunks (128m)"
+    );
 }
 
 #[test]
@@ -31,7 +40,7 @@ fn test_profiler_state_defaults() {
 #[test]
 fn test_seed_input_state_and_keycode_to_char() {
     let default_state = SeedInputState::default();
-    assert!(default_state.seed_text.is_empty());
+    assert_eq!(default_state.seed_text, "");
     assert!(!default_state.is_editing);
 
     // Test character conversion
@@ -128,13 +137,19 @@ fn test_view_distance_slider_steps_and_ratios() {
     // Default is 16 chunks -> index 6 (ratio = 6/15)
     assert_eq!(gs.view_distance_step_index(), 6);
     assert!((gs.view_distance_ratio() - 6.0 / 15.0).abs() < 1e-4);
-    assert_eq!(gs.view_distance_label(), "Render Distance: 16 Chunks (256m)");
+    assert_eq!(
+        gs.view_distance_label(),
+        "Render Distance: 16 Chunks (256m)"
+    );
 
     // Step down to 14, 12, ...
     gs.step_view_distance(-1);
     assert_eq!(gs.view_distance_step_index(), 5);
     assert_eq!(gs.view_distance, 14);
-    assert_eq!(gs.view_distance_label(), "Render Distance: 14 Chunks (224m)");
+    assert_eq!(
+        gs.view_distance_label(),
+        "Render Distance: 14 Chunks (224m)"
+    );
 
     // Set from ratio: 0.0 -> 4 chunks (64m)
     gs.set_view_distance_from_ratio(0.0);
@@ -146,7 +161,10 @@ fn test_view_distance_slider_steps_and_ratios() {
     gs.set_view_distance_from_ratio(1.0);
     assert_eq!(gs.view_distance_step_index(), 15);
     assert_eq!(gs.view_distance, 64);
-    assert_eq!(gs.view_distance_label(), "Render Distance: 64 Chunks (1024m)");
+    assert_eq!(
+        gs.view_distance_label(),
+        "Render Distance: 64 Chunks (1024m)"
+    );
 }
 
 #[test]
@@ -224,7 +242,9 @@ fn test_menu_systems_schedule_no_conflicts() {
         .add_plugins(bevy::asset::AssetPlugin::default())
         .init_asset::<crate::voxel_material::VoxelBlockMaterial>()
         .init_asset::<Mesh>()
-        .insert_resource(crate::world::WorldGrid::new(crate::world::WorldSeed::default()))
+        .insert_resource(crate::world::WorldGrid::new(
+            crate::world::WorldSeed::default(),
+        ))
         .add_plugins(crate::menu::MenuPlugin);
     app.finish();
     app.cleanup();

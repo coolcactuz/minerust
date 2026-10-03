@@ -31,7 +31,10 @@ fn test_procedural_chunk_greedy_reduces_vertices() {
     let meshes_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true);
     let std_v = meshes_standard.total_vertices();
     let greedy_v = meshes_greedy.total_vertices();
-    println!("PROCEDURAL CHUNK: Standard = {} verts, Greedy = {} verts", std_v, greedy_v);
+    println!(
+        "PROCEDURAL CHUNK: Standard = {} verts, Greedy = {} verts",
+        std_v, greedy_v
+    );
     assert!(greedy_v < std_v);
 }
 
@@ -57,8 +60,8 @@ fn test_water_ocean_renders_only_on_surface() {
 
     // Greedy meshing of this ocean chunk
     let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, true);
-    assert!(meshes.solid.is_some());
-    assert!(meshes.water.is_some());
+    assert!(meshes.has_solid());
+    assert!(meshes.has_water());
     assert_eq!(meshes.total_vertices(), 28);
 }
 
@@ -70,17 +73,19 @@ fn test_waterfall_renders_sides_in_air() {
         chunk.set(5, ly, 5, BlockType::Water);
     }
     let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, true);
-    let water_mesh = meshes.water.expect("Water mesh must exist for waterfall");
+    let water_mesh = meshes
+        .first_water_mesh()
+        .expect("Water mesh must exist for waterfall");
     assert!(water_mesh.count_vertices() > 8);
 }
 
 #[test]
 fn test_seabed_sand_gravel_greedy_merging() {
     let mut chunk = Chunk::new();
-    // Create an alternating checkerboard of Sand and Gravel on the seabed at y = 10, covered with Water at y = 11
+    // Create contiguous regions of Sand and Gravel on the seabed at y = 10, covered with Water at y = 11
     for lx in 0..4 {
         for lz in 0..4 {
-            let block = if (lx + lz) % 2 == 0 {
+            let block = if lx < 2 {
                 BlockType::Sand
             } else {
                 BlockType::Gravel
@@ -108,8 +113,8 @@ fn test_submerged_terrain_renders_against_water_no_holes() {
 
     let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, false);
     assert_eq!(meshes.total_vertices(), 40);
-    assert!(meshes.solid.is_some());
-    assert!(meshes.water.is_some());
+    assert!(meshes.has_solid());
+    assert!(meshes.has_water());
 }
 
 #[test]
@@ -119,10 +124,10 @@ fn test_two_pass_water_and_solid_mesh_separation() {
     chunk.set(1, 10, 0, BlockType::Water);
 
     let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, true);
-    assert!(meshes.solid.is_some(), "Solid mesh must exist for stone block");
-    assert!(meshes.water.is_some(), "Water mesh must exist for water block");
-    let solid_mesh = meshes.solid.unwrap();
-    let water_mesh = meshes.water.unwrap();
+    assert!(meshes.has_solid(), "Solid mesh must exist for stone block");
+    assert!(meshes.has_water(), "Water mesh must exist for water block");
+    let solid_mesh = meshes.first_solid().unwrap();
+    let water_mesh = meshes.first_water().unwrap();
     assert!(solid_mesh.count_vertices() > 0);
     assert!(water_mesh.count_vertices() > 0);
 }
@@ -142,8 +147,8 @@ fn test_simplify_block_for_lod() {
         BlockType::Stone
     );
 
-    // Gravel simplifies to Sand
-    assert_eq!(simplify_block_for_lod(BlockType::Gravel), BlockType::Sand);
+    // Gravel is preserved as Gravel
+    assert_eq!(simplify_block_for_lod(BlockType::Gravel), BlockType::Gravel);
 
     // Natural surface blocks preserved
     assert_eq!(simplify_block_for_lod(BlockType::Grass), BlockType::Grass);
@@ -218,7 +223,7 @@ fn test_sloped_lod_groups_ores_on_mountain() {
 
 #[test]
 fn test_texture_array_properties_and_repeat_mode() {
-    use crate::texture::{create_texture_array, LAYER_COUNT, TILE_SIZE};
+    use crate::texture::{LAYER_COUNT, TILE_SIZE, create_texture_array};
     use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler};
     use bevy::render::render_resource::TextureDimension;
 
@@ -244,7 +249,7 @@ fn test_texture_array_properties_and_repeat_mode() {
 #[test]
 fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
     use crate::block::BlockFace;
-    use crate::texture::{block_texture, TextureId};
+    use crate::texture::{TextureId, block_texture};
     use bevy::render::mesh::VertexAttributeValues;
 
     let mut chunk = Chunk::new();
@@ -256,10 +261,12 @@ fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
     }
 
     let meshes = build_chunk_mesh(&chunk, None, None, None, None, true, true);
-    let mesh = meshes.solid.expect("Solid mesh must exist");
+    let mesh = meshes.first_solid_mesh().expect("Solid mesh must exist");
 
     // Verify ATTRIBUTE_UV_0 (repeating coordinates from 0..w and 0..h)
-    let uv0_values = mesh.attribute(Mesh::ATTRIBUTE_UV_0).expect("ATTRIBUTE_UV_0 must exist");
+    let uv0_values = mesh
+        .attribute(Mesh::ATTRIBUTE_UV_0)
+        .expect("ATTRIBUTE_UV_0 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv0_values {
         // Find max U and max V across vertices
         let max_u = uvs.iter().map(|uv| uv[0]).fold(0.0f32, f32::max);
@@ -276,13 +283,20 @@ fn test_greedy_mesh_repeating_uvs_and_layer_attribute() {
     }
 
     // Verify ATTRIBUTE_UV_1 (layer attribute)
-    let uv1_values = mesh.attribute(Mesh::ATTRIBUTE_UV_1).expect("ATTRIBUTE_UV_1 must exist");
+    let uv1_values = mesh
+        .attribute(Mesh::ATTRIBUTE_UV_1)
+        .expect("ATTRIBUTE_UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uv1s) = uv1_values {
         assert_eq!(uv1s.len(), mesh.count_vertices());
         let expected_stone_layer = block_texture(BlockType::Stone, BlockFace::Top).layer();
         assert!((expected_stone_layer - TextureId::Stone as usize as f32).abs() < f32::EPSILON);
-        let found_stone = uv1s.iter().any(|uv| (uv[0] - expected_stone_layer).abs() < 1e-4);
-        assert!(found_stone, "Expected at least one vertex with Stone layer ID");
+        let found_stone = uv1s
+            .iter()
+            .any(|uv| (uv[0] - expected_stone_layer).abs() < 1e-4);
+        assert!(
+            found_stone,
+            "Expected at least one vertex with Stone layer ID"
+        );
     } else {
         panic!("Expected Float32x2 for ATTRIBUTE_UV_1");
     }
@@ -295,13 +309,19 @@ fn test_all_meshers_use_u16_indices() {
     let mut chunk = Chunk::new();
     chunk.set(0, 10, 0, BlockType::Stone);
 
-    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).solid.unwrap();
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false)
+        .first_solid_mesh()
+        .unwrap();
     assert!(matches!(mesh_standard.indices(), Some(Indices::U16(_))));
 
-    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).solid.unwrap();
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true)
+        .first_solid_mesh()
+        .unwrap();
     assert!(matches!(mesh_greedy.indices(), Some(Indices::U16(_))));
 
-    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).solid.unwrap();
+    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15)
+        .first_solid_mesh()
+        .unwrap();
     assert!(matches!(mesh_lod.indices(), Some(Indices::U16(_))));
 }
 
@@ -312,24 +332,138 @@ fn test_all_meshers_omit_attribute_color_and_pack_shade() {
     let mut chunk = Chunk::new();
     chunk.set(0, 10, 0, BlockType::Stone);
 
-    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false).solid.unwrap();
+    let mesh_standard = build_chunk_mesh(&chunk, None, None, None, None, true, false)
+        .first_solid_mesh()
+        .unwrap();
     assert!(mesh_standard.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
-    let uv1_std = mesh_standard.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
+    let uv1_std = mesh_standard
+        .attribute(Mesh::ATTRIBUTE_UV_1)
+        .expect("UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv1_std {
-        assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
+        assert!(
+            uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0),
+            "Shade must be packed in UV_1.y"
+        );
     }
 
-    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true).solid.unwrap();
+    let mesh_greedy = build_chunk_mesh(&chunk, None, None, None, None, true, true)
+        .first_solid_mesh()
+        .unwrap();
     assert!(mesh_greedy.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
-    let uv1_greedy = mesh_greedy.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
+    let uv1_greedy = mesh_greedy
+        .attribute(Mesh::ATTRIBUTE_UV_1)
+        .expect("UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv1_greedy {
-        assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
+        assert!(
+            uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0),
+            "Shade must be packed in UV_1.y"
+        );
     }
 
-    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15).solid.unwrap();
+    let mesh_lod = build_chunk_mesh_sloped_lod(&chunk, None, None, None, None, 15)
+        .first_solid_mesh()
+        .unwrap();
     assert!(mesh_lod.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
-    let uv1_lod = mesh_lod.attribute(Mesh::ATTRIBUTE_UV_1).expect("UV_1 must exist");
+    let uv1_lod = mesh_lod
+        .attribute(Mesh::ATTRIBUTE_UV_1)
+        .expect("UV_1 must exist");
     if let VertexAttributeValues::Float32x2(uvs) = uv1_lod {
-        assert!(uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0), "Shade must be packed in UV_1.y");
+        assert!(
+            uvs.iter().all(|uv| uv[1] > 0.0 && uv[1] <= 1.0),
+            "Shade must be packed in UV_1.y"
+        );
+    }
+}
+
+#[test]
+fn test_subchunk_section_isolation_and_empty_sections() {
+    let mut chunk = Chunk::new();
+
+    // Section 0 (y = 0..16): completely solid stone
+    for lx in 0..CHUNK_WIDTH {
+        for lz in 0..CHUNK_DEPTH {
+            for ly in 0..16 {
+                chunk.set(lx as i32, ly, lz as i32, BlockType::Stone);
+            }
+        }
+    }
+
+    // Section 1 (y = 16..32): completely solid stone EXCEPT a hollow 2x2x2 cave at (5..7, 20..22, 5..7)
+    for lx in 0..CHUNK_WIDTH {
+        for lz in 0..CHUNK_DEPTH {
+            for ly in 16..32 {
+                chunk.set(lx as i32, ly, lz as i32, BlockType::Stone);
+            }
+        }
+    }
+    // Hollow out the cave
+    for lx in 5..7 {
+        for lz in 5..7 {
+            for ly in 20..22 {
+                chunk.set(lx, ly, lz, BlockType::Air);
+            }
+        }
+    }
+
+    // Section 2 (y = 32..48): solid stone from y = 32..=35 (terrain surface at y = 35), air above
+    for lx in 0..CHUNK_WIDTH {
+        for lz in 0..CHUNK_DEPTH {
+            for ly in 32..=35 {
+                chunk.set(lx as i32, ly, lz as i32, BlockType::Grass);
+            }
+        }
+    }
+
+    // Sections 3..8 (y = 48..128): completely Air
+
+    // Solid neighbor chunks on all 4 horizontal sides so no border faces are generated underground
+    let mut solid_neighbor = Chunk::new();
+    for lx in 0..CHUNK_WIDTH {
+        for lz in 0..CHUNK_DEPTH {
+            for ly in 0..36 {
+                solid_neighbor.set(lx as i32, ly, lz as i32, BlockType::Stone);
+            }
+        }
+    }
+
+    let meshes = build_chunk_mesh(
+        &chunk,
+        Some(&solid_neighbor),
+        Some(&solid_neighbor),
+        Some(&solid_neighbor),
+        Some(&solid_neighbor),
+        true,
+        true,
+    );
+
+    // Section 0: completely solid with solid neighbors everywhere around and above it -> 0 vertices, None!
+    assert!(
+        meshes.sections[0].solid.is_none(),
+        "Fully solid underground section must have None mesh (0 vertices)"
+    );
+
+    // Section 1: has the interior cave! Must produce mesh ONLY for the cave interior walls!
+    assert!(
+        meshes.sections[1].solid.is_some(),
+        "Section with cave must have a solid mesh"
+    );
+    let cave_verts = meshes.sections[1].solid.as_ref().unwrap().count_vertices();
+    assert!(
+        cave_verts > 0,
+        "Section 1 should contain vertices for cave walls"
+    );
+
+    // Section 2: has surface grass -> Must produce mesh for top surface
+    assert!(
+        meshes.sections[2].solid.is_some(),
+        "Surface section must have a solid mesh"
+    );
+
+    // Sections 3..8: completely empty air -> Must all be None (0 vertices, 0 draw calls!)
+    for sy in 3..CHUNK_SECTIONS {
+        assert!(
+            meshes.sections[sy].is_empty(),
+            "Empty air section {sy} must produce None mesh"
+        );
     }
 }

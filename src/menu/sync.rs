@@ -30,6 +30,12 @@ pub fn update_settings_button_text_system(
         Option<&GraphicsLodBtnText>,
     )>,
 ) {
+    let settings_changed = settings.is_changed();
+    let profiler_changed = profiler_state.as_ref().map_or(false, |p| p.is_changed());
+    if !settings_changed && !profiler_changed {
+        return;
+    }
+
     let hud_visible = profiler_state.as_ref().is_some_and(|p| p.visible);
 
     for (mut text, vsync, fs, shadows, fog, hud, fps, dist, greedy, lod) in &mut query {
@@ -84,7 +90,11 @@ pub fn sync_graphics_settings_to_bevy(
     >,
     mut last_config: Local<Option<(bool, i32, bool)>>,
 ) {
-    let current_config = (settings.distance_fog, settings.view_distance, settings.shadows);
+    let current_config = (
+        settings.distance_fog,
+        settings.view_distance,
+        settings.shadows,
+    );
 
     // 1. If fog or view_distance changed, update Distance Fog in real-time
     if last_config.map_or(true, |last| {
@@ -290,6 +300,8 @@ pub fn fps_limiter_system(
 }
 
 pub fn update_benchmark_banner_system(
+    time: Res<Time>,
+    mut timer: Local<f32>,
     config: Option<Res<BenchmarkConfig>>,
     state: Option<Res<BenchmarkState>>,
     mut banner_query: Query<&mut Visibility, With<BenchmarkRunningBanner>>,
@@ -299,7 +311,7 @@ pub fn update_benchmark_banner_system(
         return;
     };
 
-    let is_running = config.enabled && !config.is_cli && !state.completed;
+    let is_running = config.enabled && !state.completed;
     for mut vis in &mut banner_query {
         let target = if is_running {
             Visibility::Inherited
@@ -312,6 +324,11 @@ pub fn update_benchmark_banner_system(
     }
 
     if is_running {
+        *timer += time.delta_secs();
+        if *timer < 0.1 && state.phase != BenchmarkPhase::Completed {
+            return;
+        }
+        *timer = 0.0;
         let total_dist = config.scenario.flight_distance;
         let dist = state.distance_traveled.min(total_dist);
         let pct = if total_dist > 0.0 {
@@ -336,14 +353,20 @@ pub fn update_benchmark_banner_system(
             BenchmarkPhase::FlightRecording => {
                 format!(
                     "[ BENCHMARK IN PROGRESS ] Distance: {:.0}m / {:.0}m ({:.2}km / {:.1}km - {:.0}%) | Press [ESC] to Cancel",
-                    dist, total_dist, dist / 1000.0, total_dist / 1000.0, pct
+                    dist,
+                    total_dist,
+                    dist / 1000.0,
+                    total_dist / 1000.0,
+                    pct
                 )
             }
             BenchmarkPhase::Completed => "[ BENCHMARK COMPLETED ]".to_string(),
         };
 
         for mut text in &mut text_query {
-            *text = Text::new(&status_str);
+            if text.0 != status_str {
+                *text = Text::new(&status_str);
+            }
         }
     }
 }

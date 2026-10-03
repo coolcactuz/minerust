@@ -1,3 +1,5 @@
+use bevy::camera::primitives::Aabb;
+use bevy::camera::visibility::NoAutoAabb;
 use bevy::ecs::system::SystemParam;
 use bevy::light::NotShadowCaster;
 use bevy::pbr::ExtendedMaterial;
@@ -8,11 +10,11 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::camera::FpsCamera;
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH, Chunk};
-use crate::error::WorldError;
 use crate::menu::GraphicsSettings;
-use crate::mesher::{build_chunk_mesh_lod, ChunkMeshes};
+use crate::mesher::{CHUNK_SECTIONS, ChunkMeshes, build_chunk_mesh_lod};
 use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
-use crate::world::grid::WorldGrid;
+use crate::world::frontier::{get_entered_chunks, get_exited_chunks};
+use crate::world::grid::{ChunkSection, WorldGrid};
 use crate::world::terrain::generate_chunk;
 use crate::world::types::{
     MAX_CHUNK_DISPATCH_PER_FRAME, MAX_MESHES_PER_FRAME, SEA_LEVEL, VIEW_DISTANCE,
@@ -71,11 +73,15 @@ pub fn chunk_distance_sq_to_player(coord: IVec2, player_pos: Vec3, chunk: Option
     dx * dx + dy * dy + dz * dz
 }
 
+pub const TIER_STANDARD_VOXEL: u8 = 0;
+pub const TIER_GREEDY_VOXEL: u8 = 1;
+pub const TIER_SLOPED_LOD: u8 = 2;
+
 /// Applies or despawns chunk meshes (solid terrain and water) on the GPU
 pub fn apply_chunk_mesh(
     coord: IVec2,
     meshes_res: ChunkMeshes,
-    lod: u8,
+    tier: u8,
     commands: &mut Commands,
     world: &mut WorldGrid,
     meshes: &mut Assets<Mesh>,
@@ -87,14 +93,55 @@ pub fn apply_chunk_mesh(
         (coord.y * CHUNK_DEPTH as i32) as f32,
     );
 
-    // Track vertex counts and LOD
-    world.chunk_lod.insert(coord, lod);
+    // Track vertex counts, LOD and connectivity
+    world.chunk_lod.insert(coord, tier);
+    world
+        .chunk_connectivity
+        .insert(coord, meshes_res.connectivity);
     let new_vert_count = meshes_res.total_vertices();
     let old_vert_count = world
         .chunk_vertices
         .insert(coord, new_vert_count)
         .unwrap_or(0);
     world.total_vertices = world.total_vertices.saturating_sub(old_vert_count) + new_vert_count;
+
+    if tier >= TIER_SLOPED_LOD {
+        // Despawn any existing LOD 0 sub-chunk entities if transitioning from near LOD 0
+        if let Some(solid_entities) = world.chunk_entities.remove(&coord) {
+            for entity in solid_entities.into_iter().flatten() {
+                commands.entity(entity).despawn();
+            }
+        }
+        if let Some(water_entities) = world.water_entities.remove(&coord) {
+            for entity in water_entities.into_iter().flatten() {
+                commands.entity(entity).despawn();
+            }
+        }
+
+        // Insert into 4x4 macro-chunk cluster for consolidated rendering
+        let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+        let macro_chunk = world.macro_chunks.entry(macro_coord).or_default();
+        let s0 = meshes_res.sections.into_iter().next().unwrap_or_default();
+        macro_chunk.chunks[slot] = Some(s0);
+        if !macro_chunk.dirty {
+            macro_chunk.dirty_age_frames = 0;
+            macro_chunk.dirty = true;
+        }
+        world.dirty_macro_chunks.insert(macro_coord);
+        return;
+    }
+
+    // LOD 0 (tier 0 or 1): remove from macro-chunk if transitioning from distant LOD 2
+    let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+    if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
+        if macro_chunk.chunks[slot].take().is_some() {
+            if !macro_chunk.dirty {
+                macro_chunk.dirty_age_frames = 0;
+                macro_chunk.dirty = true;
+            }
+            world.dirty_macro_chunks.insert(macro_coord);
+        }
+    }
 
     let solid_material = world.block_material.clone().unwrap_or_else(|| {
         materials.add(ExtendedMaterial {
@@ -125,44 +172,130 @@ pub fn apply_chunk_mesh(
         })
     });
 
-    // Solid terrain mesh entity
-    if let Some(&entity) = world.chunk_entities.get(&coord) {
-        if let Some(mesh) = meshes_res.solid {
-            commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
-        } else {
-            commands.entity(entity).despawn();
-            world.chunk_entities.remove(&coord);
+    // Get existing section entity arrays or create empty ones
+    let mut solid_entities = world
+        .chunk_entities
+        .remove(&coord)
+        .unwrap_or([None; CHUNK_SECTIONS]);
+    let mut water_entities = world
+        .water_entities
+        .remove(&coord)
+        .unwrap_or([None; CHUNK_SECTIONS]);
+
+    for (sy, section_mesh) in meshes_res.sections.into_iter().enumerate() {
+        let section_y = sy as u8;
+        let aabb = Aabb::from_min_max(
+            Vec3::new(0.0, (sy * 16) as f32, 0.0),
+            Vec3::new(16.0, ((sy + 1) * 16) as f32, 16.0),
+        );
+
+        // Solid terrain mesh entity
+        if let Some(entity) = solid_entities[sy] {
+            if let Some(mesh) = section_mesh.solid {
+                commands.entity(entity).insert((
+                    Mesh3d(meshes.add(mesh)),
+                    aabb,
+                    NoAutoAabb,
+                    Visibility::Inherited,
+                ));
+            } else {
+                commands.entity(entity).despawn();
+                solid_entities[sy] = None;
+            }
+        } else if let Some(mesh) = section_mesh.solid {
+            let entity = commands
+                .spawn((
+                    Mesh3d(meshes.add(mesh)),
+                    MeshMaterial3d(solid_material.clone()),
+                    Transform::from_translation(world_pos),
+                    aabb,
+                    NoAutoAabb,
+                    ChunkSection {
+                        chunk: coord,
+                        section_y,
+                    },
+                ))
+                .id();
+            solid_entities[sy] = Some(entity);
         }
-    } else if let Some(mesh) = meshes_res.solid {
-        let entity = commands
-            .spawn((
-                Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(solid_material),
-                Transform::from_translation(world_pos),
-            ))
-            .id();
-        world.chunk_entities.insert(coord, entity);
+
+        // Water surface mesh entity
+        if let Some(entity) = water_entities[sy] {
+            if let Some(mesh) = section_mesh.water {
+                commands.entity(entity).insert((
+                    Mesh3d(meshes.add(mesh)),
+                    aabb,
+                    NoAutoAabb,
+                    Visibility::Inherited,
+                ));
+            } else {
+                commands.entity(entity).despawn();
+                water_entities[sy] = None;
+            }
+        } else if let Some(mesh) = section_mesh.water {
+            let entity = commands
+                .spawn((
+                    Mesh3d(meshes.add(mesh)),
+                    MeshMaterial3d(water_material.clone()),
+                    Transform::from_translation(world_pos),
+                    NotShadowCaster,
+                    aabb,
+                    NoAutoAabb,
+                    ChunkSection {
+                        chunk: coord,
+                        section_y,
+                    },
+                ))
+                .id();
+            water_entities[sy] = Some(entity);
+        }
     }
 
-    // Water surface mesh entity
-    if let Some(&entity) = world.water_entities.get(&coord) {
-        if let Some(mesh) = meshes_res.water {
-            commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
-        } else {
-            commands.entity(entity).despawn();
-            world.water_entities.remove(&coord);
-        }
-    } else if let Some(mesh) = meshes_res.water {
-        let entity = commands
-            .spawn((
-                Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(water_material),
-                Transform::from_translation(world_pos),
-                NotShadowCaster,
-            ))
-            .id();
-        world.water_entities.insert(coord, entity);
+    if solid_entities.iter().any(Option::is_some) {
+        world.chunk_entities.insert(coord, solid_entities);
     }
+    if water_entities.iter().any(Option::is_some) {
+        world.water_entities.insert(coord, water_entities);
+    }
+}
+
+/// Cleans up GPU entities, macro-chunk slot, and cached metadata for a chunk that is de-meshed or unloaded.
+pub fn cleanup_chunk_mesh_state(coord: IVec2, commands: &mut Commands, world: &mut WorldGrid) {
+    let (macro_coord, slot) = crate::world::macro_lod::chunk_to_macro_coord(coord);
+    let mut remove_macro = false;
+    if let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) {
+        macro_chunk.chunks[slot] = None;
+        if !macro_chunk.has_any_chunk() {
+            if let Some(e) = macro_chunk.solid_entity.take() {
+                commands.entity(e).despawn();
+            }
+            if let Some(e) = macro_chunk.water_entity.take() {
+                commands.entity(e).despawn();
+            }
+            world.dirty_macro_chunks.remove(&macro_coord);
+            remove_macro = true;
+        }
+    }
+    if remove_macro {
+        world.macro_chunks.remove(&macro_coord);
+    }
+    if let Some(entities) = world.chunk_entities.remove(&coord) {
+        for entity in entities.into_iter().flatten() {
+            commands.entity(entity).despawn();
+        }
+    }
+    if let Some(entities) = world.water_entities.remove(&coord) {
+        for entity in entities.into_iter().flatten() {
+            commands.entity(entity).despawn();
+        }
+    }
+    if let Some(old_v) = world.chunk_vertices.remove(&coord) {
+        world.total_vertices = world.total_vertices.saturating_sub(old_v);
+    }
+    world.chunk_lod.remove(&coord);
+    world.chunk_connectivity.remove(&coord);
+    world.queued_for_mesh.remove(&coord);
+    world.in_progress_meshes.remove(&coord);
 }
 
 pub const GREEDY_THRESHOLD_WORLD: f32 = 32.0; // 2 chunks = 32m
@@ -190,6 +323,32 @@ pub fn determine_chunk_tier(
     } else {
         (0, false, 0) // Tier 0: Standard 1x1 Voxel Meshing
     }
+}
+
+/// Computes the maximum chunk radius around the player where LOD transitions between tiers can occur.
+/// Any chunk farther than this radius is mathematically guaranteed to remain in Tier 2 (Sloped LOD).
+#[inline]
+pub fn calculate_lod_scan_radius(
+    distance_lod: bool,
+    lod_threshold_sq: f32,
+    greedy_meshing: bool,
+    greedy_threshold_sq: f32,
+    view_dist: i32,
+) -> i32 {
+    let max_threshold_sq = if distance_lod {
+        lod_threshold_sq
+    } else if greedy_meshing {
+        greedy_threshold_sq
+    } else {
+        0.0
+    };
+    if max_threshold_sq <= 0.0 {
+        return 0;
+    }
+    let threshold_world = max_threshold_sq.sqrt();
+    let threshold_chunks = (threshold_world / 16.0).ceil() as i32;
+    // Add safety margin of 2 chunks to account for sub-chunk player offset within chunk bounds
+    (threshold_chunks + 2).min(view_dist)
 }
 
 /// Updates or creates the mesh for the specified chunk synchronously
@@ -248,6 +407,8 @@ pub fn world_streaming_system(
     settings: WorldSettingsParams,
     pools: WorldWorkerPools,
 ) {
+    let t_streaming_start = std::time::Instant::now();
+
     if settings
         .menu
         .as_ref()
@@ -281,62 +442,116 @@ pub fn world_streaming_system(
     }
 
     if player_chunk != world.last_player_chunk || settings_changed {
+        let prev_player_chunk = world.last_player_chunk;
         world.last_player_chunk = player_chunk;
 
-        let mut needed_chunks = Vec::new();
-        for dx in -gen_dist..=gen_dist {
-            for dz in -gen_dist..=gen_dist {
-                let coord = player_chunk + IVec2::new(dx, dz);
-                // Chunk needs to be generated if it is not already loaded or in progress
+        let delta = player_chunk - prev_player_chunk;
+        let is_initial_or_teleport = settings_changed || delta.x.abs() > 4 || delta.y.abs() > 4;
+
+        let (chunks_to_queue, chunks_to_demesh, chunks_to_remove) = if is_initial_or_teleport {
+            let mut needed_chunks = Vec::new();
+            for dx in -gen_dist..=gen_dist {
+                for dz in -gen_dist..=gen_dist {
+                    let coord = player_chunk + IVec2::new(dx, dz);
+                    // Chunk needs to be generated if it is not already loaded or in progress
+                    if !world.chunks.contains_key(&coord)
+                        && !world.in_progress_chunks.contains(&coord)
+                    {
+                        needed_chunks.push(coord);
+                    }
+                }
+            }
+
+            // Sort descending so pop() takes the closest chunks first
+            needed_chunks.sort_by_key(|c| {
+                let diff = *c - player_chunk;
+                -(diff.x * diff.x + diff.y * diff.y)
+            });
+
+            world.generation_queue = needed_chunks;
+
+            let mut to_queue = Vec::new();
+            let mut to_demesh = Vec::new();
+            let mut to_remove = Vec::new();
+
+            for &coord in world.chunks.keys() {
+                let diff = coord - player_chunk;
+                let dx = diff.x.abs();
+                let dz = diff.y.abs();
+
+                if dx > unload_dist || dz > unload_dist {
+                    to_remove.push(coord);
+                } else if dx <= view_dist && dz <= view_dist {
+                    if !world.chunk_lod.contains_key(&coord) {
+                        to_queue.push(coord);
+                    }
+                } else if world.chunk_lod.contains_key(&coord) {
+                    to_demesh.push(coord);
+                }
+            }
+
+            (to_queue, to_demesh, to_remove)
+        } else {
+            // Incremental frontier scanning: only scan newly entered / exited boundaries
+            let entered_gen = get_entered_chunks(prev_player_chunk, player_chunk, gen_dist);
+            let mut newly_needed = Vec::new();
+            for coord in entered_gen {
                 if !world.chunks.contains_key(&coord) && !world.in_progress_chunks.contains(&coord)
                 {
-                    needed_chunks.push(coord);
+                    newly_needed.push(coord);
                 }
             }
-        }
 
-        // Sort descending so pop() takes the closest chunks first
-        needed_chunks.sort_by_key(|c| {
-            let diff = *c - player_chunk;
-            -(diff.x * diff.x + diff.y * diff.y)
-        });
+            // Prune any chunks in generation_queue that are now outside gen_dist
+            world.generation_queue.retain(|c| {
+                let diff = *c - player_chunk;
+                diff.x.abs() <= gen_dist && diff.y.abs() <= gen_dist
+            });
 
-        world.generation_queue = needed_chunks;
+            newly_needed.sort_by_key(|c| {
+                let diff = *c - player_chunk;
+                -(diff.x * diff.x + diff.y * diff.y)
+            });
 
-        // 2-Tier streaming lifecycle:
-        // Tier 1 (within visual view_dist): ensure mesh is queued if missing
-        // Tier 2 (outside view_dist): despawn GPU mesh to save draw calls & VRAM, keep voxels in RAM
-        let mut chunks_to_queue = Vec::new();
-        let mut chunks_to_demesh = Vec::new();
+            // Prepend new frontier chunks to the front of generation_queue
+            // so closer chunks remain at the back and are popped first
+            let mut new_queue = newly_needed;
+            new_queue.append(&mut world.generation_queue);
+            world.generation_queue = new_queue;
 
-        for (&coord, _) in &world.chunks {
-            let diff = coord - player_chunk;
-            if diff.x.abs() <= view_dist && diff.y.abs() <= view_dist {
-                if !world.chunk_entities.contains_key(&coord) && !world.water_entities.contains_key(&coord) {
-                    chunks_to_queue.push(coord);
+            let entered_view = get_entered_chunks(prev_player_chunk, player_chunk, view_dist);
+            let mut to_queue = Vec::new();
+            for coord in entered_view {
+                if world.chunks.contains_key(&coord) && !world.chunk_lod.contains_key(&coord) {
+                    to_queue.push(coord);
                 }
-            } else if world.chunk_entities.contains_key(&coord) || world.water_entities.contains_key(&coord) {
-                chunks_to_demesh.push(coord);
             }
-        }
+
+            let exited_view = get_exited_chunks(prev_player_chunk, player_chunk, view_dist);
+            let mut to_demesh = Vec::new();
+            for coord in exited_view {
+                if world.chunk_lod.contains_key(&coord) {
+                    to_demesh.push(coord);
+                }
+            }
+
+            let exited_unload = get_exited_chunks(prev_player_chunk, player_chunk, unload_dist);
+            let mut to_remove = Vec::new();
+            for coord in exited_unload {
+                if world.chunks.contains_key(&coord) {
+                    to_remove.push(coord);
+                }
+            }
+
+            (to_queue, to_demesh, to_remove)
+        };
 
         for coord in chunks_to_queue {
             world.queue_mesh(coord);
         }
 
         for coord in chunks_to_demesh {
-            if let Some(entity) = world.chunk_entities.remove(&coord) {
-                commands.entity(entity).despawn();
-            }
-            if let Some(entity) = world.water_entities.remove(&coord) {
-                commands.entity(entity).despawn();
-            }
-            if let Some(old_v) = world.chunk_vertices.remove(&coord) {
-                world.total_vertices = world.total_vertices.saturating_sub(old_v);
-            }
-            world.chunk_lod.remove(&coord);
-            world.queued_for_mesh.remove(&coord);
-            world.in_progress_meshes.remove(&coord);
+            cleanup_chunk_mesh_state(coord, &mut commands, &mut world);
         }
 
         // Prune stale mesh queue entries that are outside the current visual distance
@@ -349,28 +564,8 @@ pub fn world_streaming_system(
             diff.x.abs() <= view_dist && diff.y.abs() <= view_dist
         });
 
-        let mut chunks_to_remove = Vec::new();
-        for coord in world.chunks.keys() {
-            let diff = *coord - player_chunk;
-            if diff.x.abs() > unload_dist || diff.y.abs() > unload_dist {
-                chunks_to_remove.push(*coord);
-            }
-        }
-
         for coord in chunks_to_remove {
-            world.queued_for_mesh.remove(&coord);
-            world.in_progress_meshes.remove(&coord);
-            world.chunk_lod.remove(&coord);
-            if let Some(old_v) = world.chunk_vertices.remove(&coord) {
-                world.total_vertices = world.total_vertices.saturating_sub(old_v);
-            }
-            // Despawn 3D mesh entities from GPU
-            if let Some(entity) = world.chunk_entities.remove(&coord) {
-                commands.entity(entity).despawn();
-            }
-            if let Some(entity) = world.water_entities.remove(&coord) {
-                commands.entity(entity).despawn();
-            }
+            cleanup_chunk_mesh_state(coord, &mut commands, &mut world);
 
             // If the chunk was modified by the player, persist it to disk
             let was_modified =
@@ -398,7 +593,7 @@ pub fn world_streaming_system(
     } else {
         MAX_CHUNK_DISPATCH_PER_FRAME
     };
-    let max_in_flight_chunks = if is_bench_initializing { 128 } else { 32 };
+    let max_in_flight_chunks = if is_bench_initializing { 128 } else { 6 };
 
     let mut dispatched = 0;
     while dispatched < max_dispatch
@@ -430,21 +625,25 @@ pub fn world_streaming_system(
         let tx = pools.generator.tx.clone();
         let noise = world.noise.clone();
         let seed = world.seed.0;
-        let save_dir = world.save_dir.clone();
+        let is_saved_on_disk = world.saved_chunks_index.contains(&coord);
+        let save_dir = if is_saved_on_disk {
+            world.save_dir.clone()
+        } else {
+            std::path::PathBuf::new()
+        };
 
         AsyncComputeTaskPool::get()
             .spawn(async move {
-                // Check disk cache first
-                match WorldGrid::load_chunk_from_disk_path(&save_dir, coord) {
-                    Ok(loaded_chunk) => {
-                        let _ = tx.send((coord, loaded_chunk, true));
-                        return;
-                    }
-                    Err(WorldError::Io(ref e)) if e.kind() == std::io::ErrorKind::NotFound => {
-                        // Expected: chunk not saved yet, proceed to procedural generation
-                    }
-                    Err(e) => {
-                        tracing::warn!("Disk cache error for chunk {coord:?}: {e}");
+                // Check disk cache first ONLY if this chunk is known to be saved on disk
+                if is_saved_on_disk {
+                    match WorldGrid::load_chunk_from_disk_path(&save_dir, coord) {
+                        Ok(loaded_chunk) => {
+                            let _ = tx.send((coord, loaded_chunk, true));
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::warn!("Disk cache error for chunk {coord:?}: {e}");
+                        }
                     }
                 }
 
@@ -477,28 +676,45 @@ pub fn world_streaming_system(
                 world.queue_mesh(coord);
             }
 
-            // Only queue neighbor chunks if they are within visual range and already have an active GPU mesh that needs seam update
-            for neighbor_coord in [
-                coord + IVec2::new(-1, 0),
-                coord + IVec2::new(1, 0),
-                coord + IVec2::new(0, -1),
-                coord + IVec2::new(0, 1),
-            ] {
-                let n_diff = neighbor_coord - player_chunk;
-                if n_diff.x.abs() <= view_dist
-                    && n_diff.y.abs() <= view_dist
-                    && (world.chunk_entities.contains_key(&neighbor_coord)
-                        || world.water_entities.contains_key(&neighbor_coord))
-                {
-                    world.queue_mesh(neighbor_coord);
+            // Only queue neighbor chunks if they are within visual range and need seam updates (voxel tiers only).
+            // Tier 2 (Sloped LOD) macro-chunks use skirts and do not cull block faces against neighbors;
+            // skipping them avoids tens of thousands of redundant re-meshes and macro-chunk invalidations.
+            let lod_thresh = settings.graphics.as_ref().map_or(8, |s| s.lod_threshold);
+            if diff.x.abs() <= lod_thresh + 1 && diff.y.abs() <= lod_thresh + 1 {
+                for neighbor_coord in [
+                    coord + IVec2::new(-1, 0),
+                    coord + IVec2::new(1, 0),
+                    coord + IVec2::new(0, -1),
+                    coord + IVec2::new(0, 1),
+                ] {
+                    let n_diff = neighbor_coord - player_chunk;
+                    if n_diff.x.abs() <= view_dist && n_diff.y.abs() <= view_dist {
+                        let needs_voxel_seam_update = world
+                            .chunk_lod
+                            .get(&neighbor_coord)
+                            .is_some_and(|&t| t < TIER_SLOPED_LOD);
+                        if needs_voxel_seam_update {
+                            world.queue_mesh(neighbor_coord);
+                        }
+                    }
                 }
             }
         }
     }
 
-    // 3. Receive finished asynchronous meshes from background threads
+    // 3. Receive finished asynchronous meshes from background threads with frame pacing
     if let Ok(rx) = pools.mesher.rx.lock() {
-        while let Ok((coord, meshes_res, lod)) = rx.try_recv() {
+        let max_mesh_apply = if is_bench_initializing {
+            usize::MAX
+        } else {
+            MAX_MESHES_PER_FRAME
+        };
+        let mut meshes_applied = 0;
+        while meshes_applied < max_mesh_apply {
+            let Ok((coord, meshes_res, lod)) = rx.try_recv() else {
+                break;
+            };
+            meshes_applied += 1;
             world.in_progress_meshes.remove(&coord);
 
             // If chunk was unloaded while meshing, ignore
@@ -511,16 +727,7 @@ pub fn world_streaming_system(
             // discard the completed mesh immediately rather than spawning an off-screen entity.
             let diff = coord - player_chunk;
             if diff.x.abs() > view_dist || diff.y.abs() > view_dist {
-                if let Some(entity) = world.chunk_entities.remove(&coord) {
-                    commands.entity(entity).despawn();
-                }
-                if let Some(entity) = world.water_entities.remove(&coord) {
-                    commands.entity(entity).despawn();
-                }
-                if let Some(old_v) = world.chunk_vertices.remove(&coord) {
-                    world.total_vertices = world.total_vertices.saturating_sub(old_v);
-                }
-                world.chunk_lod.remove(&coord);
+                cleanup_chunk_mesh_state(coord, &mut commands, &mut world);
                 continue;
             }
 
@@ -546,58 +753,117 @@ pub fn world_streaming_system(
             } else {
                 (g.greedy_threshold as f32 * 16.0).powi(2)
             };
-            (g.distance_lod, l_sq, g.greedy_meshing, g.greedy_threshold, g_sq)
+            (
+                g.distance_lod,
+                l_sq,
+                g.greedy_meshing,
+                g.greedy_threshold,
+                g_sq,
+            )
         } else {
             (true, 128.0 * 128.0, true, 2, 32.0 * 32.0)
         };
 
-    // Dynamic 3D LOD transitions: check if any active chunks need to change mesh tier as player moves in 3D
-    let mut chunks_needing_lod_update = Vec::new();
-    for (&coord, chunk) in &world.chunks {
-        let diff = coord - player_chunk;
-        let dist_2d = diff.x.abs().max(diff.y.abs());
-        if dist_2d <= view_dist
-            && (world.chunk_entities.contains_key(&coord) || world.water_entities.contains_key(&coord))
-        {
-            let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
-            let (target_tier, _, _) = determine_chunk_tier(
-                dist_sq,
+    // Dynamic 3D LOD transitions: check if any active chunks need to change mesh tier as player moves in 3D.
+    // Spatial throttling: only scan chunk LODs if graphics settings changed or player moved >= 8.0m (64.0m sq, half chunk).
+    let should_check_lod =
+        settings_changed || player_pos.distance_squared(world.last_lod_player_pos) >= 64.0;
+
+    if should_check_lod {
+        world.last_lod_player_pos = player_pos;
+        let mut chunks_needing_lod_update = Vec::new();
+
+        if settings_changed {
+            // Full sweep across loaded chunks when graphics settings change
+            for (&coord, chunk) in &world.chunks {
+                let diff = coord - player_chunk;
+                let dist_2d = diff.x.abs().max(diff.y.abs());
+                if dist_2d <= view_dist && world.chunk_lod.contains_key(&coord) {
+                    let dist_sq = chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
+                    let (target_tier, _, _) = determine_chunk_tier(
+                        dist_sq,
+                        distance_lod,
+                        lod_threshold_sq,
+                        greedy_meshing,
+                        greedy_threshold,
+                        greedy_threshold_sq,
+                    );
+
+                    if world.chunk_lod.get(&coord) != Some(&target_tier)
+                        && !world.queued_for_mesh.contains(&coord)
+                        && !world.in_progress_meshes.contains(&coord)
+                    {
+                        chunks_needing_lod_update.push(coord);
+                    }
+                }
+            }
+        } else {
+            // Candidate frontier sweep: only scan coordinates within reach of LOD tier transitions
+            let scan_radius = calculate_lod_scan_radius(
                 distance_lod,
                 lod_threshold_sq,
                 greedy_meshing,
-                greedy_threshold,
                 greedy_threshold_sq,
+                view_dist,
             );
+            for dz in -scan_radius..=scan_radius {
+                for dx in -scan_radius..=scan_radius {
+                    let coord = player_chunk + IVec2::new(dx, dz);
+                    if let Some(chunk) = world.chunks.get(&coord) {
+                        if world.chunk_lod.contains_key(&coord) {
+                            let dist_sq =
+                                chunk_distance_sq_to_player(coord, player_pos, Some(chunk));
+                            let (target_tier, _, _) = determine_chunk_tier(
+                                dist_sq,
+                                distance_lod,
+                                lod_threshold_sq,
+                                greedy_meshing,
+                                greedy_threshold,
+                                greedy_threshold_sq,
+                            );
 
-            if world.chunk_lod.get(&coord) != Some(&target_tier)
-                && !world.queued_for_mesh.contains(&coord)
-                && !world.in_progress_meshes.contains(&coord)
-            {
-                chunks_needing_lod_update.push(coord);
+                            if world.chunk_lod.get(&coord) != Some(&target_tier)
+                                && !world.queued_for_mesh.contains(&coord)
+                                && !world.in_progress_meshes.contains(&coord)
+                            {
+                                chunks_needing_lod_update.push(coord);
+                            }
+                        }
+                    }
+                }
             }
         }
-    }
 
-    for coord in chunks_needing_lod_update {
-        world.queue_mesh(coord);
+        for coord in chunks_needing_lod_update {
+            world.queue_mesh(coord);
+        }
     }
 
     // 4. Process mesh queue with frame budget, asynchronous dispatch, and 3D distance priority
     if !world.mesh_queue.is_empty() {
-        let world_ref = &mut *world;
-        let chunks = &world_ref.chunks;
-        world_ref.mesh_queue.sort_unstable_by_key(|c| {
-            let chunk_opt = chunks.get(c);
-            let d_sq = chunk_distance_sq_to_player(*c, player_pos, chunk_opt);
-            -(d_sq as i64)
-        });
+        if world.mesh_queue.len() > 1 && world.mesh_queue_dirty {
+            let world_ref = &mut *world;
+            let scratch = &mut world_ref.mesh_sort_scratch;
+            scratch.clear();
+            scratch.extend(
+                world_ref
+                    .mesh_queue
+                    .iter()
+                    .map(|&coord| (coord, chunk_distance_sq_to_player(coord, player_pos, None))),
+            );
+            scratch.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+            for (i, (coord, _)) in scratch.iter().enumerate() {
+                world_ref.mesh_queue[i] = *coord;
+            }
+            world.mesh_queue_dirty = false;
+        }
 
         let max_meshes_per_frame = if is_bench_initializing {
             48
         } else {
             MAX_MESHES_PER_FRAME
         };
-        let max_in_flight_meshes = if is_bench_initializing { 64 } else { 24 };
+        let max_in_flight_meshes = if is_bench_initializing { 64 } else { 16 };
 
         let mut meshed = 0;
         while meshed < max_meshes_per_frame
@@ -654,6 +920,17 @@ pub fn world_streaming_system(
             }
         }
     }
+
+    // 5. Synchronize modified macro-chunk clusters with Bevy ECS and GPU assets
+    crate::world::macro_lod::flush_dirty_macro_chunks(
+        &mut commands,
+        &mut world,
+        &mut assets.meshes,
+        &mut assets.materials,
+        false,
+    );
+
+    world.last_streaming_us = t_streaming_start.elapsed().as_secs_f32() * 1_000_000.0;
 }
 
 pub struct WorldPlugin;
@@ -662,9 +939,14 @@ impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChunkGeneratorPool>()
             .init_resource::<ChunkMesherPool>()
+            .init_resource::<crate::world::occlusion::SectionOcclusionCache>()
             .add_systems(
                 Update,
-                world_streaming_system.in_set(crate::stage::VoxelStage::WorldStreaming),
+                (
+                    world_streaming_system.in_set(crate::stage::VoxelStage::WorldStreaming),
+                    crate::world::occlusion::section_occlusion_system
+                        .after(crate::stage::VoxelStage::WorldStreaming),
+                ),
             );
     }
 }
