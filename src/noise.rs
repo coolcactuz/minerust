@@ -106,10 +106,7 @@ impl NoiseGenerator {
     /// 2D Fractal Brownian Motion (FBM) for terrain elevation and biomes
     #[inline]
     pub fn fbm_2d(&self, x: f64, y: f64, octaves: usize, persistence: f64, lacunarity: f64) -> f64 {
-        if octaves == 3
-            && (persistence - 0.5).abs() < 1e-6
-            && (lacunarity - 2.0).abs() < 1e-6
-        {
+        if octaves == 3 && (persistence - 0.5).abs() < 1e-6 && (lacunarity - 2.0).abs() < 1e-6 {
             let o1 = self.perlin_2d(x, y);
             let o2 = self.perlin_2d(x * 2.0, y * 2.0);
             let o3 = self.perlin_2d(x * 4.0, y * 4.0);
@@ -141,10 +138,7 @@ impl NoiseGenerator {
         persistence: f64,
         lacunarity: f64,
     ) -> f64 {
-        if octaves == 4
-            && (persistence - 0.5).abs() < 1e-6
-            && (lacunarity - 2.0).abs() < 1e-6
-        {
+        if octaves == 4 && (persistence - 0.5).abs() < 1e-6 && (lacunarity - 2.0).abs() < 1e-6 {
             let n1 = 1.0 - self.perlin_2d(x, y).abs();
             let n2 = 1.0 - self.perlin_2d(x * 2.0, y * 2.0).abs();
             let n3 = 1.0 - self.perlin_2d(x * 4.0, y * 4.0).abs();
@@ -179,10 +173,7 @@ impl NoiseGenerator {
         persistence: f64,
         lacunarity: f64,
     ) -> f64 {
-        if octaves == 2
-            && (persistence - 0.5).abs() < 1e-6
-            && (lacunarity - 2.0).abs() < 1e-6
-        {
+        if octaves == 2 && (persistence - 0.5).abs() < 1e-6 && (lacunarity - 2.0).abs() < 1e-6 {
             let o1 = self.perlin_3d(x, y, z);
             let o2 = self.perlin_3d(x * 2.0, y * 2.0, z * 2.0);
             return (o1 + 0.5 * o2) / 1.5;

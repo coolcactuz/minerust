@@ -33,13 +33,24 @@ pub struct MacroChunkSection {
     pub macro_coord: IVec2,
 }
 
+/// Maximum number of macro-chunk meshes rebuilt and uploaded to GPU per frame
+/// to prevent GPU submission hiccups and frame latency spikes.
+pub const MAX_MACRO_REBUILDS_PER_FRAME: usize = 4;
+
+/// Frame debounce delay for partially filled or shrinking macro-chunks.
+/// Coalesces multiple incoming or transitioning chunks into a single GPU rebuild.
+pub const MACRO_DEBOUNCE_FRAMES: u8 = 90;
+
 /// In-memory state and GPU entity handles for an individual 4x4 macro-chunk cluster.
 #[derive(Default, Debug)]
 pub struct MacroChunk {
     pub solid_entity: Option<Entity>,
+    pub solid_mesh: Option<Handle<Mesh>>,
     pub water_entity: Option<Entity>,
+    pub water_mesh: Option<Handle<Mesh>>,
     pub chunks: [Option<SectionMeshes>; MACRO_CHUNK_AREA],
     pub dirty: bool,
+    pub dirty_age_frames: u8,
 }
 
 impl MacroChunk {
@@ -63,16 +74,21 @@ impl MacroChunk {
 pub fn merge_chunk_meshes<'a>(
     chunk_meshes: impl IntoIterator<Item = (usize, &'a Mesh)>,
 ) -> Option<Mesh> {
+    let mut items: [(usize, Option<&'a Mesh>); MACRO_CHUNK_AREA] = [(0, None); MACRO_CHUNK_AREA];
+    let mut count = 0;
     let mut total_verts = 0;
     let mut total_indices = 0;
 
-    let items: Vec<(usize, &'a Mesh)> = chunk_meshes.into_iter().collect();
-    for (_, mesh) in &items {
-        total_verts += mesh.count_vertices();
-        total_indices += mesh.indices().map_or(0, |idx| idx.len());
+    for (slot, mesh) in chunk_meshes {
+        if count < MACRO_CHUNK_AREA {
+            items[count] = (slot, Some(mesh));
+            count += 1;
+            total_verts += mesh.count_vertices();
+            total_indices += mesh.indices().map_or(0, |idx| idx.len());
+        }
     }
 
-    if total_verts == 0 {
+    if total_verts == 0 || count == 0 {
         return None;
     }
 
@@ -93,7 +109,8 @@ pub fn merge_chunk_meshes<'a>(
         None
     };
 
-    for (slot, mesh) in items {
+    for &(slot, mesh_opt) in items.iter().take(count) {
+        let mesh = mesh_opt.expect("mesh reference populated");
         let lx = (slot % (MACRO_CHUNK_SIZE as usize)) as f32;
         let lz = (slot / (MACRO_CHUNK_SIZE as usize)) as f32;
         let offset_x = lx * 16.0;
@@ -104,9 +121,7 @@ pub fn merge_chunk_meshes<'a>(
         if let Some(VertexAttributeValues::Float32x3(pos)) =
             mesh.attribute(Mesh::ATTRIBUTE_POSITION)
         {
-            for p in pos {
-                merged_positions.push([p[0] + offset_x, p[1], p[2] + offset_z]);
-            }
+            merged_positions.extend(pos.iter().map(|p| [p[0] + offset_x, p[1], p[2] + offset_z]));
         }
 
         if let Some(VertexAttributeValues::Float32x3(norm)) = mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
@@ -127,27 +142,19 @@ pub fn merge_chunk_meshes<'a>(
             if let Some(ref mut idx_vec) = merged_indices_u16 {
                 match indices {
                     Indices::U16(idx) => {
-                        for i in idx {
-                            idx_vec.push((base_vertex + (*i as u32)) as u16);
-                        }
+                        idx_vec.extend(idx.iter().map(|&i| (base_vertex + i as u32) as u16));
                     }
                     Indices::U32(idx) => {
-                        for i in idx {
-                            idx_vec.push((base_vertex + *i) as u16);
-                        }
+                        idx_vec.extend(idx.iter().map(|&i| (base_vertex + i) as u16));
                     }
                 }
             } else if let Some(ref mut idx_vec) = merged_indices_u32 {
                 match indices {
                     Indices::U16(idx) => {
-                        for i in idx {
-                            idx_vec.push(base_vertex + (*i as u32));
-                        }
+                        idx_vec.extend(idx.iter().map(|&i| base_vertex + i as u32));
                     }
                     Indices::U32(idx) => {
-                        for i in idx {
-                            idx_vec.push(base_vertex + *i);
-                        }
+                        idx_vec.extend(idx.iter().map(|&i| base_vertex + i));
                     }
                 }
             }
@@ -172,12 +179,18 @@ pub fn merge_chunk_meshes<'a>(
     Some(merged_mesh)
 }
 
-/// Rebuilds and synchronizes all dirty macro-chunk clusters with the Bevy ECS and GPU assets.
+/// Rebuilds and synchronizes dirty macro-chunk clusters with the Bevy ECS and GPU assets.
+///
+/// When `force_all` is true (e.g. initial world generation, world teardown, or tests),
+/// all dirty macro-chunks are flushed immediately without delay or per-frame limits.
+/// When `force_all` is false (normal runtime streaming), updates are debounced by
+/// `MACRO_DEBOUNCE_FRAMES` and capped by `MAX_MACRO_REBUILDS_PER_FRAME` to prevent GPU stalls.
 pub fn flush_dirty_macro_chunks(
     commands: &mut Commands,
     world: &mut WorldGrid,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<VoxelBlockMaterial>,
+    force_all: bool,
 ) {
     let solid_material = world.block_material.clone().unwrap_or_else(|| {
         materials.add(ExtendedMaterial {
@@ -215,25 +228,61 @@ pub fn flush_dirty_macro_chunks(
 
     let mut empty_macros = Vec::new();
 
-    // Drain keys of dirty macro-chunks to avoid iterating all macro-chunks every frame
-    let dirty_keys: Vec<IVec2> = world.dirty_macro_chunks.drain().collect();
+    // Snapshot keys of dirty macro-chunks into scratch buffer to eliminate heap allocations
+    let scratch = &mut world.dirty_macro_scratch;
+    scratch.clear();
+    scratch.extend(world.dirty_macro_chunks.iter().copied());
 
-    for macro_coord in dirty_keys {
+    let mut rebuilds_this_frame = 0;
+
+    for &macro_coord in scratch.iter() {
         let Some(macro_chunk) = world.macro_chunks.get_mut(&macro_coord) else {
+            world.dirty_macro_chunks.remove(&macro_coord);
             continue;
         };
-        macro_chunk.dirty = false;
 
         if !macro_chunk.has_any_chunk() {
             if let Some(e) = macro_chunk.solid_entity.take() {
                 commands.entity(e).despawn();
             }
+            macro_chunk.solid_mesh = None;
             if let Some(e) = macro_chunk.water_entity.take() {
                 commands.entity(e).despawn();
             }
+            macro_chunk.water_mesh = None;
             empty_macros.push(macro_coord);
+            macro_chunk.dirty = false;
+            macro_chunk.dirty_age_frames = 0;
+            world.dirty_macro_chunks.remove(&macro_coord);
             continue;
         }
+
+        let chunk_count = macro_chunk.chunk_count();
+        let is_unspawned = macro_chunk.solid_entity.is_none() && macro_chunk.water_entity.is_none();
+
+        let ready_to_rebuild = if force_all {
+            true
+        } else if is_unspawned {
+            chunk_count >= 12 || macro_chunk.dirty_age_frames >= MACRO_DEBOUNCE_FRAMES
+        } else {
+            chunk_count == MACRO_CHUNK_AREA || macro_chunk.dirty_age_frames >= MACRO_DEBOUNCE_FRAMES
+        };
+
+        if !ready_to_rebuild {
+            macro_chunk.dirty_age_frames = macro_chunk.dirty_age_frames.saturating_add(1);
+            continue;
+        }
+
+        if !force_all && rebuilds_this_frame >= MAX_MACRO_REBUILDS_PER_FRAME {
+            // Cap rebuilds for this frame to prevent GPU stalls;
+            // remaining dirty macro-chunks will be processed next frame.
+            continue;
+        }
+
+        macro_chunk.dirty = false;
+        macro_chunk.dirty_age_frames = 0;
+        world.dirty_macro_chunks.remove(&macro_coord);
+        rebuilds_this_frame += 1;
 
         let world_pos = Vec3::new(
             (macro_coord.x * MACRO_CHUNK_SIZE * 16) as f32,
@@ -242,25 +291,42 @@ pub fn flush_dirty_macro_chunks(
         );
 
         // 1. Build and synchronize solid terrain mesh
-        let solid_mesh_opt = merge_chunk_meshes(macro_chunk.chunks.iter().enumerate().filter_map(
-            |(slot, s)| {
-                s.as_ref()
-                    .and_then(|sec| sec.solid.as_ref())
-                    .map(|m| (slot, m))
-            },
-        ));
+        let has_solid = macro_chunk
+            .chunks
+            .iter()
+            .any(|s| s.as_ref().is_some_and(|sec| sec.solid.is_some()));
+        let solid_mesh_opt = if has_solid {
+            merge_chunk_meshes(
+                macro_chunk
+                    .chunks
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(slot, s)| {
+                        s.as_ref()
+                            .and_then(|sec| sec.solid.as_ref())
+                            .map(|m| (slot, m))
+                    }),
+            )
+        } else {
+            None
+        };
 
         let macro_aabb = Aabb::from_min_max(Vec3::ZERO, Vec3::new(64.0, 128.0, 64.0));
+        world.macro_rebuilds_count += 1;
 
         if let Some(mesh) = solid_mesh_opt {
-            if let Some(entity) = macro_chunk.solid_entity {
-                commands
-                    .entity(entity)
-                    .insert((Mesh3d(meshes.add(mesh)), macro_aabb, NoAutoAabb));
+            if let (Some(_entity), Some(handle)) =
+                (macro_chunk.solid_entity, &macro_chunk.solid_mesh)
+            {
+                if let Some(mut existing_mesh) = meshes.get_mut(handle) {
+                    *existing_mesh = mesh;
+                }
             } else {
+                let handle = meshes.add(mesh);
+                macro_chunk.solid_mesh = Some(handle.clone());
                 let entity = commands
                     .spawn((
-                        Mesh3d(meshes.add(mesh)),
+                        Mesh3d(handle),
                         MeshMaterial3d(solid_material.clone()),
                         Transform::from_translation(world_pos),
                         bevy::light::NotShadowCaster,
@@ -273,26 +339,43 @@ pub fn flush_dirty_macro_chunks(
             }
         } else if let Some(entity) = macro_chunk.solid_entity.take() {
             commands.entity(entity).despawn();
+            macro_chunk.solid_mesh = None;
         }
 
         // 2. Build and synchronize water surface mesh
-        let water_mesh_opt = merge_chunk_meshes(macro_chunk.chunks.iter().enumerate().filter_map(
-            |(slot, s)| {
-                s.as_ref()
-                    .and_then(|sec| sec.water.as_ref())
-                    .map(|m| (slot, m))
-            },
-        ));
+        let has_water = macro_chunk
+            .chunks
+            .iter()
+            .any(|s| s.as_ref().is_some_and(|sec| sec.water.is_some()));
+        let water_mesh_opt = if has_water {
+            merge_chunk_meshes(
+                macro_chunk
+                    .chunks
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(slot, s)| {
+                        s.as_ref()
+                            .and_then(|sec| sec.water.as_ref())
+                            .map(|m| (slot, m))
+                    }),
+            )
+        } else {
+            None
+        };
 
         if let Some(mesh) = water_mesh_opt {
-            if let Some(entity) = macro_chunk.water_entity {
-                commands
-                    .entity(entity)
-                    .insert((Mesh3d(meshes.add(mesh)), macro_aabb, NoAutoAabb));
+            if let (Some(_entity), Some(handle)) =
+                (macro_chunk.water_entity, &macro_chunk.water_mesh)
+            {
+                if let Some(mut existing_mesh) = meshes.get_mut(handle) {
+                    *existing_mesh = mesh;
+                }
             } else {
+                let handle = meshes.add(mesh);
+                macro_chunk.water_mesh = Some(handle.clone());
                 let entity = commands
                     .spawn((
-                        Mesh3d(meshes.add(mesh)),
+                        Mesh3d(handle),
                         MeshMaterial3d(water_material.clone()),
                         Transform::from_translation(world_pos),
                         bevy::light::NotShadowCaster,
@@ -305,6 +388,7 @@ pub fn flush_dirty_macro_chunks(
             }
         } else if let Some(entity) = macro_chunk.water_entity.take() {
             commands.entity(entity).despawn();
+            macro_chunk.water_mesh = None;
         }
     }
 

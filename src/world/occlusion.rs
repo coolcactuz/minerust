@@ -221,6 +221,7 @@ pub struct SectionOcclusionCache {
     pub last_outdoors: bool,
     pub bitset: OcclusionBitset,
     pub queue: VecDeque<(IVec2, u8, Option<SectionFace>)>,
+    pub last_occlusion_us: f32,
 }
 
 impl Default for SectionOcclusionCache {
@@ -231,6 +232,7 @@ impl Default for SectionOcclusionCache {
             last_outdoors: false,
             bitset: OcclusionBitset::default(),
             queue: VecDeque::with_capacity(2048),
+            last_occlusion_us: 0.0,
         }
     }
 }
@@ -245,6 +247,8 @@ pub fn section_occlusion_system(
     mut cache: ResMut<SectionOcclusionCache>,
     mut section_query: Query<(&ChunkSection, &mut Visibility)>,
 ) {
+    let t_occ_start = std::time::Instant::now();
+
     let Some(world) = world_grid else { return };
     let Ok(cam_transform) = camera_query.single() else {
         return;
@@ -289,6 +293,8 @@ pub fn section_occlusion_system(
             }
         }
     }
+
+    cache.last_occlusion_us = t_occ_start.elapsed().as_secs_f32() * 1_000_000.0;
 }
 
 #[cfg(test)]
