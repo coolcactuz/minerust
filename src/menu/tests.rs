@@ -40,7 +40,7 @@ fn test_profiler_state_defaults() {
 #[test]
 fn test_seed_input_state_and_keycode_to_char() {
     let default_state = SeedInputState::default();
-    assert!(default_state.seed_text.is_empty());
+    assert_eq!(default_state.seed_text, "");
     assert!(!default_state.is_editing);
 
     // Test character conversion

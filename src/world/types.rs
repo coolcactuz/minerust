@@ -2,8 +2,8 @@ use bevy::prelude::*;
 
 pub const SEA_LEVEL: i32 = 64;
 pub const VIEW_DISTANCE: i32 = 16;
-pub const MAX_CHUNK_DISPATCH_PER_FRAME: usize = 12;
-pub const MAX_MESHES_PER_FRAME: usize = 6;
+pub const MAX_CHUNK_DISPATCH_PER_FRAME: usize = 4;
+pub const MAX_MESHES_PER_FRAME: usize = 4;
 pub const CHUNK_CACHE_CAPACITY: usize = 512;
 
 /// Represents the world seed (numeric or derived from string/text)

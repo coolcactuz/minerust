@@ -47,6 +47,7 @@ pub struct WorldGrid {
     pub queued_for_mesh: HashSet<IVec2>,
     pub dirty_chunks: HashSet<IVec2>,
     pub dirty_macro_chunks: HashSet<IVec2>,
+    pub saved_chunks_index: HashSet<IVec2>,
     pub save_dir: PathBuf,
     pub seed: WorldSeed,
     pub noise: NoiseGenerator,
@@ -55,6 +56,10 @@ pub struct WorldGrid {
     pub total_vertices: usize,
     pub chunk_vertices: HashMap<IVec2, usize>,
     pub chunk_lod: HashMap<IVec2, u8>,
+    pub mesh_sort_scratch: Vec<(IVec2, f32)>,
+    pub dirty_macro_scratch: Vec<IVec2>,
+    pub last_streaming_us: f32,
+    pub macro_rebuilds_count: usize,
 }
 
 impl Default for WorldGrid {
@@ -66,6 +71,25 @@ impl Default for WorldGrid {
 impl WorldGrid {
     pub fn new(seed: WorldSeed) -> Self {
         let noise = NoiseGenerator::new(seed.0);
+        let save_dir = PathBuf::from(format!("saves/world_{}/chunks", seed.0));
+        let mut saved_chunks_index = HashSet::default();
+        if let Ok(entries) = std::fs::read_dir(&save_dir) {
+            for entry in entries.flatten() {
+                if let Some(file_name) = entry.file_name().to_str() {
+                    if let Some(rest) = file_name
+                        .strip_prefix("chunk_")
+                        .and_then(|s| s.strip_suffix(".bin"))
+                    {
+                        let mut parts = rest.split('_');
+                        if let (Some(x_str), Some(z_str)) = (parts.next(), parts.next()) {
+                            if let (Ok(x), Ok(z)) = (x_str.parse::<i32>(), z_str.parse::<i32>()) {
+                                saved_chunks_index.insert(IVec2::new(x, z));
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Self {
             chunks: HashMap::default(),
             chunk_cache: quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY),
@@ -76,6 +100,7 @@ impl WorldGrid {
             modified_chunks: HashSet::default(),
             dirty_chunks: HashSet::default(),
             dirty_macro_chunks: HashSet::default(),
+            saved_chunks_index,
             in_progress_chunks: HashSet::default(),
             in_progress_meshes: HashSet::default(),
             last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
@@ -84,7 +109,7 @@ impl WorldGrid {
             generation_queue: Vec::new(),
             mesh_queue: Vec::new(),
             queued_for_mesh: HashSet::default(),
-            save_dir: PathBuf::from(format!("saves/world_{}/chunks", seed.0)),
+            save_dir,
             seed,
             noise,
             block_material: None,
@@ -92,6 +117,10 @@ impl WorldGrid {
             total_vertices: 0,
             chunk_vertices: HashMap::default(),
             chunk_lod: HashMap::default(),
+            mesh_sort_scratch: Vec::with_capacity(512),
+            dirty_macro_scratch: Vec::with_capacity(64),
+            last_streaming_us: 0.0,
+            macro_rebuilds_count: 0,
         }
     }
 
@@ -99,7 +128,10 @@ impl WorldGrid {
     pub fn mark_macro_chunk_dirty(&mut self, macro_coord: IVec2) {
         self.dirty_macro_chunks.insert(macro_coord);
         if let Some(macro_chunk) = self.macro_chunks.get_mut(&macro_coord) {
-            macro_chunk.dirty = true;
+            if !macro_chunk.dirty {
+                macro_chunk.dirty_age_frames = 0;
+                macro_chunk.dirty = true;
+            }
         }
     }
 
@@ -194,6 +226,7 @@ impl WorldGrid {
                     .join(format!("chunk_{}_{}.bin", coord.x, coord.y));
                 let compressed = chunk.to_compressed_bytes();
                 std::fs::write(&path, compressed)?;
+                self.saved_chunks_index.insert(coord);
                 saved += 1;
             }
         }
@@ -214,6 +247,7 @@ impl WorldGrid {
                     .join(format!("chunk_{}_{}.bin", coord.x, coord.y));
                 let compressed = chunk.to_compressed_bytes();
                 std::fs::write(&path, compressed)?;
+                self.saved_chunks_index.insert(coord);
                 saved += 1;
             }
         }
@@ -398,6 +432,6 @@ impl WorldGrid {
             update_chunk_mesh(coord, commands, self, meshes, materials, true, tier);
         }
 
-        crate::world::macro_lod::flush_dirty_macro_chunks(commands, self, meshes, materials);
+        crate::world::macro_lod::flush_dirty_macro_chunks(commands, self, meshes, materials, true);
     }
 }

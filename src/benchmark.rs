@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::camera::FpsCamera;
 use crate::menu::GraphicsSettings;
@@ -86,7 +87,7 @@ impl Default for BenchmarkConfig {
 }
 
 /// Comprehensive summary of benchmark metrics presented to the user on completion.
-#[derive(Resource, Clone, Debug, Default, PartialEq)]
+#[derive(Resource, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BenchmarkSummary {
     pub has_results: bool,
     pub total_duration_secs: f32,
@@ -97,6 +98,15 @@ pub struct BenchmarkSummary {
     pub avg_frametime_ms: f32,
     pub min_frametime_ms: f32,
     pub max_frametime_ms: f32,
+    pub static_fps: f32,
+    pub static_frametime_ms: f32,
+    pub avg_streaming_cpu_us: f32,
+    pub p99_streaming_cpu_us: f32,
+    pub max_streaming_cpu_us: f32,
+    pub avg_occlusion_cpu_us: f32,
+    pub avg_render_and_gpu_us: f32,
+    pub total_macro_rebuilds: usize,
+    pub macro_rebuilds_per_sec: f32,
     pub peak_rss_mb: f32,
     pub peak_vram_mb: f32,
     pub total_chunks_meshed: usize,
@@ -179,6 +189,10 @@ pub struct BenchmarkState {
     pub frame_times_ms: Vec<f32>,
     pub vertex_samples: Vec<usize>,
     pub chunk_samples: Vec<usize>,
+    pub streaming_cpu_samples: Vec<f32>,
+    pub occlusion_cpu_samples: Vec<f32>,
+    pub start_macro_rebuilds: usize,
+    pub end_macro_rebuilds: usize,
     pub peak_rss_mb: f32,
     pub peak_vram_mb: f32,
     pub last_telemetry_sample: f32,
@@ -203,6 +217,10 @@ impl Default for BenchmarkState {
             frame_times_ms: Vec::with_capacity(131_072),
             vertex_samples: Vec::with_capacity(16),
             chunk_samples: Vec::with_capacity(16),
+            streaming_cpu_samples: Vec::with_capacity(131_072),
+            occlusion_cpu_samples: Vec::with_capacity(131_072),
+            start_macro_rebuilds: 0,
+            end_macro_rebuilds: 0,
             peak_rss_mb: 0.0,
             peak_vram_mb: 0.0,
             last_telemetry_sample: 0.0,
@@ -222,6 +240,7 @@ pub fn benchmark_runner_system(
     mut cursor_options: Query<&mut bevy::window::CursorOptions, With<bevy::window::PrimaryWindow>>,
     mut player_query: Query<(&mut Transform, &mut FpsCamera, &mut PlayerPhysics)>,
     world: Option<Res<WorldGrid>>,
+    occlusion_cache: Option<Res<crate::world::occlusion::SectionOcclusionCache>>,
 ) {
     if !config.enabled || state.completed {
         return;
@@ -346,6 +365,7 @@ pub fn benchmark_runner_system(
                 state.phase = BenchmarkPhase::FlightRecording;
                 state.start_pos = Some(transform.translation);
                 state.distance_traveled = 0.0;
+                state.start_macro_rebuilds = world.as_ref().map_or(0, |w| w.macro_rebuilds_count);
             }
         }
         BenchmarkPhase::FlightRecording => {
@@ -363,6 +383,7 @@ pub fn benchmark_runner_system(
             state.frame_times_ms.push(frame_ms);
 
             if let Some(ref w) = world {
+                state.streaming_cpu_samples.push(w.last_streaming_us);
                 let v = w.total_vertices;
                 if state.vertex_samples.is_empty() {
                     state.vertex_samples.push(v);
@@ -378,9 +399,14 @@ pub fn benchmark_runner_system(
                 }
             }
 
+            if let Some(ref occ) = occlusion_cache {
+                state.occlusion_cpu_samples.push(occ.last_occlusion_us);
+            }
+
             if state.distance_traveled >= config.scenario.flight_distance {
                 state.phase = BenchmarkPhase::Completed;
                 state.completed = true;
+                state.end_macro_rebuilds = world.as_ref().map_or(0, |w| w.macro_rebuilds_count);
 
                 let mem = read_process_memory();
                 if mem.rss_mb > state.peak_rss_mb {
@@ -393,7 +419,19 @@ pub fn benchmark_runner_system(
 
                 let computed =
                     compute_benchmark_summary(&state, &config, graphics_settings.as_deref());
-                *summary = computed;
+                *summary = computed.clone();
+
+                if let Ok(json_str) = serde_json::to_string_pretty(&computed) {
+                    if let Err(e) = std::fs::write("benchmark_telemetry.json", json_str) {
+                        tracing::warn!("Failed to write benchmark_telemetry.json: {e}");
+                    } else {
+                        println!(
+                            "[BENCHMARK] Telemetry exported to \x1b[1;36mbenchmark_telemetry.json\x1b[0m"
+                        );
+                    }
+                }
+
+                print_benchmark_terminal_report(&computed);
 
                 println!(
                     "[BENCHMARK] In-game benchmark complete! Transitioning to results dashboard."
@@ -485,6 +523,34 @@ pub fn compute_benchmark_summary(
     let (verdict_title, verdict_desc) =
         BenchmarkSummary::generate_verdict(avg_fps, one_percent_low_fps, p99_frametime_ms);
 
+    let avg_streaming_cpu_us = if !state.streaming_cpu_samples.is_empty() {
+        state.streaming_cpu_samples.iter().sum::<f32>() / state.streaming_cpu_samples.len() as f32
+    } else {
+        0.0
+    };
+    let mut sorted_streaming = state.streaming_cpu_samples.clone();
+    sorted_streaming.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p99_stream_idx = ((sorted_streaming.len() as f32 * 0.99) as usize)
+        .min(sorted_streaming.len().saturating_sub(1));
+    let p99_streaming_cpu_us = sorted_streaming.get(p99_stream_idx).copied().unwrap_or(0.0);
+    let max_streaming_cpu_us = sorted_streaming.last().copied().unwrap_or(0.0);
+
+    let avg_occlusion_cpu_us = if !state.occlusion_cpu_samples.is_empty() {
+        state.occlusion_cpu_samples.iter().sum::<f32>() / state.occlusion_cpu_samples.len() as f32
+    } else {
+        0.0
+    };
+    let avg_render_and_gpu_us =
+        ((avg_frametime_ms * 1000.0) - avg_streaming_cpu_us - avg_occlusion_cpu_us).max(0.0);
+    let total_macro_rebuilds = state
+        .end_macro_rebuilds
+        .saturating_sub(state.start_macro_rebuilds);
+    let macro_rebuilds_per_sec = if total_duration_secs > 0.0 {
+        total_macro_rebuilds as f32 / total_duration_secs
+    } else {
+        0.0
+    };
+
     BenchmarkSummary {
         has_results: true,
         total_duration_secs,
@@ -495,6 +561,15 @@ pub fn compute_benchmark_summary(
         avg_frametime_ms,
         min_frametime_ms,
         max_frametime_ms,
+        static_fps: state.static_fps,
+        static_frametime_ms: state.static_frametime_ms,
+        avg_streaming_cpu_us,
+        p99_streaming_cpu_us,
+        max_streaming_cpu_us,
+        avg_occlusion_cpu_us,
+        avg_render_and_gpu_us,
+        total_macro_rebuilds,
+        macro_rebuilds_per_sec,
         peak_rss_mb: state.peak_rss_mb,
         peak_vram_mb: state.peak_vram_mb,
         total_chunks_meshed: state.static_chunks,
@@ -509,6 +584,87 @@ pub fn compute_benchmark_summary(
         verdict_title,
         verdict_desc,
     }
+}
+
+/// Formats and prints a comprehensive scientific benchmark report directly to stdout.
+pub fn print_benchmark_terminal_report(summary: &BenchmarkSummary) {
+    println!("\n================================================================================");
+    println!("                   MINERUST SCIENTIFIC BENCHMARK REPORT                         ");
+    println!("================================================================================");
+    println!(
+        "  Flight Traversal       : {:.0}m @ 50.0 m/s (Duration: {:.2}s)",
+        summary.distance_traveled, summary.total_duration_secs
+    );
+    println!(
+        "  Render Distance        : {} chunks (Radius: {}m)",
+        summary.tested_view_distance,
+        summary.tested_view_distance * 16
+    );
+    println!("  Total Recorded Frames  : {} frames", summary.total_frames);
+    println!("--------------------------------------------------------------------------------");
+    println!(
+        "  STATIC BASELINE RENDER : \x1b[1;32m{:.1} FPS\x1b[0m ({:.2} ms frametime)",
+        summary.static_fps, summary.static_frametime_ms
+    );
+    println!(
+        "  FLIGHT TRAVERSAL (AVG) : \x1b[1;33m{:.1} FPS\x1b[0m ({:.2} ms frametime)",
+        summary.avg_fps, summary.avg_frametime_ms
+    );
+    println!(
+        "  1% LOW FRAMERATE       : \x1b[1;31m{:.1} FPS\x1b[0m (P99: {:.2} ms)",
+        summary.one_percent_low_fps, summary.p99_frametime_ms
+    );
+    println!("--------------------------------------------------------------------------------");
+    println!(" [ CPU & GPU TIME BUDGET BREAKDOWN ]");
+    let total_us = summary.avg_frametime_ms * 1000.0;
+    let stream_pct = if total_us > 0.0 {
+        (summary.avg_streaming_cpu_us / total_us) * 100.0
+    } else {
+        0.0
+    };
+    let occ_pct = if total_us > 0.0 {
+        (summary.avg_occlusion_cpu_us / total_us) * 100.0
+    } else {
+        0.0
+    };
+    let gpu_pct = if total_us > 0.0 {
+        (summary.avg_render_and_gpu_us / total_us) * 100.0
+    } else {
+        0.0
+    };
+    println!("  * Total Frame Budget   : {:>7.1} µs (100.0%)", total_us);
+    println!(
+        "  - World Streaming Sys  : {:>7.1} µs ({:>5.1}%) [P99: {:.1} µs, Max: {:.1} µs]",
+        summary.avg_streaming_cpu_us,
+        stream_pct,
+        summary.p99_streaming_cpu_us,
+        summary.max_streaming_cpu_us
+    );
+    println!(
+        "  - Section Occlusion Sys: {:>7.1} µs ({:>5.1}%)",
+        summary.avg_occlusion_cpu_us, occ_pct
+    );
+    println!(
+        "  - Bevy Engine & GPU    : {:>7.1} µs ({:>5.1}%)",
+        summary.avg_render_and_gpu_us, gpu_pct
+    );
+    println!("--------------------------------------------------------------------------------");
+    println!(" [ GPU PIPELINE & MEMORY TELEMETRY ]");
+    println!(
+        "  * Macro-Chunk Rebuilds : {} clusters ({:.1} rebuilds/sec)",
+        summary.total_macro_rebuilds, summary.macro_rebuilds_per_sec
+    );
+    println!(
+        "  * Peak Geometry        : {} vertices (~{} triangles)",
+        summary.peak_vertices,
+        summary.peak_vertices / 2
+    );
+    println!("  * Peak Host RAM (RSS)  : {:.1} MB", summary.peak_rss_mb);
+    println!("  * Peak GPU VRAM        : {:.1} MB", summary.peak_vram_mb);
+    println!("================================================================================");
+    println!("  VERDICT: {}", summary.verdict_title);
+    println!("  {}", summary.verdict_desc);
+    println!("================================================================================\n");
 }
 
 /// Plugin that integrates benchmark systems into Bevy.

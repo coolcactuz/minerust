@@ -641,6 +641,7 @@ fn test_macro_chunk_lod1_consolidation_and_lifecycle() {
                     &mut world_grid,
                     &mut meshes,
                     &mut materials,
+                    true,
                 );
             });
         });
@@ -715,4 +716,3 @@ fn test_dirty_macro_chunks_tracking() {
     world.despawn_all_chunks(&mut commands);
     assert!(world.dirty_macro_chunks.is_empty());
 }
-

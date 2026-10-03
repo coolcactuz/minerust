@@ -144,7 +144,9 @@ fn main() {
     if opts.benchmark {
         benchmark_config.enabled = true;
         benchmark_config.auto_exit = opts.benchmark_exit;
-        let vd = opts.view_distance.unwrap_or(graphics_settings.view_distance);
+        let vd = opts
+            .view_distance
+            .unwrap_or(graphics_settings.view_distance);
         benchmark_config.scenario = minerust::benchmark::BenchmarkScenario::production(vd);
         if let Some(dist) = opts.benchmark_distance {
             benchmark_config.scenario.flight_distance = dist;
@@ -264,10 +266,11 @@ fn setup(
     // 1. Spawn FPS camera with integrated AmbientLight, PlayerPhysics component, and DistanceFog (if enabled in settings)
     let fps_camera = FpsCamera::default();
 
+    let max_vis_dist = (graphics_settings.view_distance as f32 * 16.0 * 1.5).max(1000.0);
     let mut cam_builder = commands.spawn((
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
-            far: 2500.0,
+            far: max_vis_dist,
             ..default()
         }),
         AmbientLight {

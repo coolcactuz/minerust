@@ -96,8 +96,8 @@ mod tests {
     fn test_entered_chunks_stationary() {
         let prev = IVec2::new(5, 5);
         let curr = IVec2::new(5, 5);
-        assert!(get_entered_chunks(prev, curr, 10).is_empty());
-        assert!(get_exited_chunks(prev, curr, 10).is_empty());
+        assert_eq!(get_entered_chunks(prev, curr, 10), [] as [IVec2; 0]);
+        assert_eq!(get_exited_chunks(prev, curr, 10), [] as [IVec2; 0]);
     }
 
     #[test]
