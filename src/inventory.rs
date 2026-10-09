@@ -3,11 +3,11 @@
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::text::FontSize;
-use bevy::ui_widgets::Button;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::block::{BlockFace, BlockType};
 use crate::menu::MenuState;
+use crate::menu::types::Button;
 
 pub const HOTBAR_SLOTS: usize = 9;
 pub const MAIN_INVENTORY_SLOTS: usize = 27;

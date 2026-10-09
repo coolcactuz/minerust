@@ -3,7 +3,6 @@
 use bevy::app::AppExit;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy::ui_widgets::Button;
 use bevy::window::{
     CursorGrabMode, CursorOptions, MonitorSelection, PresentMode, PrimaryWindow, WindowMode,
 };
@@ -16,9 +15,9 @@ use crate::voxel_material::VoxelBlockMaterial;
 use crate::world::{WorldGrid, WorldSeed, find_safe_surface_spawn};
 
 use super::types::{
-    BenchmarkResultsRoot, FpsCapTrack, GraphicsGreedyTrack, GraphicsLodTrack, GraphicsSettings,
-    MainMenuRoot, MenuButtonAction, MenuScreen, MenuState, PauseMenuRoot, ProfilerState,
-    SeedInputBox, SeedInputState, SettingsMenuRoot, SliderTrack, ViewDistanceTrack,
+    BenchmarkResultsRoot, Button, FpsCapTrack, GraphicsGreedyTrack, GraphicsLodTrack,
+    GraphicsSettings, MainMenuRoot, MenuButtonAction, MenuScreen, MenuState, PauseMenuRoot,
+    ProfilerState, SeedInputBox, SeedInputState, SettingsMenuRoot, SliderTrack, ViewDistanceTrack,
 };
 
 #[derive(SystemParam)]

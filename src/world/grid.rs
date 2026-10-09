@@ -39,8 +39,8 @@ pub struct WorldGrid {
     pub modified_chunks: HashSet<IVec2>,
     pub in_progress_chunks: HashSet<IVec2>,
     pub in_progress_meshes: HashSet<IVec2>,
-    pub last_player_chunk: IVec2,
-    pub last_lod_player_pos: Vec3,
+    pub last_player_chunk: Option<IVec2>,
+    pub last_lod_player_pos: Option<Vec3>,
     pub mesh_queue_dirty: bool,
     pub generation_queue: Vec<IVec2>,
     pub mesh_queue: Vec<IVec2>,
@@ -103,8 +103,8 @@ impl WorldGrid {
             saved_chunks_index,
             in_progress_chunks: HashSet::default(),
             in_progress_meshes: HashSet::default(),
-            last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
-            last_lod_player_pos: Vec3::splat(f32::MAX),
+            last_player_chunk: None,
+            last_lod_player_pos: None,
             mesh_queue_dirty: false,
             generation_queue: Vec::new(),
             mesh_queue: Vec::new(),
@@ -362,8 +362,8 @@ impl WorldGrid {
         self.dirty_macro_chunks.clear();
         self.modified_chunks.clear();
         self.chunk_cache = quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY);
-        self.last_player_chunk = IVec2::new(i32::MAX, i32::MAX);
-        self.last_lod_player_pos = Vec3::splat(f32::MAX);
+        self.last_player_chunk = None;
+        self.last_lod_player_pos = None;
         self.mesh_queue_dirty = false;
     }
 

@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
 
-pub const VOXEL_SHADER_PATH: &str = "shaders/voxel.wgsl";
+pub const VOXEL_SHADER_PATH: &str = "shaders/voxel.wesl";
 
 pub type VoxelBlockMaterial = ExtendedMaterial<StandardMaterial, VoxelExtension>;
 

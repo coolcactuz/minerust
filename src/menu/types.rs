@@ -1,4 +1,14 @@
+#![allow(deprecated)]
+
 use bevy::prelude::*;
+use bevy::ui::{FocusPolicy, Interaction};
+
+/// Custom marker struct for UI buttons, automatically requiring interactive Bevy UI components.
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+#[allow(deprecated)]
+#[require(Node, FocusPolicy::Block, Interaction)]
+pub struct Button;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MenuScreen {
