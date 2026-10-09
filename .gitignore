@@ -1,4 +1,5 @@
 /target
+/dist
 saves/
 benchmark_results.json
 benchmark_results/
