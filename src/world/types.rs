@@ -7,7 +7,10 @@ pub const MAX_MESHES_PER_FRAME: usize = 4;
 pub const CHUNK_CACHE_CAPACITY: usize = 512;
 
 /// Represents the world seed (numeric or derived from string/text)
-#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(
+    Resource, Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
 pub struct WorldSeed(pub u64);
 
 impl Default for WorldSeed {
@@ -54,7 +57,7 @@ impl WorldSeed {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BiomeType {
     Ocean,
     FrozenOcean,
