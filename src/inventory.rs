@@ -1,6 +1,9 @@
+#![allow(deprecated)]
+
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::text::FontSize;
+use bevy::ui_widgets::Button;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::block::{BlockFace, BlockType};

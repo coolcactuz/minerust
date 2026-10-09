@@ -1,4 +1,7 @@
+#![allow(deprecated)]
+
 use bevy::prelude::*;
+use bevy::ui_widgets::Button;
 
 use super::descriptions::get_option_description;
 use super::types::{

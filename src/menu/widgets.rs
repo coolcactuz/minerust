@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::text::FontSize;
+use bevy::ui_widgets::Button;
 
 use super::types::{
     MenuButtonAction, OptionTooltipCard, OptionTooltipDesc, OptionTooltipHeader,

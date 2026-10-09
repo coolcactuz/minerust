@@ -1,6 +1,9 @@
+#![allow(deprecated)]
+
 use bevy::app::AppExit;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use bevy::ui_widgets::Button;
 use bevy::window::{
     CursorGrabMode, CursorOptions, MonitorSelection, PresentMode, PrimaryWindow, WindowMode,
 };
