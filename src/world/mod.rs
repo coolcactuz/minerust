@@ -4,6 +4,7 @@
 pub mod frontier;
 pub mod grid;
 pub mod macro_lod;
+pub mod mesh_apply;
 pub mod occlusion;
 pub mod spawn;
 pub mod streaming;

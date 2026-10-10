@@ -209,6 +209,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .insert_resource(graphics_settings)
+        .insert_resource(bevy::light::DirectionalLightShadowMap { size: 1024 })
         .insert_resource(profiler_state)
         .insert_resource(seed_state)
         .insert_resource(menu_state)
