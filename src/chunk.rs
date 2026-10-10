@@ -23,12 +23,13 @@ impl Default for Chunk {
 
 impl Chunk {
     pub fn new() -> Self {
+        #[allow(clippy::large_stack_arrays)]
         let boxed: Box<[BlockType; CHUNK_BLOCKS]> = match vec![BlockType::Air; CHUNK_BLOCKS]
             .into_boxed_slice()
             .try_into()
         {
             Ok(b) => b,
-            Err(_) => unreachable!("vec length exactly matches CHUNK_BLOCKS"),
+            Err(_) => Box::new([BlockType::Air; CHUNK_BLOCKS]),
         };
         Self {
             blocks: Arc::from(boxed),

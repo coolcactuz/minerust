@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use bevy::prelude::*;
 
 use super::descriptions::get_option_description;
@@ -5,7 +7,7 @@ use super::types::{
     BenchmarkAvgFpsText, BenchmarkBannerText, BenchmarkChunksText, BenchmarkFrametimeText,
     BenchmarkMinMaxFrametimeText, BenchmarkOnePercentLowText, BenchmarkP99Text, BenchmarkRamText,
     BenchmarkRunningBanner, BenchmarkSettingsText, BenchmarkVerdictDescText,
-    BenchmarkVerdictTitleText, BenchmarkVertsText, BenchmarkVramText, DebugHudBtnText,
+    BenchmarkVerdictTitleText, BenchmarkVertsText, BenchmarkVramText, Button, DebugHudBtnText,
     DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsLimiter, FullscreenBtnText,
     GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsLodBtnText,
     GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, MenuButtonAction, OptionTooltipCard,

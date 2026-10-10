@@ -68,6 +68,47 @@ pub fn load_player_from_disk(path: &Path) -> Result<PlayerSaveData, std::io::Err
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
+/// Persisted metadata of a saved world including seed, world name, creation timestamp, and engine version.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct WorldMetadata {
+    pub seed: crate::world::WorldSeed,
+    pub world_name: String,
+    pub created_at_unix: u64,
+    pub last_played_unix: u64,
+    pub engine_version: String,
+}
+
+impl WorldMetadata {
+    pub fn new(seed: crate::world::WorldSeed, world_name: impl Into<String>) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        Self {
+            seed,
+            world_name: world_name.into(),
+            created_at_unix: now,
+            last_played_unix: now,
+            engine_version: env!("CARGO_PKG_VERSION").to_string(),
+        }
+    }
+
+    pub fn save_to_disk(&self, path: &Path) -> Result<(), std::io::Error> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+
+    pub fn load_from_disk(path: &Path) -> Result<Self, std::io::Error> {
+        let content = std::fs::read_to_string(path)?;
+        serde_json::from_str(&content)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    }
+}
+
 pub const LAST_WORLD_FILE: &str = "saves/last_world.txt";
 
 /// Returns the seed of the most recently played world, if any exists.
@@ -96,10 +137,17 @@ pub fn get_latest_saved_world() -> Option<u64> {
             if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
                 if let Some(seed_str) = file_name.strip_prefix("world_") {
                     if let Ok(seed) = seed_str.parse::<u64>() {
-                        let mtime = entry
-                            .metadata()
-                            .and_then(|m| m.modified())
-                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                        let meta_path = path.join("meta.json");
+                        let meta_time = WorldMetadata::load_from_disk(&meta_path).ok().map(|m| {
+                            std::time::UNIX_EPOCH
+                                + std::time::Duration::from_secs(m.last_played_unix)
+                        });
+                        let mtime = meta_time.unwrap_or_else(|| {
+                            entry
+                                .metadata()
+                                .and_then(|m| m.modified())
+                                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                        });
                         if best_world.as_ref().is_none_or(|b| mtime > b.1) {
                             best_world = Some((seed, mtime));
                         }
@@ -112,10 +160,61 @@ pub fn get_latest_saved_world() -> Option<u64> {
     best_world.map(|(seed, _)| seed)
 }
 
-/// Records the last played world seed to disk.
+/// Lists all saved worlds on disk with their metadata sorted by most recently played.
+#[must_use]
+pub fn get_saved_worlds_metadata() -> Vec<WorldMetadata> {
+    let Ok(entries) = std::fs::read_dir("saves") else {
+        return Vec::new();
+    };
+
+    let mut worlds = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
+                if let Some(seed_str) = file_name.strip_prefix("world_") {
+                    if let Ok(seed) = seed_str.parse::<u64>() {
+                        let meta_path = path.join("meta.json");
+                        let meta = WorldMetadata::load_from_disk(&meta_path).unwrap_or_else(|_| {
+                            let mtime = entry
+                                .metadata()
+                                .and_then(|m| m.modified())
+                                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                            let secs = mtime
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map_or(0, |d| d.as_secs());
+                            WorldMetadata {
+                                seed: crate::world::WorldSeed(seed),
+                                world_name: format!("World {seed}"),
+                                created_at_unix: secs,
+                                last_played_unix: secs,
+                                engine_version: env!("CARGO_PKG_VERSION").to_string(),
+                            }
+                        });
+                        worlds.push(meta);
+                    }
+                }
+            }
+        }
+    }
+
+    worlds.sort_by_key(|a| std::cmp::Reverse(a.last_played_unix));
+    worlds
+}
+
+/// Records the last played world seed to disk and updates world metadata.
 pub fn set_last_played_world(seed: u64) {
     let _ = std::fs::create_dir_all("saves");
     let _ = std::fs::write(LAST_WORLD_FILE, seed.to_string());
+
+    let meta_path = std::path::PathBuf::from(format!("saves/world_{seed}/meta.json"));
+    let mut meta = WorldMetadata::load_from_disk(&meta_path).unwrap_or_else(|_| {
+        WorldMetadata::new(crate::world::WorldSeed(seed), format!("World {seed}"))
+    });
+    meta.last_played_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let _ = meta.save_to_disk(&meta_path);
 }
 
 /// Timer for periodic auto-saving during gameplay.
@@ -271,6 +370,31 @@ mod tests {
             .expect("loading chunk from disk should succeed");
         let (_, local) = target_pos.to_chunk_and_local();
         assert_eq!(loaded.get_local(local), BlockType::Glass);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_world_metadata_serialization_roundtrip() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "minerust_meta_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let meta_path = temp_dir.join("meta.json");
+
+        let original = WorldMetadata::new(crate::world::WorldSeed(987654321), "Survival Island");
+        original
+            .save_to_disk(&meta_path)
+            .expect("saving metadata should succeed");
+
+        let loaded =
+            WorldMetadata::load_from_disk(&meta_path).expect("loading metadata should succeed");
+
+        assert_eq!(original, loaded);
+        assert_eq!(loaded.world_name, "Survival Island");
+        assert_eq!(loaded.seed.0, 987654321);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

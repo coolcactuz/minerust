@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use super::descriptions::get_option_description;
 use super::seed::keycode_to_char;
 use super::types::{GraphicsSettings, MenuButtonAction, ProfilerState, SeedInputState};
@@ -249,4 +251,133 @@ fn test_menu_systems_schedule_no_conflicts() {
     app.finish();
     app.cleanup();
     app.update();
+}
+
+#[test]
+fn test_menu_buttons_have_interaction_component() {
+    use crate::menu::types::Button;
+    use crate::menu::widgets::{spawn_menu_button, spawn_settings_button, spawn_slider_setting};
+    use bevy::prelude::*;
+    #[allow(deprecated)]
+    use bevy::ui::Interaction;
+
+    #[derive(Component)]
+    struct MarkerBtn;
+    #[derive(Component)]
+    struct MarkerText;
+    #[derive(Component)]
+    struct MarkerTrack;
+    #[derive(Component)]
+    struct MarkerFill;
+    #[derive(Component)]
+    struct MarkerThumb;
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+
+    let world = app.world_mut();
+    let root = world.spawn(Node::default()).id();
+
+    let mut root_commands = world.commands();
+    let mut entity_cmds = root_commands.entity(root);
+    entity_cmds.with_children(|parent| {
+        spawn_menu_button(parent, "Play", MenuButtonAction::NewGame, false);
+        spawn_settings_button(
+            parent,
+            "VSync",
+            MenuButtonAction::ToggleVsync,
+            MarkerBtn,
+            200.0,
+            40.0,
+            14.0,
+        );
+        spawn_slider_setting(
+            parent,
+            MarkerText,
+            MarkerTrack,
+            MarkerFill,
+            MarkerThumb,
+            MenuButtonAction::StepFpsCapLeft,
+            MenuButtonAction::StepFpsCapRight,
+            MenuButtonAction::SlideFpsCap,
+            MenuButtonAction::CycleFpsCap,
+            "FPS: MAX",
+            0.5,
+            320.0,
+            50.0,
+        );
+    });
+
+    world.flush();
+
+    // Verify all button entities have BOTH Button AND Interaction components
+    let mut query = world.query_filtered::<Entity, (With<Button>, With<Interaction>)>();
+    let count = query.iter(world).count();
+    assert!(
+        count >= 6,
+        "Spawned menu and slider buttons must all possess the Interaction component for mouse events (found {count})"
+    );
+
+    // Verify button actions are queryable alongside Interaction
+    let mut action_query = world.query::<(&Interaction, &MenuButtonAction)>();
+    let action_count = action_query.iter(world).count();
+    assert!(
+        action_count >= 6,
+        "Every button must be queryable with (&Interaction, &MenuButtonAction) (found {action_count})"
+    );
+}
+
+#[test]
+fn test_menu_button_hover_system_reacts_to_interaction() {
+    use crate::menu::interactions::menu_button_hover_system;
+    use crate::menu::widgets::spawn_menu_button;
+    use bevy::prelude::*;
+    #[allow(deprecated)]
+    use bevy::ui::Interaction;
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+
+    let world = app.world_mut();
+    let root = world.spawn(Node::default()).id();
+
+    let mut root_commands = world.commands();
+    let mut entity_cmds = root_commands.entity(root);
+    entity_cmds.with_children(|parent| {
+        spawn_menu_button(parent, "Play", MenuButtonAction::NewGame, false);
+    });
+    world.flush();
+
+    let mut query = world.query_filtered::<Entity, With<crate::menu::Button>>();
+    let btn_entity = query.iter(world).next().expect("Button entity spawned");
+
+    // Initially Interaction::None
+    let initial_bg = *world
+        .get::<BackgroundColor>(btn_entity)
+        .expect("Has BackgroundColor");
+
+    // Change interaction to Hovered
+    let mut interaction = world
+        .get_mut::<Interaction>(btn_entity)
+        .expect("Has Interaction");
+    *interaction = Interaction::Hovered;
+
+    // Run hover system
+    let mut schedule = Schedule::default();
+    schedule.add_systems(menu_button_hover_system);
+    schedule.run(world);
+
+    // Verify background changed to hovered color
+    let hovered_bg = *world
+        .get::<BackgroundColor>(btn_entity)
+        .expect("Has BackgroundColor");
+    assert_ne!(
+        initial_bg.0, hovered_bg.0,
+        "Hover system must react to Interaction::Hovered and restyle button"
+    );
+    assert_eq!(
+        hovered_bg.0,
+        Color::srgba(0.26, 0.26, 0.34, 0.95),
+        "Hovered button must receive correct hover color"
+    );
 }

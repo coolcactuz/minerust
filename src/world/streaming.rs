@@ -441,12 +441,18 @@ pub fn world_streaming_system(
         }
     }
 
-    if player_chunk != world.last_player_chunk || settings_changed {
+    if world.last_player_chunk != Some(player_chunk) || settings_changed {
         let prev_player_chunk = world.last_player_chunk;
-        world.last_player_chunk = player_chunk;
+        world.last_player_chunk = Some(player_chunk);
 
-        let delta = player_chunk - prev_player_chunk;
-        let is_initial_or_teleport = settings_changed || delta.x.abs() > 4 || delta.y.abs() > 4;
+        let is_initial_or_teleport = match prev_player_chunk {
+            None => true,
+            Some(prev) => {
+                let dx = player_chunk.x.saturating_sub(prev.x).abs();
+                let dy = player_chunk.y.saturating_sub(prev.y).abs();
+                settings_changed || dx > 4 || dy > 4
+            }
+        };
 
         let (chunks_to_queue, chunks_to_demesh, chunks_to_remove) = if is_initial_or_teleport {
             let mut needed_chunks = Vec::new();
@@ -491,9 +497,9 @@ pub fn world_streaming_system(
             }
 
             (to_queue, to_demesh, to_remove)
-        } else {
+        } else if let Some(prev) = prev_player_chunk {
             // Incremental frontier scanning: only scan newly entered / exited boundaries
-            let entered_gen = get_entered_chunks(prev_player_chunk, player_chunk, gen_dist);
+            let entered_gen = get_entered_chunks(prev, player_chunk, gen_dist);
             let mut newly_needed = Vec::new();
             for coord in entered_gen {
                 if !world.chunks.contains_key(&coord) && !world.in_progress_chunks.contains(&coord)
@@ -519,7 +525,7 @@ pub fn world_streaming_system(
             new_queue.append(&mut world.generation_queue);
             world.generation_queue = new_queue;
 
-            let entered_view = get_entered_chunks(prev_player_chunk, player_chunk, view_dist);
+            let entered_view = get_entered_chunks(prev, player_chunk, view_dist);
             let mut to_queue = Vec::new();
             for coord in entered_view {
                 if world.chunks.contains_key(&coord) && !world.chunk_lod.contains_key(&coord) {
@@ -527,7 +533,7 @@ pub fn world_streaming_system(
                 }
             }
 
-            let exited_view = get_exited_chunks(prev_player_chunk, player_chunk, view_dist);
+            let exited_view = get_exited_chunks(prev, player_chunk, view_dist);
             let mut to_demesh = Vec::new();
             for coord in exited_view {
                 if world.chunk_lod.contains_key(&coord) {
@@ -535,7 +541,7 @@ pub fn world_streaming_system(
                 }
             }
 
-            let exited_unload = get_exited_chunks(prev_player_chunk, player_chunk, unload_dist);
+            let exited_unload = get_exited_chunks(prev, player_chunk, unload_dist);
             let mut to_remove = Vec::new();
             for coord in exited_unload {
                 if world.chunks.contains_key(&coord) {
@@ -544,6 +550,8 @@ pub fn world_streaming_system(
             }
 
             (to_queue, to_demesh, to_remove)
+        } else {
+            (Vec::new(), Vec::new(), Vec::new())
         };
 
         for coord in chunks_to_queue {
@@ -766,11 +774,13 @@ pub fn world_streaming_system(
 
     // Dynamic 3D LOD transitions: check if any active chunks need to change mesh tier as player moves in 3D.
     // Spatial throttling: only scan chunk LODs if graphics settings changed or player moved >= 8.0m (64.0m sq, half chunk).
-    let should_check_lod =
-        settings_changed || player_pos.distance_squared(world.last_lod_player_pos) >= 64.0;
+    let should_check_lod = match world.last_lod_player_pos {
+        None => true,
+        Some(last_pos) => settings_changed || player_pos.distance_squared(last_pos) >= 64.0,
+    };
 
     if should_check_lod {
-        world.last_lod_player_pos = player_pos;
+        world.last_lod_player_pos = Some(player_pos);
         let mut chunks_needing_lod_update = Vec::new();
 
         if settings_changed {

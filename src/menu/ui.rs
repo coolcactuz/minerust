@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use bevy::prelude::*;
 use bevy::text::FontSize;
 
@@ -5,7 +7,7 @@ use super::types::{
     BenchmarkAvgFpsText, BenchmarkBannerText, BenchmarkChunksText, BenchmarkFrametimeText,
     BenchmarkMinMaxFrametimeText, BenchmarkOnePercentLowText, BenchmarkP99Text, BenchmarkRamText,
     BenchmarkResultsRoot, BenchmarkRunningBanner, BenchmarkSettingsText, BenchmarkVerdictDescText,
-    BenchmarkVerdictTitleText, BenchmarkVertsText, BenchmarkVramText, DebugHudBtnText,
+    BenchmarkVerdictTitleText, BenchmarkVertsText, BenchmarkVramText, Button, DebugHudBtnText,
     DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsCapTrack, FullscreenBtnText,
     GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsGreedyTrack,
     GraphicsLodBtnText, GraphicsLodFill, GraphicsLodThumb, GraphicsLodTrack, GraphicsSettings,
