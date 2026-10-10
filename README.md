@@ -78,11 +78,33 @@ Rather than relying on ready-made high-level game features, the goal of this pro
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### 1. Pre-built Executables (Ready to Play)
+
+Standalone packages with all assets and shaders bundled are available on the [Releases](https://github.com/coolcactuz/minerust/releases) page:
+
+* **Linux (AppImage)**:
+  ```bash
+  chmod +x minerust-*-linux-x86_64.AppImage
+  ./minerust-*-linux-x86_64.AppImage
+  ```
+  *(Or double-click the `.AppImage` file in your desktop environment).*
+* **macOS (Apple Silicon / Intel DMG)**:
+  Open `minerust-*-macos-*.dmg`, drag `MineRust.app` into **Applications**, and launch it from Finder, Launchpad, or Spotlight.
+* **Windows (Portable ZIP)**:
+  Extract `minerust-*-windows-x86_64-portable.zip` and double-click `minerust.exe`.
+
+> [!TIP]
+> The standalone executables accept the same command-line flags as running via Cargo (e.g. `./minerust-*.AppImage --profile` or `minerust.exe --seed "42"`).
+
+---
+
+### 2. Building from Source (Developers)
+
+#### Prerequisites
 - [Rust toolchain](https://www.rust-lang.org/) (stable, 2024 edition supported)
 - A GPU with drivers supporting Vulkan, DirectX 12, or Metal (via WGPU)
 
-### Running
+#### Running with Cargo
 
 ```bash
 # Clone the repository
@@ -97,6 +119,63 @@ cargo run --release -- --profile
 
 # Run with a custom seed
 cargo run --release -- --seed "my_custom_seed"
+```
+
+---
+
+### 3. Command-Line Options
+
+Both the pre-built executables and `cargo run --release -- [OPTIONS]` support the following flags:
+
+| Option | Description |
+| :--- | :--- |
+| `-s, --seed <SEED>` | World seed (alphanumeric text or 64-bit integer) |
+| `-p, --profile` | Launch directly with the real-time F3 performance profiler enabled |
+| `-q, --quickstart` | Start directly in the game world, bypassing the main menu |
+| `-b, --benchmark` | Launch automated flight benchmark directly |
+| `--benchmark-distance <m>` | Benchmark flight distance in meters (default: 5000m) |
+| `--benchmark-exit` | Automatically close the engine when the benchmark finishes |
+| `--view-distance <chunks>` | Set initial render distance (clamped between 2 and 64 chunks) |
+| `-h, --help` | Print help information |
+
+---
+
+## 💾 Save Files & Data Persistence
+
+MineRust automatically persists world chunks, player coordinates, and graphics settings.
+
+### Default Storage Locations
+
+| Platform / Distribution | Data Directory |
+| :--- | :--- |
+| **Linux (AppImage / System)** | `~/.local/share/minerust/` (`$XDG_DATA_HOME/minerust/`) |
+| **macOS (DMG / `.app`)** | `~/Library/Application Support/minerust/` |
+| **Windows (Portable ZIP)** | `./saves/` (self-contained) or `%APPDATA%\minerust\` |
+| **Local Development** | `./saves/` (repository root) |
+
+Inside the data directory:
+* `saves/world_<seed>/` — Binary chunk blocks and `player.json` (inventory, position, yaw/pitch).
+* `saves/last_world.txt` — Tracks the seed of the most recently played world.
+* `settings.json` — User graphics settings (view distance, LOD, FPS limit, greedy meshing).
+
+### Portable Mode
+If you prefer a fully self-contained setup (e.g. running from a USB drive):
+* For **AppImage**: Place the AppImage next to a `saves/` folder.
+* For **Binaries**: Ensure a `saves/` folder exists in the working directory alongside the executable.
+* You can also force a custom path at any time via the `MINERUST_DATA_DIR` environment variable.
+
+### Complete Data Removal / Reset
+To completely remove all saved worlds and configuration:
+
+```bash
+# Linux
+rm -rf ~/.local/share/minerust
+
+# macOS
+rm -rf ~/Library/Application\ Support/minerust
+
+# Windows (PowerShell)
+Remove-Item -Recurse -Force "$env:APPDATA\minerust"
 ```
 
 ---

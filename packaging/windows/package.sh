@@ -38,6 +38,7 @@ fi
 
 /bin/cp -f "$BIN/minerust.exe" "$STAGE/"
 /bin/cp -rf "$ROOT/assets" "$STAGE/"
+mkdir -p "$STAGE/saves"
 copy_docs "$STAGE"
 
 ZIP="$DIST/$BASENAME.zip"
