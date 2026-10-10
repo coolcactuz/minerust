@@ -70,7 +70,6 @@ fi
 echo "==> assembling $APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 /bin/cp -f "$WORK/bin/minerust" "$APP/Contents/MacOS/minerust"
-/bin/cp -rf "$ROOT/assets" "$APP/Contents/MacOS/"
 /bin/cp -rf "$ROOT/assets" "$APP/Contents/Resources/"
 /bin/cp -f "$ROOT/assets/icons/minerust.icns" "$APP/Contents/Resources/minerust.icns"
 

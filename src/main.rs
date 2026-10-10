@@ -165,21 +165,47 @@ fn main() {
         bevy::window::WindowMode::Windowed
     };
 
+    let asset_plugin = {
+        #[cfg(target_os = "macos")]
+        {
+            let mut plugin = bevy::asset::AssetPlugin::default();
+            if let Ok(current_exe) = std::env::current_exe() {
+                if let Some(contents) = current_exe.parent().and_then(|p| p.parent()) {
+                    let resources_assets = contents.join("Resources").join("assets");
+                    if resources_assets.exists() {
+                        if let Some(path_str) = resources_assets.to_str() {
+                            plugin.file_path = path_str.to_string();
+                        }
+                    }
+                }
+            }
+            plugin
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            bevy::asset::AssetPlugin::default()
+        }
+    };
+
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: if opts.profile_mode {
-                    format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
-                } else {
-                    format!("MineRust - Seed: {}", seed.0)
-                },
-                resolution: WindowResolution::new(1280, 720),
-                present_mode,
-                mode,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: if opts.profile_mode {
+                            format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
+                        } else {
+                            format!("MineRust - Seed: {}", seed.0)
+                        },
+                        resolution: WindowResolution::new(1280, 720),
+                        present_mode,
+                        mode,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(asset_plugin),
+        )
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .insert_resource(graphics_settings)
