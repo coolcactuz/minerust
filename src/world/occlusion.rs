@@ -237,9 +237,9 @@ impl Default for SectionOcclusionCache {
     }
 }
 
-/// Maximum chunk radius where directional shadows can reach (12 chunks = 192m).
-/// Beyond this distance, meshes can neither cast shadows into the 120m cascade nor receive shadows.
-pub const SHADOW_MAX_CHUNK_RADIUS: i32 = 12;
+/// Maximum chunk radius where directional shadows can reach (8 chunks = 128m).
+/// Beyond this distance, meshes can neither cast shadows into the 80m cascade nor receive shadows.
+pub const SHADOW_MAX_CHUNK_RADIUS: i32 = 8;
 
 /// Bevy system executing the software occlusion culling pass and dynamic shadow culling.
 ///
@@ -334,7 +334,7 @@ pub fn section_occlusion_system(
             // Deep underground sections (y <= 1: bedrock and deep stone), occluded caves, or outside shadow range
             let is_deep_underground = section.section_y <= 1;
             let should_not_cast = is_outside_shadows || is_deep_underground || !is_vis;
-            let should_not_receive = is_outside_shadows || !is_vis;
+            let should_not_receive = is_outside_shadows || is_deep_underground || !is_vis;
 
             if should_not_cast != has_not_caster {
                 if should_not_cast {
@@ -621,10 +621,15 @@ mod tests {
                 .is_none()
         );
 
-        // Near deep bedrock section should NOT cast shadows
+        // Near deep bedrock section should NOT cast or receive shadows
         assert!(
             app.world()
                 .get::<bevy::light::NotShadowCaster>(near_deep)
+                .is_some()
+        );
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowReceiver>(near_deep)
                 .is_some()
         );
 

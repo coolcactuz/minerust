@@ -313,6 +313,7 @@ fn setup(
         },
         fps_camera,
         PlayerPhysics::default(),
+        bevy::light::ShadowFilteringMethod::Hardware2x2,
     ));
 
     if graphics_settings.distance_fog {
@@ -335,9 +336,9 @@ fn setup(
             ..default()
         },
         bevy::light::CascadeShadowConfigBuilder {
-            first_cascade_far_bound: 30.0,
-            maximum_distance: 120.0,
-            num_cascades: 2,
+            first_cascade_far_bound: 80.0,
+            maximum_distance: 80.0,
+            num_cascades: 1,
             ..default()
         }
         .build(),

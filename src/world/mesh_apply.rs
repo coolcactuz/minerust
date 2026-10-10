@@ -135,7 +135,7 @@ pub fn apply_chunk_mesh(
 
         // Solid terrain mesh entity
         let should_not_cast = is_outside_shadows || section_y <= 1;
-        let should_not_receive = is_outside_shadows;
+        let should_not_receive = is_outside_shadows || section_y <= 1;
 
         if let Some(entity) = solid_entities[sy] {
             if let Some(mesh) = section_mesh.solid {
