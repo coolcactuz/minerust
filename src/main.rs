@@ -165,24 +165,51 @@ fn main() {
         bevy::window::WindowMode::Windowed
     };
 
+    let asset_plugin = {
+        #[cfg(target_os = "macos")]
+        {
+            let mut plugin = bevy::asset::AssetPlugin::default();
+            if let Ok(current_exe) = std::env::current_exe() {
+                if let Some(contents) = current_exe.parent().and_then(|p| p.parent()) {
+                    let resources_assets = contents.join("Resources").join("assets");
+                    if resources_assets.exists() {
+                        if let Some(path_str) = resources_assets.to_str() {
+                            plugin.file_path = path_str.to_string();
+                        }
+                    }
+                }
+            }
+            plugin
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            bevy::asset::AssetPlugin::default()
+        }
+    };
+
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: if opts.profile_mode {
-                    format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
-                } else {
-                    format!("MineRust - Seed: {}", seed.0)
-                },
-                resolution: WindowResolution::new(1280, 720),
-                present_mode,
-                mode,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: if opts.profile_mode {
+                            format!("MineRust [PROFILE MODE] - Seed: {}", seed.0)
+                        } else {
+                            format!("MineRust - Seed: {}", seed.0)
+                        },
+                        resolution: WindowResolution::new(1280, 720),
+                        present_mode,
+                        mode,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(asset_plugin),
+        )
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .insert_resource(graphics_settings)
+        .insert_resource(bevy::light::DirectionalLightShadowMap { size: 1024 })
         .insert_resource(profiler_state)
         .insert_resource(seed_state)
         .insert_resource(menu_state)
@@ -286,6 +313,7 @@ fn setup(
         },
         fps_camera,
         PlayerPhysics::default(),
+        bevy::light::ShadowFilteringMethod::Hardware2x2,
     ));
 
     if graphics_settings.distance_fog {
@@ -308,9 +336,9 @@ fn setup(
             ..default()
         },
         bevy::light::CascadeShadowConfigBuilder {
-            first_cascade_far_bound: 30.0,
-            maximum_distance: 120.0,
-            num_cascades: 2,
+            first_cascade_far_bound: 80.0,
+            maximum_distance: 80.0,
+            num_cascades: 1,
             ..default()
         }
         .build(),

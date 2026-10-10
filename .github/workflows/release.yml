@@ -69,28 +69,23 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             arch: x86_64
-            archive_ext: tar.gz
-            bin_name: minerust
           - os: windows-latest
             platform: windows
             arch: x86_64
-            archive_ext: zip
-            bin_name: minerust.exe
           - os: macos-latest
             platform: macos
             arch: arm64
-            archive_ext: tar.gz
-            bin_name: minerust
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Linux dependencies (Bevy engine)
+      - name: Install Linux dependencies (Bevy engine & packaging)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev pkg-config libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libudev-dev pkg-config libwayland-dev libxkbcommon-dev zsync
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -100,34 +95,33 @@ jobs:
         with:
           key: ${{ matrix.platform }}-${{ matrix.arch }}
 
-      - name: Build release binary
-        run: cargo build --release
-
-      - name: Package bundle
+      - name: Package Linux (AppImage & tar.gz)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME:-dev}"
-          SAFE_VERSION=$(echo "$VERSION" | tr '/' '-')
-          BUNDLE_NAME="minerust-${SAFE_VERSION}-${{ matrix.platform }}-${{ matrix.arch }}"
+          ./packaging/linux/package.sh
+          for appimage in dist/release/*.AppImage; do
+            chmod +x "$appimage"
+            APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --help
+          done
 
-          mkdir -p "$BUNDLE_NAME"
-          cp "target/release/${{ matrix.bin_name }}" "$BUNDLE_NAME/"
-          cp -r assets "$BUNDLE_NAME/"
-          cp README.md LICENSE* "$BUNDLE_NAME/" 2>/dev/null || true
+      - name: Package macOS (DMG)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          ./packaging/macos/package.sh --arch ${{ matrix.arch }}
 
-          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
-            7z a "${BUNDLE_NAME}.zip" "$BUNDLE_NAME"
-            echo "ARCHIVE_FILE=${BUNDLE_NAME}.zip" >> $GITHUB_ENV
-          else
-            tar -czf "${BUNDLE_NAME}.tar.gz" "$BUNDLE_NAME"
-            echo "ARCHIVE_FILE=${BUNDLE_NAME}.tar.gz" >> $GITHUB_ENV
-          fi
+      - name: Package Windows (Portable Zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./packaging/windows/package.ps1 -Arch x64
 
       - name: Upload bundle as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ARCHIVE_FILE }}
-          path: ${{ env.ARCHIVE_FILE }}
+          name: release-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/release/*
           if-no-files-found: error
 
   publish-release:

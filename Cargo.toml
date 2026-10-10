@@ -1,6 +1,6 @@
 [package]
 name = "minerust"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 default-run = "minerust"
 description = "A high-performance, multi-threaded Minecraft-like voxel sandbox game built in Rust powered by Bevy."
@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/coolcactuz/minerust"
 
 [dependencies]
-bevy = { version = "0.19.1", default-features = false, features = ["3d", "ui"] }
+bevy = { version = "0.20", default-features = false, features = ["3d", "ui"] }
 lz4_flex = "0.14.0"
 mimalloc = { version = "0.1", default-features = false }
 quick_cache = "0.7.0"
@@ -30,7 +30,7 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 panic = "abort"
-debug = 1
+strip = true
 
 [dev-dependencies]
 criterion = "0.8.2"

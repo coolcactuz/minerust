@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=MineRust
+GenericName=Voxel Sandbox Game
+Comment=High-performance voxel sandbox engine in safe Rust powered by Bevy
+Exec=minerust
+Icon=minerust
+Terminal=false
+Categories=Game;Simulation;
+Keywords=voxel;minecraft;sandbox;bevy;rust;

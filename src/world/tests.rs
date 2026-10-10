@@ -716,3 +716,40 @@ fn test_dirty_macro_chunks_tracking() {
     world.despawn_all_chunks(&mut commands);
     assert!(world.dirty_macro_chunks.is_empty());
 }
+
+#[test]
+fn test_world_streaming_negative_spawn_coordinates_no_overflow() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::asset::AssetPlugin::default());
+    app.init_asset::<Mesh>();
+    app.init_asset::<crate::voxel_material::VoxelBlockMaterial>();
+
+    let world_grid = WorldGrid::default();
+    assert!(world_grid.last_player_chunk.is_none());
+    app.insert_resource(world_grid);
+
+    app.insert_resource(ChunkGeneratorPool::default());
+    app.insert_resource(ChunkMesherPool::default());
+
+    app.insert_resource(GraphicsSettings {
+        view_distance: 4,
+        ..default()
+    });
+
+    // Spawn camera at negative coordinates (-160.0, 70.0, -320.0 -> chunk -10, -20)
+    app.world_mut().spawn((
+        FpsCamera::default(),
+        Transform::from_xyz(-160.0, 70.0, -320.0),
+        Projection::Perspective(PerspectiveProjection::default()),
+    ));
+
+    app.add_systems(Update, world_streaming_system);
+
+    // Initial frame update must not panic with arithmetic overflow
+    app.update();
+
+    let world = app.world().resource::<WorldGrid>();
+    assert_eq!(world.last_player_chunk, Some(IVec2::new(-10, -20)));
+    assert!(world.last_lod_player_pos.is_some());
+}

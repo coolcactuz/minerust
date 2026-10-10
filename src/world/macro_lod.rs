@@ -110,7 +110,7 @@ pub fn merge_chunk_meshes<'a>(
     };
 
     for &(slot, mesh_opt) in items.iter().take(count) {
-        let mesh = mesh_opt.expect("mesh reference populated");
+        let Some(mesh) = mesh_opt else { continue };
         let lx = (slot % (MACRO_CHUNK_SIZE as usize)) as f32;
         let lz = (slot / (MACRO_CHUNK_SIZE as usize)) as f32;
         let offset_x = lx * 16.0;
@@ -330,6 +330,7 @@ pub fn flush_dirty_macro_chunks(
                         MeshMaterial3d(solid_material.clone()),
                         Transform::from_translation(world_pos),
                         bevy::light::NotShadowCaster,
+                        bevy::light::NotShadowReceiver,
                         macro_aabb,
                         NoAutoAabb,
                         MacroChunkSection { macro_coord },
@@ -379,6 +380,7 @@ pub fn flush_dirty_macro_chunks(
                         MeshMaterial3d(water_material.clone()),
                         Transform::from_translation(world_pos),
                         bevy::light::NotShadowCaster,
+                        bevy::light::NotShadowReceiver,
                         macro_aabb,
                         NoAutoAabb,
                         MacroChunkSection { macro_coord },

@@ -28,6 +28,10 @@ pub struct ChunkSection {
 /// Bypasses sub-chunk subterranean occlusion culling so surface terrain is never culled.
 pub const FULL_CHUNK_SECTION_INDEX: u8 = 255;
 
+/// Marker component attached exclusively to water section mesh entities.
+#[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Reflect)]
+pub struct WaterSection;
+
 #[derive(Resource)]
 pub struct WorldGrid {
     pub chunks: HashMap<IVec2, Chunk>,
@@ -39,8 +43,8 @@ pub struct WorldGrid {
     pub modified_chunks: HashSet<IVec2>,
     pub in_progress_chunks: HashSet<IVec2>,
     pub in_progress_meshes: HashSet<IVec2>,
-    pub last_player_chunk: IVec2,
-    pub last_lod_player_pos: Vec3,
+    pub last_player_chunk: Option<IVec2>,
+    pub last_lod_player_pos: Option<Vec3>,
     pub mesh_queue_dirty: bool,
     pub generation_queue: Vec<IVec2>,
     pub mesh_queue: Vec<IVec2>,
@@ -71,7 +75,7 @@ impl Default for WorldGrid {
 impl WorldGrid {
     pub fn new(seed: WorldSeed) -> Self {
         let noise = NoiseGenerator::new(seed.0);
-        let save_dir = PathBuf::from(format!("saves/world_{}/chunks", seed.0));
+        let save_dir = crate::save::get_world_dir(seed.0).join("chunks");
         let mut saved_chunks_index = HashSet::default();
         if let Ok(entries) = std::fs::read_dir(&save_dir) {
             for entry in entries.flatten() {
@@ -103,8 +107,8 @@ impl WorldGrid {
             saved_chunks_index,
             in_progress_chunks: HashSet::default(),
             in_progress_meshes: HashSet::default(),
-            last_player_chunk: IVec2::new(i32::MAX, i32::MAX),
-            last_lod_player_pos: Vec3::splat(f32::MAX),
+            last_player_chunk: None,
+            last_lod_player_pos: None,
             mesh_queue_dirty: false,
             generation_queue: Vec::new(),
             mesh_queue: Vec::new(),
@@ -203,7 +207,7 @@ impl WorldGrid {
 
     #[inline]
     pub fn world_dir(&self) -> PathBuf {
-        PathBuf::from(format!("saves/world_{}", self.seed.0))
+        crate::save::get_world_dir(self.seed.0)
     }
 
     #[inline]
@@ -362,8 +366,8 @@ impl WorldGrid {
         self.dirty_macro_chunks.clear();
         self.modified_chunks.clear();
         self.chunk_cache = quick_cache::sync::Cache::new(CHUNK_CACHE_CAPACITY);
-        self.last_player_chunk = IVec2::new(i32::MAX, i32::MAX);
-        self.last_lod_player_pos = Vec3::splat(f32::MAX);
+        self.last_player_chunk = None;
+        self.last_lod_player_pos = None;
         self.mesh_queue_dirty = false;
     }
 
@@ -372,7 +376,7 @@ impl WorldGrid {
         self.despawn_all_chunks(commands);
         self.seed = new_seed;
         self.noise = NoiseGenerator::new(new_seed.0);
-        self.save_dir = PathBuf::from(format!("saves/world_{}/chunks", new_seed.0));
+        self.save_dir = crate::save::get_world_dir(new_seed.0).join("chunks");
     }
 
     /// Pre-generates the initial 9x9 chunk grid around a center chunk in parallel across CPU cores.

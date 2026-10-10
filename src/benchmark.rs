@@ -14,12 +14,12 @@ pub const DEFAULT_BENCHMARK_SEED: u64 = 133742;
 ///
 /// Contains all flight trajectory and render distance parameters needed
 /// to execute a deterministic and reproducible benchmark against the built-in engine.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BenchmarkScenario {
     /// Machine-readable identifier
-    pub id: &'static str,
+    pub id: std::borrow::Cow<'static, str>,
     /// Human-readable display name for reports and logs
-    pub name: &'static str,
+    pub name: std::borrow::Cow<'static, str>,
     /// Render distance in chunks (radius)
     pub view_distance: i32,
     /// Target flight distance in meters (default 5000m / 5km)
@@ -42,8 +42,8 @@ impl BenchmarkScenario {
 
     pub fn standard(view_distance: i32) -> Self {
         Self {
-            id: "standard",
-            name: "Standard 5km Flight Benchmark",
+            id: "standard".into(),
+            name: "Standard 5km Flight Benchmark".into(),
             view_distance,
             flight_distance: Self::DEFAULT_FLIGHT_DISTANCE,
             flight_speed: Self::DEFAULT_FLIGHT_SPEED,
@@ -64,15 +64,33 @@ impl BenchmarkScenario {
         graphics.distance_fog = self.distance_fog;
         graphics.view_distance = self.view_distance;
     }
+
+    pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
+    pub fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
 }
 
 /// Runtime resource controlling the automated benchmark runner.
-#[derive(Resource, Clone, Debug)]
+#[derive(Resource, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BenchmarkConfig {
     pub enabled: bool,
     pub seed: u64,
     pub scenario: BenchmarkScenario,
     pub auto_exit: bool,
+}
+
+impl BenchmarkConfig {
+    pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
+    pub fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
 }
 
 impl Default for BenchmarkConfig {
@@ -737,5 +755,29 @@ mod tests {
         assert!(
             summary.verdict_title.contains("GREAT") || summary.verdict_title.contains("PERFECT")
         );
+    }
+
+    #[test]
+    fn test_benchmark_scenario_and_config_serialization_roundtrip() {
+        let scenario = BenchmarkScenario::standard(32);
+        let json = scenario.to_json_pretty().expect("Scenario serialization");
+        let loaded: BenchmarkScenario =
+            BenchmarkScenario::from_json_str(&json).expect("Scenario deserialization");
+        assert_eq!(scenario, loaded);
+        assert_eq!(loaded.id, "standard");
+        assert_eq!(loaded.view_distance, 32);
+
+        let config = BenchmarkConfig {
+            enabled: true,
+            seed: 424242,
+            scenario: loaded,
+            auto_exit: true,
+        };
+        let config_json = config.to_json_pretty().expect("Config serialization");
+        let loaded_config =
+            BenchmarkConfig::from_json_str(&config_json).expect("Config deserialization");
+        assert_eq!(config, loaded_config);
+        assert!(loaded_config.auto_exit);
+        assert_eq!(loaded_config.seed, 424242);
     }
 }

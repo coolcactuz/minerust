@@ -1,4 +1,14 @@
+#![allow(deprecated)]
+
 use bevy::prelude::*;
+use bevy::ui::{FocusPolicy, Interaction};
+
+/// Custom marker struct for UI buttons, automatically requiring interactive Bevy UI components.
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+#[allow(deprecated)]
+#[require(Node, FocusPolicy::Block, Interaction)]
+pub struct Button;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MenuScreen {
@@ -71,12 +81,15 @@ impl Default for GraphicsSettings {
 }
 
 impl GraphicsSettings {
+    /// Legacy relative path constant for backward compatibility.
     pub const SAVE_PATH: &'static str = "saves/settings.json";
 
     #[must_use]
     pub fn load_or_default() -> Self {
-        if let Ok(bytes) = std::fs::read(Self::SAVE_PATH) {
-            if let Ok(settings) = serde_json::from_slice::<Self>(&bytes) {
+        let settings_path = crate::save::get_settings_path();
+        let bytes = std::fs::read(&settings_path).or_else(|_| std::fs::read(Self::SAVE_PATH));
+        if let Ok(data) = bytes {
+            if let Ok(settings) = serde_json::from_slice::<Self>(&data) {
                 return settings;
             }
         }
@@ -85,8 +98,11 @@ impl GraphicsSettings {
 
     pub fn save_to_disk(&self) {
         if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::create_dir_all("saves");
-            let _ = std::fs::write(Self::SAVE_PATH, json);
+            let path = crate::save::get_settings_path();
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(path, json);
         }
     }
 }

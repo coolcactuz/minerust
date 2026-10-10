@@ -17,6 +17,7 @@ pub use descriptions::*;
 pub use interactions::*;
 pub use seed::*;
 pub use sync::*;
+pub use types::Button;
 pub use types::*;
 pub use ui::*;
 pub use widgets::*;
