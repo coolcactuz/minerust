@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use crate::chunk::{CHUNK_DEPTH, CHUNK_WIDTH};
 use crate::mesher::{CHUNK_SECTIONS, ChunkMeshes};
 use crate::voxel_material::{VoxelBlockMaterial, VoxelExtension};
-use crate::world::grid::{ChunkSection, WorldGrid};
+use crate::world::grid::{ChunkSection, WaterSection, WorldGrid};
 use crate::world::occlusion::SHADOW_MAX_CHUNK_RADIUS;
 use crate::world::streaming::TIER_SLOPED_LOD;
 
@@ -181,42 +181,40 @@ pub fn apply_chunk_mesh(
             solid_entities[sy] = Some(entity_cmd.id());
         }
 
-        // Water surface mesh entity (water never casts shadows)
+        // Water surface mesh entity (transparent water never casts or receives shadows)
         if let Some(entity) = water_entities[sy] {
             if let Some(mesh) = section_mesh.water {
-                let mut entity_cmd = commands.entity(entity);
-                entity_cmd.insert((
+                commands.entity(entity).insert((
                     Mesh3d(meshes.add(mesh)),
                     aabb,
                     NoAutoAabb,
                     Visibility::Inherited,
+                    WaterSection,
+                    NotShadowCaster,
+                    NotShadowReceiver,
                 ));
-                if should_not_receive {
-                    entity_cmd.insert(NotShadowReceiver);
-                } else {
-                    entity_cmd.remove::<NotShadowReceiver>();
-                }
             } else {
                 commands.entity(entity).despawn();
                 water_entities[sy] = None;
             }
         } else if let Some(mesh) = section_mesh.water {
-            let mut entity_cmd = commands.spawn((
-                Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(water_material.clone()),
-                Transform::from_translation(world_pos),
-                NotShadowCaster,
-                aabb,
-                NoAutoAabb,
-                ChunkSection {
-                    chunk: coord,
-                    section_y,
-                },
-            ));
-            if should_not_receive {
-                entity_cmd.insert(NotShadowReceiver);
-            }
-            water_entities[sy] = Some(entity_cmd.id());
+            let entity = commands
+                .spawn((
+                    Mesh3d(meshes.add(mesh)),
+                    MeshMaterial3d(water_material.clone()),
+                    Transform::from_translation(world_pos),
+                    WaterSection,
+                    NotShadowCaster,
+                    NotShadowReceiver,
+                    aabb,
+                    NoAutoAabb,
+                    ChunkSection {
+                        chunk: coord,
+                        section_y,
+                    },
+                ))
+                .id();
+            water_entities[sy] = Some(entity);
         }
     }
 

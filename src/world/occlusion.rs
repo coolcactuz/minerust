@@ -1,6 +1,6 @@
 use crate::chunk::CHUNK_HEIGHT;
 use crate::mesher::{CHUNK_SECTIONS, SECTION_HEIGHT, SectionFace};
-use crate::world::grid::{ChunkSection, FULL_CHUNK_SECTION_INDEX, WorldGrid};
+use crate::world::grid::{ChunkSection, FULL_CHUNK_SECTION_INDEX, WaterSection, WorldGrid};
 use bevy::prelude::*;
 use std::collections::VecDeque;
 
@@ -257,6 +257,7 @@ pub fn section_occlusion_system(
         &mut Visibility,
         Has<bevy::light::NotShadowCaster>,
         Has<bevy::light::NotShadowReceiver>,
+        Has<WaterSection>,
     )>,
 ) {
     let t_occ_start = std::time::Instant::now();
@@ -280,7 +281,7 @@ pub fn section_occlusion_system(
         cache.last_outdoors = outdoors;
 
         let bitset = cache.bitset;
-        for (entity, section, mut visibility, has_not_caster, has_not_receiver) in
+        for (entity, section, mut visibility, has_not_caster, has_not_receiver, is_water) in
             &mut section_query
         {
             let diff = section.chunk - cam_chunk;
@@ -329,6 +330,19 @@ pub fn section_occlusion_system(
             };
             if *visibility != target {
                 *visibility = target;
+            }
+
+            // Transparent water never casts or receives directional shadows under any circumstances
+            if is_water {
+                if !has_not_caster {
+                    commands.entity(entity).insert(bevy::light::NotShadowCaster);
+                }
+                if !has_not_receiver {
+                    commands
+                        .entity(entity)
+                        .insert(bevy::light::NotShadowReceiver);
+                }
+                continue;
             }
 
             // Deep underground sections (y <= 1: bedrock and deep stone), occluded caves, or outside shadow range
@@ -606,6 +620,19 @@ mod tests {
             ))
             .id();
 
+        // Near water surface section (chunk 0,0, sy 4)
+        let near_water = app
+            .world_mut()
+            .spawn((
+                ChunkSection {
+                    chunk: IVec2::ZERO,
+                    section_y: 4,
+                },
+                WaterSection,
+                Visibility::Inherited,
+            ))
+            .id();
+
         app.add_systems(Update, section_occlusion_system);
         app.update();
 
@@ -642,6 +669,18 @@ mod tests {
         assert!(
             app.world()
                 .get::<bevy::light::NotShadowReceiver>(distant)
+                .is_some()
+        );
+
+        // Near water surface section must NEVER cast or receive shadows
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowCaster>(near_water)
+                .is_some()
+        );
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowReceiver>(near_water)
                 .is_some()
         );
     }
