@@ -64,6 +64,7 @@ New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 
 Copy-Item (Join-Path $Bin 'minerust.exe') $Portable
 Copy-Item -Recurse (Join-Path $Root 'assets') (Join-Path $Portable 'assets')
+New-Item -ItemType Directory -Force -Path (Join-Path $Portable 'saves') | Out-Null
 foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }

@@ -71,7 +71,7 @@ impl Default for WorldGrid {
 impl WorldGrid {
     pub fn new(seed: WorldSeed) -> Self {
         let noise = NoiseGenerator::new(seed.0);
-        let save_dir = PathBuf::from(format!("saves/world_{}/chunks", seed.0));
+        let save_dir = crate::save::get_world_dir(seed.0).join("chunks");
         let mut saved_chunks_index = HashSet::default();
         if let Ok(entries) = std::fs::read_dir(&save_dir) {
             for entry in entries.flatten() {
@@ -203,7 +203,7 @@ impl WorldGrid {
 
     #[inline]
     pub fn world_dir(&self) -> PathBuf {
-        PathBuf::from(format!("saves/world_{}", self.seed.0))
+        crate::save::get_world_dir(self.seed.0)
     }
 
     #[inline]
@@ -372,7 +372,7 @@ impl WorldGrid {
         self.despawn_all_chunks(commands);
         self.seed = new_seed;
         self.noise = NoiseGenerator::new(new_seed.0);
-        self.save_dir = PathBuf::from(format!("saves/world_{}/chunks", new_seed.0));
+        self.save_dir = crate::save::get_world_dir(new_seed.0).join("chunks");
     }
 
     /// Pre-generates the initial 9x9 chunk grid around a center chunk in parallel across CPU cores.

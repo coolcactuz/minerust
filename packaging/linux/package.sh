@@ -70,6 +70,7 @@ if has tar; then
     /bin/cp -f "$STAGE/usr/bin/bench_cpu" "$WORK/tar/$BASENAME/"
   fi
   /bin/cp -rf "$ROOT/assets" "$WORK/tar/$BASENAME/"
+  mkdir -p "$WORK/tar/$BASENAME/saves"
   copy_docs "$WORK/tar/$BASENAME"
   tar -C "$WORK/tar" -czf "$DIST/$BASENAME.tar.gz" "$BASENAME"
   echo "wrote $DIST/$BASENAME.tar.gz"
@@ -87,7 +88,19 @@ if has appimage; then
 HERE="$(dirname "$(readlink -f "${0}")")"
 export PATH="$HERE/usr/bin:$PATH"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
-cd "$HERE/usr/bin"
+export BEVY_ASSET_ROOT="$HERE/usr/bin"
+
+# If launched from a directory with local saves (portable mode), stay in OWD
+if [ -n "$OWD" ] && [ -d "$OWD/saves" ]; then
+  cd "$OWD"
+else
+  # Use standard XDG user data directory (~/.local/share/minerust)
+  XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+  mkdir -p "$XDG_DATA_HOME/minerust/saves"
+  export MINERUST_DATA_DIR="$XDG_DATA_HOME/minerust"
+  cd "${OWD:-$HOME}"
+fi
+
 exec "$HERE/usr/bin/minerust" "$@"
 EOF
   chmod +x "$APPDIR/AppRun"

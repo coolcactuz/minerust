@@ -109,15 +109,106 @@ impl WorldMetadata {
     }
 }
 
+/// Returns the root data directory for MineRust.
+///
+/// Priority:
+/// 1. `MINERUST_DATA_DIR` environment variable (if set).
+/// 2. If running inside an AppImage (`APPIMAGE` or `APPDIR` set):
+///    - If `$OWD/saves` exists, uses `$OWD` (portable AppImage).
+///    - Otherwise, uses OS standard data directory (`~/.local/share/minerust` on Linux).
+/// 3. Portable mode: if `./saves` or `./portable` exists in current working directory, uses `.`.
+/// 4. OS standard data directory:
+///    - Linux: `$XDG_DATA_HOME/minerust` or `~/.local/share/minerust`
+///    - macOS: `~/Library/Application Support/minerust`
+///    - Windows: `%APPDATA%\minerust`
+/// 5. Fallback: `.`
+#[must_use]
+pub fn get_data_dir() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("MINERUST_DATA_DIR") {
+        if !dir.is_empty() {
+            return std::path::PathBuf::from(dir);
+        }
+    }
+
+    let in_appimage = std::env::var("APPIMAGE").is_ok() || std::env::var("APPDIR").is_ok();
+    if in_appimage {
+        if let Ok(owd) = std::env::var("OWD") {
+            let owd_path = std::path::PathBuf::from(&owd);
+            if owd_path.join("saves").exists() || owd_path.join("portable").exists() {
+                return owd_path;
+            }
+        }
+    } else {
+        let local_saves = Path::new("saves");
+        let local_portable = Path::new("portable");
+        if local_saves.exists() || local_portable.exists() {
+            return std::path::PathBuf::from(".");
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        return std::path::PathBuf::from(appdata).join("minerust");
+    }
+
+    #[cfg(target_os = "macos")]
+    if let Ok(home) = std::env::var("HOME") {
+        return std::path::PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("minerust");
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    if let Ok(home) = std::env::var("HOME") {
+        let xdg = std::env::var("XDG_DATA_HOME").map_or_else(
+            |_| std::path::PathBuf::from(home).join(".local").join("share"),
+            std::path::PathBuf::from,
+        );
+        return xdg.join("minerust");
+    }
+
+    std::path::PathBuf::from(".")
+}
+
+/// Returns the directory where saved worlds are stored.
+#[must_use]
+pub fn get_saves_dir() -> std::path::PathBuf {
+    get_data_dir().join("saves")
+}
+
+/// Returns the path to the tracked last played world file.
+#[must_use]
+pub fn get_last_world_file() -> std::path::PathBuf {
+    get_saves_dir().join("last_world.txt")
+}
+
+/// Returns the directory for a specific saved world seed.
+#[must_use]
+pub fn get_world_dir(seed: u64) -> std::path::PathBuf {
+    get_saves_dir().join(format!("world_{seed}"))
+}
+
+/// Returns the path to the graphics and user settings file.
+#[must_use]
+pub fn get_settings_path() -> std::path::PathBuf {
+    get_data_dir().join("settings.json")
+}
+
+/// Legacy relative path constant for backward compatibility.
 pub const LAST_WORLD_FILE: &str = "saves/last_world.txt";
 
 /// Returns the seed of the most recently played world, if any exists.
 #[must_use]
 pub fn get_latest_saved_world() -> Option<u64> {
-    // 1. Try reading the tracked last_world.txt
-    if let Ok(content) = std::fs::read_to_string(LAST_WORLD_FILE) {
-        if let Ok(seed) = content.trim().parse::<u64>() {
-            let world_path = std::path::PathBuf::from(format!("saves/world_{seed}"));
+    // 1. Try reading the tracked last_world.txt (both new path and legacy path)
+    let last_world_path = get_last_world_file();
+    let content = std::fs::read_to_string(&last_world_path)
+        .or_else(|_| std::fs::read_to_string(LAST_WORLD_FILE));
+
+    if let Ok(text) = content {
+        if let Ok(seed) = text.trim().parse::<u64>() {
+            let world_path = get_world_dir(seed);
             if world_path.exists() {
                 return Some(seed);
             }
@@ -125,7 +216,8 @@ pub fn get_latest_saved_world() -> Option<u64> {
     }
 
     // 2. Scan saves/ directory for world_<seed> directories
-    let Ok(entries) = std::fs::read_dir("saves") else {
+    let saves_dir = get_saves_dir();
+    let Ok(entries) = std::fs::read_dir(&saves_dir) else {
         return None;
     };
 
@@ -163,7 +255,8 @@ pub fn get_latest_saved_world() -> Option<u64> {
 /// Lists all saved worlds on disk with their metadata sorted by most recently played.
 #[must_use]
 pub fn get_saved_worlds_metadata() -> Vec<WorldMetadata> {
-    let Ok(entries) = std::fs::read_dir("saves") else {
+    let saves_dir = get_saves_dir();
+    let Ok(entries) = std::fs::read_dir(&saves_dir) else {
         return Vec::new();
     };
 
@@ -204,10 +297,11 @@ pub fn get_saved_worlds_metadata() -> Vec<WorldMetadata> {
 
 /// Records the last played world seed to disk and updates world metadata.
 pub fn set_last_played_world(seed: u64) {
-    let _ = std::fs::create_dir_all("saves");
-    let _ = std::fs::write(LAST_WORLD_FILE, seed.to_string());
+    let saves_dir = get_saves_dir();
+    let _ = std::fs::create_dir_all(&saves_dir);
+    let _ = std::fs::write(get_last_world_file(), seed.to_string());
 
-    let meta_path = std::path::PathBuf::from(format!("saves/world_{seed}/meta.json"));
+    let meta_path = get_world_dir(seed).join("meta.json");
     let mut meta = WorldMetadata::load_from_disk(&meta_path).unwrap_or_else(|_| {
         WorldMetadata::new(crate::world::WorldSeed(seed), format!("World {seed}"))
     });
@@ -397,5 +491,21 @@ mod tests {
         assert_eq!(loaded.seed.0, 987654321);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_get_data_and_saves_dir_resolution() {
+        let saves_dir = get_saves_dir();
+        assert!(saves_dir.ends_with("saves"));
+
+        let settings_path = get_settings_path();
+        assert!(settings_path.ends_with("settings.json"));
+
+        let world_dir = get_world_dir(12345);
+        assert!(world_dir.ends_with("world_12345"));
+        assert!(world_dir.starts_with(&saves_dir));
+
+        let last_world = get_last_world_file();
+        assert!(last_world.ends_with("last_world.txt"));
     }
 }
