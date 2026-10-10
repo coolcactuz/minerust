@@ -209,6 +209,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
         .insert_resource(graphics_settings)
+        .insert_resource(bevy::light::DirectionalLightShadowMap { size: 1024 })
         .insert_resource(profiler_state)
         .insert_resource(seed_state)
         .insert_resource(menu_state)
@@ -312,6 +313,7 @@ fn setup(
         },
         fps_camera,
         PlayerPhysics::default(),
+        bevy::light::ShadowFilteringMethod::Hardware2x2,
     ));
 
     if graphics_settings.distance_fog {
@@ -334,9 +336,9 @@ fn setup(
             ..default()
         },
         bevy::light::CascadeShadowConfigBuilder {
-            first_cascade_far_bound: 30.0,
-            maximum_distance: 120.0,
-            num_cascades: 2,
+            first_cascade_far_bound: 80.0,
+            maximum_distance: 80.0,
+            num_cascades: 1,
             ..default()
         }
         .build(),

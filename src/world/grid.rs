@@ -28,6 +28,10 @@ pub struct ChunkSection {
 /// Bypasses sub-chunk subterranean occlusion culling so surface terrain is never culled.
 pub const FULL_CHUNK_SECTION_INDEX: u8 = 255;
 
+/// Marker component attached exclusively to water section mesh entities.
+#[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Reflect)]
+pub struct WaterSection;
+
 #[derive(Resource)]
 pub struct WorldGrid {
     pub chunks: HashMap<IVec2, Chunk>,

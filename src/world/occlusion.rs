@@ -1,6 +1,6 @@
 use crate::chunk::CHUNK_HEIGHT;
 use crate::mesher::{CHUNK_SECTIONS, SECTION_HEIGHT, SectionFace};
-use crate::world::grid::{ChunkSection, FULL_CHUNK_SECTION_INDEX, WorldGrid};
+use crate::world::grid::{ChunkSection, FULL_CHUNK_SECTION_INDEX, WaterSection, WorldGrid};
 use bevy::prelude::*;
 use std::collections::VecDeque;
 
@@ -237,15 +237,28 @@ impl Default for SectionOcclusionCache {
     }
 }
 
-/// Bevy system executing the software occlusion culling pass.
+/// Maximum chunk radius where directional shadows can reach (8 chunks = 128m).
+/// Beyond this distance, meshes can neither cast shadows into the 80m cascade nor receive shadows.
+pub const SHADOW_MAX_CHUNK_RADIUS: i32 = 8;
+
+/// Bevy system executing the software occlusion culling pass and dynamic shadow culling.
 ///
 /// Evaluates the reachability graph from camera position and switches `Visibility::Hidden`
-/// on completely enclosed subterranean sections.
+/// on completely enclosed subterranean sections, while dynamically assigning `NotShadowCaster`
+/// and `NotShadowReceiver` to distant and deep underground meshes.
 pub fn section_occlusion_system(
+    mut commands: Commands,
     world_grid: Option<Res<WorldGrid>>,
     camera_query: Query<&Transform, With<Camera3d>>,
     mut cache: ResMut<SectionOcclusionCache>,
-    mut section_query: Query<(&ChunkSection, &mut Visibility)>,
+    mut section_query: Query<(
+        Entity,
+        &ChunkSection,
+        &mut Visibility,
+        Has<bevy::light::NotShadowCaster>,
+        Has<bevy::light::NotShadowReceiver>,
+        Has<WaterSection>,
+    )>,
 ) {
     let t_occ_start = std::time::Instant::now();
 
@@ -260,7 +273,7 @@ pub fn section_occlusion_system(
     let cam_sy = (cam_pos.y / SECTION_HEIGHT as f32).floor() as i32;
     let outdoors = cam_sy >= CHUNK_SECTIONS as i32 || is_under_open_sky(&world, cam_pos);
 
-    // Only recompute occlusion BFS when crossing into a different section or indoor/outdoor state
+    // Only recompute occlusion BFS and shadow flags when crossing into a different section or indoor/outdoor state
     if cam_chunk != cache.last_chunk || cam_sy != cache.last_sy || outdoors != cache.last_outdoors {
         cache.bitset = compute_section_occlusion_with_queue(&world, cam_pos, &mut cache.queue);
         cache.last_chunk = cam_chunk;
@@ -268,28 +281,94 @@ pub fn section_occlusion_system(
         cache.last_outdoors = outdoors;
 
         let bitset = cache.bitset;
-        for (section, mut visibility) in &mut section_query {
+        for (entity, section, mut visibility, has_not_caster, has_not_receiver, is_water) in
+            &mut section_query
+        {
+            let diff = section.chunk - cam_chunk;
+            let is_outside_shadows =
+                diff.x.abs() > SHADOW_MAX_CHUNK_RADIUS || diff.y.abs() > SHADOW_MAX_CHUNK_RADIUS;
+
             // Distant continuous LOD 1 chunk entities are never culled by sub-chunk cave occlusion
             if section.section_y == FULL_CHUNK_SECTION_INDEX {
                 if *visibility != Visibility::Inherited {
                     *visibility = Visibility::Inherited;
                 }
+                if is_outside_shadows != has_not_caster {
+                    if is_outside_shadows {
+                        commands.entity(entity).insert(bevy::light::NotShadowCaster);
+                    } else {
+                        commands
+                            .entity(entity)
+                            .remove::<bevy::light::NotShadowCaster>();
+                    }
+                }
+                if is_outside_shadows != has_not_receiver {
+                    if is_outside_shadows {
+                        commands
+                            .entity(entity)
+                            .insert(bevy::light::NotShadowReceiver);
+                    } else {
+                        commands
+                            .entity(entity)
+                            .remove::<bevy::light::NotShadowReceiver>();
+                    }
+                }
                 continue;
             }
 
-            let diff = section.chunk - cam_chunk;
-            if diff.x.abs() <= OCCLUSION_RADIUS && diff.y.abs() <= OCCLUSION_RADIUS {
-                let is_vis = bitset.is_visible(diff.x, diff.y, section.section_y);
-                let target = if is_vis {
-                    Visibility::Inherited
-                } else {
-                    Visibility::Hidden
-                };
-                if *visibility != target {
-                    *visibility = target;
+            let in_occ = diff.x.abs() <= OCCLUSION_RADIUS && diff.y.abs() <= OCCLUSION_RADIUS;
+            let is_vis = if in_occ {
+                bitset.is_visible(diff.x, diff.y, section.section_y)
+            } else {
+                true
+            };
+
+            let target = if is_vis {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+            if *visibility != target {
+                *visibility = target;
+            }
+
+            // Transparent water never casts or receives directional shadows under any circumstances
+            if is_water {
+                if !has_not_caster {
+                    commands.entity(entity).insert(bevy::light::NotShadowCaster);
                 }
-            } else if *visibility != Visibility::Inherited {
-                *visibility = Visibility::Inherited;
+                if !has_not_receiver {
+                    commands
+                        .entity(entity)
+                        .insert(bevy::light::NotShadowReceiver);
+                }
+                continue;
+            }
+
+            // Deep underground sections (y <= 1: bedrock and deep stone), occluded caves, or outside shadow range
+            let is_deep_underground = section.section_y <= 1;
+            let should_not_cast = is_outside_shadows || is_deep_underground || !is_vis;
+            let should_not_receive = is_outside_shadows || is_deep_underground || !is_vis;
+
+            if should_not_cast != has_not_caster {
+                if should_not_cast {
+                    commands.entity(entity).insert(bevy::light::NotShadowCaster);
+                } else {
+                    commands
+                        .entity(entity)
+                        .remove::<bevy::light::NotShadowCaster>();
+                }
+            }
+            if should_not_receive != has_not_receiver {
+                if should_not_receive {
+                    commands
+                        .entity(entity)
+                        .insert(bevy::light::NotShadowReceiver);
+                } else {
+                    commands
+                        .entity(entity)
+                        .remove::<bevy::light::NotShadowReceiver>();
+                }
             }
         }
     }
@@ -489,6 +568,120 @@ mod tests {
         assert!(
             !bitset.is_visible(0, 0, 0),
             "Deep bedrock section 0 must be culled"
+        );
+    }
+
+    #[test]
+    fn test_section_occlusion_system_shadow_culling() {
+        let mut app = App::new();
+        let mut world_grid = WorldGrid::default();
+        let chunk = Chunk::new();
+        world_grid.chunks.insert(IVec2::ZERO, chunk);
+        app.insert_resource(world_grid);
+        app.insert_resource(SectionOcclusionCache::default());
+
+        // Spawn camera at (0, 70, 0)
+        app.world_mut()
+            .spawn((Camera3d::default(), Transform::from_xyz(0.0, 70.0, 0.0)));
+
+        // Near surface section (chunk 0,0, sy 4)
+        let near_surface = app
+            .world_mut()
+            .spawn((
+                ChunkSection {
+                    chunk: IVec2::ZERO,
+                    section_y: 4,
+                },
+                Visibility::Inherited,
+            ))
+            .id();
+
+        // Near deep bedrock section (chunk 0,0, sy 0)
+        let near_deep = app
+            .world_mut()
+            .spawn((
+                ChunkSection {
+                    chunk: IVec2::ZERO,
+                    section_y: 0,
+                },
+                Visibility::Inherited,
+            ))
+            .id();
+
+        // Distant section (chunk 20, 0, sy 4) > SHADOW_MAX_CHUNK_RADIUS
+        let distant = app
+            .world_mut()
+            .spawn((
+                ChunkSection {
+                    chunk: IVec2::new(20, 0),
+                    section_y: 4,
+                },
+                Visibility::Inherited,
+            ))
+            .id();
+
+        // Near water surface section (chunk 0,0, sy 4)
+        let near_water = app
+            .world_mut()
+            .spawn((
+                ChunkSection {
+                    chunk: IVec2::ZERO,
+                    section_y: 4,
+                },
+                WaterSection,
+                Visibility::Inherited,
+            ))
+            .id();
+
+        app.add_systems(Update, section_occlusion_system);
+        app.update();
+
+        // Near surface section should cast and receive shadows
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowCaster>(near_surface)
+                .is_none()
+        );
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowReceiver>(near_surface)
+                .is_none()
+        );
+
+        // Near deep bedrock section should NOT cast or receive shadows
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowCaster>(near_deep)
+                .is_some()
+        );
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowReceiver>(near_deep)
+                .is_some()
+        );
+
+        // Distant section should neither cast nor receive shadows
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowCaster>(distant)
+                .is_some()
+        );
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowReceiver>(distant)
+                .is_some()
+        );
+
+        // Near water surface section must NEVER cast or receive shadows
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowCaster>(near_water)
+                .is_some()
+        );
+        assert!(
+            app.world()
+                .get::<bevy::light::NotShadowReceiver>(near_water)
+                .is_some()
         );
     }
 }
