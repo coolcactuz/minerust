@@ -279,34 +279,7 @@ impl ItemType {
     pub fn tool_speed_for(self, block: BlockType) -> f32 {
         match self {
             Self::Tool { tool, tier } => {
-                let matches_tool = match tool {
-                    ToolType::Pickaxe => matches!(
-                        block,
-                        BlockType::Stone
-                            | BlockType::Cobblestone
-                            | BlockType::CoalOre
-                            | BlockType::IronOre
-                            | BlockType::GoldOre
-                            | BlockType::DiamondOre
-                            | BlockType::Sandstone
-                            | BlockType::Ice
-                    ),
-                    ToolType::Axe => matches!(block, BlockType::Wood | BlockType::Planks),
-                    ToolType::Shovel => {
-                        matches!(
-                            block,
-                            BlockType::Dirt
-                                | BlockType::Grass
-                                | BlockType::Sand
-                                | BlockType::Gravel
-                                | BlockType::Snow
-                        )
-                    }
-                    ToolType::Sword => matches!(block, BlockType::Leaves | BlockType::Cactus),
-                    ToolType::Hoe => false,
-                };
-
-                if matches_tool {
+                if block.properties().preferred_tool == Some(tool) {
                     tier.speed_multiplier()
                 } else {
                     1.0
