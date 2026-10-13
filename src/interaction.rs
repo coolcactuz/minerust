@@ -171,7 +171,7 @@ pub fn block_interaction_system(
                     fluid_sim.schedule_neighbors(hit.hit_block);
 
                     // Yield mined resource directly into player's inventory
-                    if let Some(drop) = target_block.drop_item() {
+                    if let Some(drop) = crate::item::block_drop(target_block) {
                         let leftover = context.inventory.add_item(drop, 1);
                         if leftover > 0 {
                             tracing::info!("Inventory full! Could not store mined item {drop:?}");
@@ -180,11 +180,10 @@ pub fn block_interaction_system(
                 }
             }
         }
-        // Right click: Place block (if an item is equipped in the active hotbar slot)
+        // Right click: Place block (if a placeable block item is equipped in the active hotbar slot)
         else if context.mouse_buttons.just_pressed(MouseButton::Right) {
             if let Some(selected_stack) = context.inventory.selected_item() {
-                let block_to_place = selected_stack.block_type;
-                if block_to_place != BlockType::Air {
+                if let Some(block_to_place) = selected_stack.item.as_block() {
                     let mut can_place = true;
 
                     if block_to_place.is_solid() {

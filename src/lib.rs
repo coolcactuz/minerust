@@ -9,6 +9,7 @@ pub mod error;
 pub mod fluid;
 pub mod interaction;
 pub mod inventory;
+pub mod item;
 pub mod menu;
 pub mod mesher;
 pub mod noise;

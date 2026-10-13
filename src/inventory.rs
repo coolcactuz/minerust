@@ -5,13 +5,16 @@ use bevy::prelude::*;
 use bevy::text::FontSize;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
-use crate::block::{BlockFace, BlockType};
+use crate::block::BlockType;
 use crate::menu::MenuState;
 use crate::menu::types::Button;
 
+pub use crate::item::{
+    ItemStack, ItemType, MAX_STACK_SIZE, MaterialType, ToolTier, ToolType, block_drop,
+};
+
 pub const HOTBAR_SLOTS: usize = 9;
 pub const MAIN_INVENTORY_SLOTS: usize = 27;
-pub const MAX_STACK_SIZE: u32 = 64;
 
 pub const ALL_BLOCKS: &[BlockType] = &[
     BlockType::Grass,
@@ -62,23 +65,6 @@ pub const fn block_name(block: BlockType) -> &'static str {
     }
 }
 
-/// Represents a stack of blocks of a specific type with a quantity count.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ItemStack {
-    pub block_type: BlockType,
-    pub count: u32,
-}
-
-impl ItemStack {
-    #[inline]
-    pub fn new(block_type: BlockType, count: u32) -> Self {
-        Self {
-            block_type,
-            count: count.min(MAX_STACK_SIZE),
-        }
-    }
-}
-
 /// Player inventory state with an empty starting hotbar and main inventory.
 #[derive(Resource, Debug, Clone)]
 pub struct Inventory {
@@ -109,7 +95,7 @@ impl Inventory {
     /// Returns the block type in the currently selected hotbar slot, or Air if empty.
     #[inline]
     pub fn selected_block(&self) -> BlockType {
-        self.hotbar[self.selected_slot].map_or(BlockType::Air, |s| s.block_type)
+        self.hotbar[self.selected_slot].map_or(BlockType::Air, |s| s.block_type())
     }
 
     /// Consumes `amount` blocks from the currently selected hotbar slot.
@@ -128,21 +114,24 @@ impl Inventory {
         }
     }
 
-    /// Adds items of a given block type into the inventory.
+    /// Adds items of a given item type (or block) into the inventory.
     ///
     /// 1. Merges into existing non-full stacks (hotbar first, then main).
     /// 2. Fills empty slots (hotbar first, then main).
     ///
     /// Returns 0 if all items were added, or the remaining count if inventory is full.
-    pub fn add_item(&mut self, block: BlockType, mut amount: u32) -> u32 {
-        if block == BlockType::Air || amount == 0 {
+    pub fn add_item(&mut self, item: impl Into<ItemType>, mut amount: u32) -> u32 {
+        let item = item.into();
+        if item.is_air() || amount == 0 {
             return amount;
         }
 
+        let max_stack = item.max_stack_size();
+
         // 1. Merge into existing matching stacks in hotbar
         for slot in self.hotbar.iter_mut().flatten() {
-            if slot.block_type == block && slot.count < MAX_STACK_SIZE {
-                let space = MAX_STACK_SIZE - slot.count;
+            if slot.item == item && slot.count < max_stack {
+                let space = max_stack - slot.count;
                 let to_add = amount.min(space);
                 slot.count += to_add;
                 amount -= to_add;
@@ -154,8 +143,8 @@ impl Inventory {
 
         // 2. Merge into existing matching stacks in main inventory
         for slot in self.main.iter_mut().flatten() {
-            if slot.block_type == block && slot.count < MAX_STACK_SIZE {
-                let space = MAX_STACK_SIZE - slot.count;
+            if slot.item == item && slot.count < max_stack {
+                let space = max_stack - slot.count;
                 let to_add = amount.min(space);
                 slot.count += to_add;
                 amount -= to_add;
@@ -168,8 +157,8 @@ impl Inventory {
         // 3. Place into first empty slot in hotbar
         for slot in &mut self.hotbar {
             if slot.is_none() {
-                let to_add = amount.min(MAX_STACK_SIZE);
-                *slot = Some(ItemStack::new(block, to_add));
+                let to_add = amount.min(max_stack);
+                *slot = Some(ItemStack::new(item, to_add));
                 amount -= to_add;
                 if amount == 0 {
                     return 0;
@@ -180,8 +169,8 @@ impl Inventory {
         // 4. Place into first empty slot in main inventory
         for slot in &mut self.main {
             if slot.is_none() {
-                let to_add = amount.min(MAX_STACK_SIZE);
-                *slot = Some(ItemStack::new(block, to_add));
+                let to_add = amount.min(max_stack);
+                *slot = Some(ItemStack::new(item, to_add));
                 amount -= to_add;
                 if amount == 0 {
                     return 0;
@@ -737,7 +726,7 @@ pub fn update_inventory_ui_system(
     for (icon, mut bg) in &mut hud_icons_query {
         if icon.0 < HOTBAR_SLOTS {
             if let Some(stack) = inventory.hotbar[icon.0] {
-                let col = stack.block_type.color(BlockFace::Top);
+                let col = stack.item.color();
                 bg.0 = Color::srgb(col[0], col[1], col[2]);
             } else {
                 bg.0 = Color::NONE;
@@ -782,7 +771,7 @@ pub fn update_inventory_ui_system(
                 SlotLocation::Main(idx) => inventory.main.get(idx).copied().flatten(),
             };
             if let Some(stack) = item_opt {
-                let col = stack.block_type.color(BlockFace::Top);
+                let col = stack.item.color();
                 bg.0 = Color::srgb(col[0], col[1], col[2]);
             } else {
                 bg.0 = Color::NONE;
@@ -902,5 +891,23 @@ mod tests {
             Some(ItemStack::new(BlockType::DiamondOre, 12))
         );
         assert_eq!(inv.main[3], Some(ItemStack::new(BlockType::Wood, 5)));
+    }
+
+    #[test]
+    fn test_inventory_add_materials_and_tools() {
+        let mut inv = Inventory::default();
+        let tool = ItemType::tool(ToolType::Pickaxe, ToolTier::Wood);
+        let mat = ItemType::Material(MaterialType::Stick);
+
+        // Add tool -> only 1 goes into slot because tools don't stack
+        let leftover = inv.add_item(tool, 1);
+        assert_eq!(leftover, 0);
+        assert_eq!(inv.hotbar[0], Some(ItemStack::new(tool, 1)));
+
+        // Add 65 sticks -> 64 into hotbar[1], 1 into hotbar[2]
+        let leftover = inv.add_item(mat, 65);
+        assert_eq!(leftover, 0);
+        assert_eq!(inv.hotbar[1], Some(ItemStack::new(mat, 64)));
+        assert_eq!(inv.hotbar[2], Some(ItemStack::new(mat, 1)));
     }
 }

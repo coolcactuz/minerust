@@ -415,9 +415,14 @@ mod tests {
         let mut hotbar = [None; HOTBAR_SLOTS];
         hotbar[0] = Some(ItemStack::new(BlockType::Wood, 14));
         hotbar[1] = Some(ItemStack::new(BlockType::Cobblestone, 64));
+        hotbar[2] = Some(ItemStack::tool(
+            crate::item::ToolType::Pickaxe,
+            crate::item::ToolTier::Iron,
+        ));
 
         let mut main = [None; MAIN_INVENTORY_SLOTS];
         main[5] = Some(ItemStack::new(BlockType::DiamondOre, 3));
+        main[6] = Some(ItemStack::material(crate::item::MaterialType::Coal, 16));
 
         let original =
             PlayerSaveData::new(Vec3::new(12.5, 68.0, -99.2), 1.23, -0.45, hotbar, main, 2);
