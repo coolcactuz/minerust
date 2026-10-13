@@ -200,6 +200,7 @@ impl ItemType {
                 BlockType::GoldOre => "Gold Ore".to_string(),
                 BlockType::DiamondOre => "Diamond Ore".to_string(),
                 BlockType::Bedrock => "Bedrock".to_string(),
+                BlockType::CraftingTable => "Crafting Table".to_string(),
             },
             Self::Material(m) => m.name().to_string(),
             Self::Tool { tool, tier } => format!("{} {}", tier.name(), tool.name()),

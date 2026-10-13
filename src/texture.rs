@@ -6,7 +6,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use crate::block::{BlockFace, BlockType};
 
 pub const TILE_SIZE: usize = 16;
-pub const LAYER_COUNT: usize = 25;
+pub const LAYER_COUNT: usize = 28;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
@@ -36,6 +36,9 @@ pub enum TextureId {
     Gravel = 22,
     Ice = 23,
     Glass = 24,
+    CraftingTableTop = 25,
+    CraftingTableSide = 26,
+    CraftingTableFront = 27,
 }
 
 impl TextureId {
@@ -84,6 +87,12 @@ pub const fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
         BlockType::Gravel => TextureId::Gravel,
         BlockType::Ice => TextureId::Ice,
         BlockType::Glass => TextureId::Glass,
+        BlockType::CraftingTable => match face {
+            BlockFace::Top => TextureId::CraftingTableTop,
+            BlockFace::Bottom => TextureId::Planks,
+            BlockFace::North => TextureId::CraftingTableFront,
+            _ => TextureId::CraftingTableSide,
+        },
     }
 }
 
@@ -483,6 +492,82 @@ pub fn create_texture_array() -> Image {
                 [210, 235, 255, 45]
             };
             set_px(TextureId::Glass, x, y, col);
+        }
+    }
+
+    // 26. Crafting Table Top (Dark wood frame, 3x3 workbench grid, and corner iron brackets)
+    for x in 0..16 {
+        for y in 0..16 {
+            let is_frame = x <= 1 || x >= 14 || y <= 1 || y >= 14;
+            let is_grid_line = (x == 5 || x == 10 || y == 5 || y == 10)
+                && (2..14).contains(&x)
+                && (2..14).contains(&y);
+            let is_bracket = (x == 2 || x == 13) && (y == 2 || y == 13);
+            let col = if is_bracket {
+                [180, 180, 185, 255]
+            } else if is_frame {
+                [115, 82, 45, 255]
+            } else if is_grid_line {
+                [95, 68, 38, 255]
+            } else {
+                let h = p_hash(x, y, 26) % 3;
+                if h == 0 {
+                    [170, 130, 82, 255]
+                } else {
+                    [188, 145, 94, 255]
+                }
+            };
+            set_px(TextureId::CraftingTableTop, x, y, col);
+        }
+    }
+
+    // 27. Crafting Table Side (Planks base with hanging handsaw motif)
+    for x in 0..16 {
+        for y in 0..16 {
+            let is_saw_blade = x == 11 && (4..12).contains(&y);
+            let is_saw_teeth = x == 12 && (4..12).contains(&y) && y % 2 == 0;
+            let is_saw_handle = (10..=12).contains(&x) && (2..4).contains(&y);
+            let is_border = x == 0 || x == 15 || y == 0 || y == 15;
+            let col = if is_saw_handle {
+                [110, 72, 35, 255]
+            } else if is_saw_blade || is_saw_teeth {
+                [190, 190, 195, 255]
+            } else if is_border {
+                [120, 85, 48, 255]
+            } else {
+                let is_seam = y % 4 == 0;
+                if is_seam {
+                    [110, 78, 42, 255]
+                } else {
+                    [155, 118, 72, 255]
+                }
+            };
+            set_px(TextureId::CraftingTableSide, x, y, col);
+        }
+    }
+
+    // 28. Crafting Table Front (Planks base with hammer and wrench motif)
+    for x in 0..16 {
+        for y in 0..16 {
+            let is_hammer_head = (4..9).contains(&x) && (4..6).contains(&y);
+            let is_hammer_shaft = (6..8).contains(&x) && (6..12).contains(&y);
+            let is_wrench = (11..13).contains(&x) && (5..11).contains(&y);
+            let is_border = x == 0 || x == 15 || y == 0 || y == 15;
+            let col = if is_hammer_head || is_wrench {
+                [185, 185, 190, 255]
+            } else if is_hammer_shaft {
+                [95, 62, 30, 255]
+            } else if is_border {
+                [120, 85, 48, 255]
+            } else {
+                let is_seam = y % 4 == 0;
+                if is_seam {
+                    [110, 78, 42, 255]
+                } else {
+                    [155, 118, 72, 255]
+                }
+            };
+            set_px(TextureId::CraftingTableFront, x, y, col);
         }
     }
 

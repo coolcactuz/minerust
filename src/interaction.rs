@@ -154,11 +154,12 @@ pub struct InteractionContext<'w> {
     pub graphics: Option<Res<'w, GraphicsSettings>>,
     pub time: Res<'w, Time>,
     pub mining_state: ResMut<'w, MiningState>,
+    pub crafting_state: Option<ResMut<'w, crate::crafting::CraftingState>>,
 }
 
 pub fn block_interaction_system(
     mut commands: Commands,
-    cursor_options: Query<&CursorOptions, With<PrimaryWindow>>,
+    mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     camera_query: Query<(&Transform, &FpsCamera)>,
     mut context: InteractionContext,
     mut world: ResMut<WorldGrid>,
@@ -272,9 +273,21 @@ pub fn block_interaction_system(
             context.mining_state.reset();
         }
 
-        // Right click: Place block (if a placeable block item is equipped in the active hotbar slot)
+        // Right click: Interact with blocks (e.g. Crafting Table) or place equipped block
         if context.mouse_buttons.just_pressed(MouseButton::Right) {
-            if let Some(selected_stack) = context.inventory.selected_item() {
+            let target_block = world.get_block(hit.hit_block);
+            if target_block == BlockType::CraftingTable {
+                if let Some(ref mut cs) = context.crafting_state {
+                    cs.mode = crate::crafting::CraftingMode::Table3x3;
+                    cs.is_table_open = true;
+                    cs.update_output();
+                }
+                context.inventory.is_open = true;
+                if let Ok(mut cursor) = cursor_options.single_mut() {
+                    cursor.grab_mode = CursorGrabMode::None;
+                    cursor.visible = true;
+                }
+            } else if let Some(selected_stack) = context.inventory.selected_item() {
                 if let Some(block_to_place) = selected_stack.item.as_block() {
                     let mut can_place = true;
 

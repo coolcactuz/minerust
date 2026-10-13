@@ -11,6 +11,7 @@ use minerust::benchmark::BenchmarkConfig;
 use minerust::camera::{CameraPlugin, FpsCamera};
 use minerust::crafting::CraftingPlugin;
 use minerust::fluid::FluidPlugin;
+use minerust::held_item::HeldItemPlugin;
 use minerust::interaction::InteractionPlugin;
 use minerust::inventory::InventoryPlugin;
 use minerust::menu::{
@@ -233,6 +234,7 @@ fn main() {
             FluidPlugin,
             WorldPlugin,
             InteractionPlugin,
+            HeldItemPlugin,
             InventoryPlugin,
             CraftingPlugin,
             MenuPlugin,

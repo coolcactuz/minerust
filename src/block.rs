@@ -25,6 +25,7 @@ pub enum BlockType {
     Gravel = 18,
     Ice = 19,
     Glass = 20,
+    CraftingTable = 21,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -75,7 +76,7 @@ impl BlockType {
                 preferred_tool: Some(ToolType::Pickaxe),
                 min_tier: Some(ToolTier::Wood),
             },
-            Self::Wood | Self::Planks => BlockProperties {
+            Self::Wood | Self::Planks | Self::CraftingTable => BlockProperties {
                 hardness: 2.0,
                 preferred_tool: Some(ToolType::Axe),
                 min_tier: None,
@@ -210,6 +211,7 @@ impl BlockType {
             18 => BlockType::Gravel,
             19 => BlockType::Ice,
             20 => BlockType::Glass,
+            21 => BlockType::CraftingTable,
             _ => BlockType::Air,
         }
     }
@@ -252,6 +254,7 @@ impl BlockType {
             BlockType::Gravel => ([0.46, 0.45, 0.45], face_shade(face)),
             BlockType::Ice => ([0.62, 0.82, 0.96], face_shade(face)),
             BlockType::Glass => ([0.85, 0.92, 0.96], face_shade(face)),
+            BlockType::CraftingTable => ([0.65, 0.45, 0.28], face_shade(face)),
         };
 
         [

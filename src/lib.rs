@@ -9,6 +9,7 @@ pub mod crack;
 pub mod crafting;
 pub mod error;
 pub mod fluid;
+pub mod held_item;
 pub mod interaction;
 pub mod inventory;
 pub mod item;
