@@ -9,6 +9,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use minerust::benchmark::BenchmarkConfig;
 use minerust::camera::{CameraPlugin, FpsCamera};
+use minerust::crafting::CraftingPlugin;
 use minerust::fluid::FluidPlugin;
 use minerust::interaction::InteractionPlugin;
 use minerust::inventory::InventoryPlugin;
@@ -233,6 +234,7 @@ fn main() {
             WorldPlugin,
             InteractionPlugin,
             InventoryPlugin,
+            CraftingPlugin,
             MenuPlugin,
             SavePlugin,
             ProfilePlugin,

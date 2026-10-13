@@ -6,6 +6,7 @@ pub mod camera;
 pub mod chunk;
 pub mod coords;
 pub mod crack;
+pub mod crafting;
 pub mod error;
 pub mod fluid;
 pub mod interaction;

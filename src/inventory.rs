@@ -331,11 +331,11 @@ pub fn setup_inventory_ui(mut commands: Commands) {
                 top: Val::Percent(50.0),
                 margin: UiRect {
                     left: Val::Px(-270.0),
-                    top: Val::Px(-230.0),
+                    top: Val::Px(-290.0),
                     ..default()
                 },
                 width: Val::Px(540.0),
-                height: Val::Px(460.0),
+                height: Val::Px(580.0),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
                 padding: UiRect::all(Val::Px(16.0)),
@@ -369,10 +369,13 @@ pub fn setup_inventory_ui(mut commands: Commands) {
                 },
                 TextColor(Color::srgb(0.7, 0.75, 0.85)),
                 Node {
-                    margin: UiRect::bottom(Val::Px(12.0)),
+                    margin: UiRect::bottom(Val::Px(10.0)),
                     ..default()
                 },
             ));
+
+            // Crafting 2x2 Section
+            crate::crafting::spawn_crafting_widget(parent);
 
             // Main Inventory Section Label
             parent.spawn((
