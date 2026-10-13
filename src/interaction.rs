@@ -377,10 +377,12 @@ pub struct InteractionPlugin;
 
 impl Plugin for InteractionPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<MiningState>().add_systems(
-            Update,
-            block_interaction_system.in_set(crate::stage::VoxelStage::InputHandling),
-        );
+        app.init_resource::<MiningState>()
+            .add_plugins(crate::crack::CrackOverlayPlugin)
+            .add_systems(
+                Update,
+                block_interaction_system.in_set(crate::stage::VoxelStage::InputHandling),
+            );
     }
 }
 
