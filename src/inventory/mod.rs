@@ -17,8 +17,9 @@ pub use crate::item::{
     ItemStack, ItemType, MAX_STACK_SIZE, MaterialType, ToolTier, ToolType, block_drop,
 };
 pub use ui::{
-    HotbarCountUi, HotbarIconUi, HotbarRoot, HotbarSlotUi, InventoryModal, ModalCountUi,
-    ModalIconUi, ModalSlotBtn, ModalSlotUi, setup_inventory_ui, update_inventory_ui_system,
+    HotbarCountUi, HotbarIconUi, HotbarRoot, HotbarSlotUi, HoveredItemTextUi, InventoryModal,
+    ModalCountUi, ModalIconUi, ModalSlotBtn, ModalSlotUi, minecraft_slot_border,
+    minecraft_window_border, setup_inventory_ui, update_inventory_ui_system,
 };
 
 pub const HOTBAR_SLOTS: usize = 9;
@@ -46,6 +47,8 @@ pub const ALL_BLOCKS: &[BlockType] = &[
     BlockType::DiamondOre,
     BlockType::Bedrock,
     BlockType::CraftingTable,
+    BlockType::Chest,
+    BlockType::Furnace,
 ];
 
 pub const fn block_name(block: BlockType) -> &'static str {
@@ -72,6 +75,9 @@ pub const fn block_name(block: BlockType) -> &'static str {
         BlockType::DiamondOre => "Diamond Ore",
         BlockType::Bedrock => "Bedrock",
         BlockType::CraftingTable => "Crafting Table",
+        BlockType::Chest => "Chest",
+        BlockType::Furnace => "Furnace",
+        BlockType::LitFurnace => "Lit Furnace",
     }
 }
 
@@ -223,12 +229,16 @@ pub enum SlotLocation {
 }
 
 pub fn inventory_input_system(
+    mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
     mut inventory: ResMut<Inventory>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     menu: Option<Res<MenuState>>,
     mut crafting_state: Option<ResMut<crate::crafting::CraftingState>>,
+    mut chest_state: Option<ResMut<crate::chest::ChestOpenState>>,
+    mut furnace_state: Option<ResMut<crate::furnace::FurnaceOpenState>>,
+    sfx: Option<Res<crate::audio::SoundEffects>>,
 ) {
     if menu.is_some_and(|m| m.is_open()) {
         return;
@@ -240,20 +250,42 @@ pub fn inventory_input_system(
 
     // Key E: Open/Close Inventory
     if keys.just_pressed(KeyCode::KeyE) {
-        inventory.is_open = !inventory.is_open;
-
         if inventory.is_open {
+            inventory.is_open = false;
+            inventory.return_held_cursor_item();
+            if let Some(ref mut cs) = crafting_state {
+                cs.is_table_open = false;
+                cs.mode = crate::crafting::CraftingMode::Personal2x2;
+                cs.return_to_inventory(&mut inventory);
+            }
+            if let Some(ref mut cs) = chest_state {
+                if cs.is_open() {
+                    if let Some(ref sfx) = sfx {
+                        crate::audio::play_sound(&mut commands, &sfx.chest_close, 0.85);
+                    }
+                }
+                cs.close();
+            }
+            if let Some(ref mut fs) = furnace_state {
+                fs.close();
+            }
+            cursor.grab_mode = CursorGrabMode::Locked;
+            cursor.visible = false;
+        } else {
+            inventory.is_open = true;
             if let Some(ref mut cs) = crafting_state {
                 cs.mode = crate::crafting::CraftingMode::Personal2x2;
                 cs.is_table_open = false;
                 cs.update_output();
             }
+            if let Some(ref mut cs) = chest_state {
+                cs.close();
+            }
+            if let Some(ref mut fs) = furnace_state {
+                fs.close();
+            }
             cursor.grab_mode = CursorGrabMode::None;
             cursor.visible = true;
-        } else {
-            inventory.return_held_cursor_item();
-            cursor.grab_mode = CursorGrabMode::Locked;
-            cursor.visible = false;
         }
     }
 
@@ -261,6 +293,22 @@ pub fn inventory_input_system(
     if keys.just_pressed(KeyCode::Escape) && inventory.is_open {
         inventory.is_open = false;
         inventory.return_held_cursor_item();
+        if let Some(ref mut cs) = crafting_state {
+            cs.is_table_open = false;
+            cs.mode = crate::crafting::CraftingMode::Personal2x2;
+            cs.return_to_inventory(&mut inventory);
+        }
+        if let Some(ref mut cs) = chest_state {
+            if cs.is_open() {
+                if let Some(ref sfx) = sfx {
+                    crate::audio::play_sound(&mut commands, &sfx.chest_close, 0.85);
+                }
+            }
+            cs.close();
+        }
+        if let Some(ref mut fs) = furnace_state {
+            fs.close();
+        }
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
     }
@@ -297,14 +345,16 @@ pub fn inventory_input_system(
 }
 
 pub fn inventory_interaction_system(
+    mut commands: Commands,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
-    mut interaction_query: Query<(&Interaction, &ModalSlotBtn, &mut BorderColor), With<Button>>,
+    mut interaction_query: Query<(&Interaction, &ModalSlotBtn), With<Button>>,
     mut inventory: ResMut<Inventory>,
+    sfx: Option<Res<crate::audio::SoundEffects>>,
 ) {
     let left_clicked = mouse_buttons.just_pressed(MouseButton::Left);
     let right_clicked = mouse_buttons.just_pressed(MouseButton::Right);
 
-    for (interaction, btn_slot, mut border) in &mut interaction_query {
+    for (interaction, btn_slot) in &mut interaction_query {
         let is_hovered =
             *interaction == Interaction::Hovered || *interaction == Interaction::Pressed;
 
@@ -378,30 +428,17 @@ pub fn inventory_interaction_system(
                 }
             };
 
+            let changed = inventory.held_cursor_item != new_held || slot_stack != new_slot;
             inventory.held_cursor_item = new_held;
             match btn_slot.0 {
                 SlotLocation::Hotbar(idx) => inventory.hotbar[idx] = new_slot,
                 SlotLocation::Main(idx) => inventory.main[idx] = new_slot,
             }
-        }
 
-        match *interaction {
-            Interaction::Pressed => {
-                *border = BorderColor::all(Color::srgb(1.0, 0.9, 0.2));
-            }
-            Interaction::Hovered => {
-                *border = BorderColor::all(Color::srgb(0.9, 0.9, 1.0));
-            }
-            Interaction::None => {
-                let is_selected_hotbar = match btn_slot.0 {
-                    SlotLocation::Hotbar(idx) => idx == inventory.selected_slot,
-                    SlotLocation::Main(_) => false,
-                };
-                *border = if is_selected_hotbar {
-                    BorderColor::all(Color::srgb(1.0, 0.85, 0.2))
-                } else {
-                    BorderColor::all(Color::srgba(0.4, 0.4, 0.5, 0.6))
-                };
+            if changed {
+                if let Some(ref sfx) = sfx {
+                    crate::audio::play_sound(&mut commands, &sfx.click, 0.75);
+                }
             }
         }
     }
@@ -412,14 +449,17 @@ pub struct InventoryPlugin;
 impl Plugin for InventoryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Inventory>()
-            .add_systems(Startup, setup_inventory_ui)
+            .add_systems(
+                Startup,
+                (crate::item_icon::setup_item_icons, setup_inventory_ui),
+            )
             .add_systems(
                 Update,
-                (
-                    inventory_input_system.in_set(crate::stage::VoxelStage::InputHandling),
-                    inventory_interaction_system,
-                    update_inventory_ui_system,
-                ),
+                inventory_input_system.in_set(crate::stage::VoxelStage::InputHandling),
+            )
+            .add_systems(
+                Update,
+                (inventory_interaction_system, update_inventory_ui_system),
             );
     }
 }

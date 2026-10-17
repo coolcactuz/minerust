@@ -14,8 +14,8 @@ pub use recipes::{
 };
 pub use ui::{
     CraftingCountUi, CraftingIconUi, CraftingResultBtn, CraftingResultCountUi,
-    CraftingResultIconUi, CraftingSlotBtn, CraftingSlotUi, CraftingTitleUi, CursorFollower,
-    cursor_follower_update_system, spawn_crafting_widget,
+    CraftingResultIconUi, CraftingRowUi, CraftingSlotBtn, CraftingSlotUi, CraftingTitleUi,
+    CursorFollower, cursor_follower_update_system, spawn_crafting_widget,
 };
 
 pub const GRID_SIZE: usize = 9; // 3x3 max grid size
@@ -87,11 +87,13 @@ impl CraftingState {
 
 /// Handles player left and right clicks on crafting input slots and result button.
 pub fn crafting_interaction_system(
+    mut commands: Commands,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut crafting_slot_query: Query<(&Interaction, &CraftingSlotBtn), With<Button>>,
     mut crafting_result_query: Query<&Interaction, (With<CraftingResultBtn>, With<Button>)>,
     mut crafting_state: ResMut<CraftingState>,
     mut inventory: ResMut<Inventory>,
+    sfx: Option<Res<crate::audio::SoundEffects>>,
 ) {
     let left_clicked = mouse_buttons.just_pressed(MouseButton::Left);
     let right_clicked = mouse_buttons.just_pressed(MouseButton::Right);
@@ -113,11 +115,17 @@ pub fn crafting_interaction_system(
                             // Pick up entire stack from crafting grid into cursor
                             inventory.held_cursor_item = Some(slot_stack);
                             *slot_ref = None;
+                            if let Some(ref sfx) = sfx {
+                                crate::audio::play_sound(&mut commands, &sfx.click, 0.75);
+                            }
                         }
                         (Some(held), None) => {
                             // Place entire held stack into empty crafting slot
                             *slot_ref = Some(held);
                             inventory.held_cursor_item = None;
+                            if let Some(ref sfx) = sfx {
+                                crate::audio::play_sound(&mut commands, &sfx.click, 0.75);
+                            }
                         }
                         (Some(mut held), Some(mut slot_stack)) => {
                             if held.item == slot_stack.item {
@@ -133,6 +141,9 @@ pub fn crafting_interaction_system(
                             } else {
                                 // Swap held item with crafting slot
                                 std::mem::swap(&mut inventory.held_cursor_item, slot_ref);
+                            }
+                            if let Some(ref sfx) = sfx {
+                                crate::audio::play_sound(&mut commands, &sfx.click, 0.75);
                             }
                         }
                         (None, None) => {}
@@ -151,6 +162,9 @@ pub fn crafting_interaction_system(
                             } else {
                                 None
                             };
+                            if let Some(ref sfx) = sfx {
+                                crate::audio::play_sound(&mut commands, &sfx.click, 0.75);
+                            }
                         }
                         (Some(mut held), None) => {
                             // Place 1 single item into empty crafting slot
@@ -160,6 +174,9 @@ pub fn crafting_interaction_system(
                             } else {
                                 held.count -= 1;
                                 inventory.held_cursor_item = Some(held);
+                            }
+                            if let Some(ref sfx) = sfx {
+                                crate::audio::play_sound(&mut commands, &sfx.click, 0.75);
                             }
                         }
                         (Some(mut held), Some(ref mut slot_stack)) => {
@@ -173,6 +190,9 @@ pub fn crafting_interaction_system(
                                 } else {
                                     held.count -= 1;
                                     inventory.held_cursor_item = Some(held);
+                                }
+                                if let Some(ref sfx) = sfx {
+                                    crate::audio::play_sound(&mut commands, &sfx.click, 0.75);
                                 }
                             }
                         }
@@ -189,12 +209,14 @@ pub fn crafting_interaction_system(
         for interaction in &mut crafting_result_query {
             if *interaction == Interaction::Hovered || *interaction == Interaction::Pressed {
                 if let Some(output_stack) = crafting_state.output {
+                    let mut crafted = false;
                     match inventory.held_cursor_item {
                         None => {
                             // Collect crafted output onto empty cursor
                             inventory.held_cursor_item = Some(output_stack);
                             crafting_state.consume_ingredients();
                             crafting_state.update_output();
+                            crafted = true;
                         }
                         Some(mut held) => {
                             // Merge into matching cursor stack if space allows
@@ -205,7 +227,13 @@ pub fn crafting_interaction_system(
                                 inventory.held_cursor_item = Some(held);
                                 crafting_state.consume_ingredients();
                                 crafting_state.update_output();
+                                crafted = true;
                             }
+                        }
+                    }
+                    if crafted {
+                        if let Some(ref sfx) = sfx {
+                            crate::audio::play_sound(&mut commands, &sfx.pop, 0.95);
                         }
                     }
                 }
@@ -280,5 +308,30 @@ mod tests {
 
         assert_eq!(state.grid[0], Some(ItemStack::block(BlockType::Planks, 1)));
         assert_eq!(state.grid[1], None);
+    }
+
+    #[test]
+    fn test_crafting_return_on_close_system() {
+        let mut app = App::new();
+        app.init_resource::<CraftingState>();
+        app.init_resource::<Inventory>();
+        app.add_systems(Update, crafting_return_on_close_system);
+
+        {
+            let mut state = app.world_mut().resource_mut::<CraftingState>();
+            state.grid[0] = Some(ItemStack::block(BlockType::Wood, 3));
+            let mut inv = app.world_mut().resource_mut::<Inventory>();
+            inv.is_open = false;
+            inv.held_cursor_item = Some(ItemStack::block(BlockType::Stone, 2));
+        }
+
+        app.update();
+
+        let state = app.world().resource::<CraftingState>();
+        let inv = app.world().resource::<Inventory>();
+        assert_eq!(state.grid[0], None);
+        assert_eq!(inv.held_cursor_item, None);
+        assert_eq!(inv.hotbar[0], Some(ItemStack::block(BlockType::Wood, 3)));
+        assert_eq!(inv.hotbar[1], Some(ItemStack::block(BlockType::Stone, 2)));
     }
 }

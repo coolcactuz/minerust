@@ -97,3 +97,51 @@ fn test_inventory_add_materials_and_tools() {
     assert_eq!(inv.hotbar[1], Some(ItemStack::new(mat, 64)));
     assert_eq!(inv.hotbar[2], Some(ItemStack::new(mat, 1)));
 }
+
+#[test]
+fn test_minecraft_ui_borders_have_3d_bevel() {
+    let slot_b = minecraft_slot_border();
+    // Sunken slot: top and left are dark shadow, bottom and right are highlight
+    assert_eq!(slot_b.top, slot_b.left);
+    assert_eq!(slot_b.bottom, slot_b.right);
+    assert_ne!(slot_b.top, slot_b.bottom);
+
+    let win_b = minecraft_window_border();
+    // Raised window: top and left are highlight, bottom and right are shadow
+    assert_eq!(win_b.top, win_b.left);
+    assert_eq!(win_b.bottom, win_b.right);
+    assert_ne!(win_b.top, win_b.bottom);
+}
+
+#[test]
+fn test_inventory_return_held_cursor_item() {
+    let mut inv = Inventory {
+        held_cursor_item: Some(ItemStack::block(BlockType::Wood, 5)),
+        ..default()
+    };
+
+    inv.return_held_cursor_item();
+    assert_eq!(inv.held_cursor_item, None);
+    assert_eq!(inv.hotbar[0], Some(ItemStack::block(BlockType::Wood, 5)));
+}
+
+#[test]
+fn test_inventory_selected_block_and_item() {
+    let mut inv = Inventory::default();
+    assert_eq!(inv.selected_block(), BlockType::Air);
+    assert!(inv.selected_item().is_none());
+
+    inv.hotbar[0] = Some(ItemStack::block(BlockType::Cobblestone, 10));
+    assert_eq!(inv.selected_block(), BlockType::Cobblestone);
+    assert_eq!(
+        inv.selected_item(),
+        Some(ItemStack::block(BlockType::Cobblestone, 10))
+    );
+
+    // If hotbar has a tool, selected_block is Air but selected_item is Some
+    let pick = ItemType::tool(ToolType::Pickaxe, ToolTier::Iron);
+    inv.hotbar[1] = Some(ItemStack::new(pick, 1));
+    inv.selected_slot = 1;
+    assert_eq!(inv.selected_block(), BlockType::Air);
+    assert_eq!(inv.selected_item(), Some(ItemStack::new(pick, 1)));
+}

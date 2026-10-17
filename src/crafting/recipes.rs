@@ -314,6 +314,42 @@ pub fn all_recipes() -> Vec<Recipe> {
             output: ItemStack::new(BlockType::Stone, 4),
             mirrored: false,
         }),
+        // 8 Planks surrounding empty center (3x3) -> 1 Chest
+        Recipe::Shaped(ShapedRecipe {
+            width: 3,
+            height: 3,
+            pattern: vec![
+                Some(ItemType::Block(BlockType::Planks)),
+                Some(ItemType::Block(BlockType::Planks)),
+                Some(ItemType::Block(BlockType::Planks)),
+                Some(ItemType::Block(BlockType::Planks)),
+                None,
+                Some(ItemType::Block(BlockType::Planks)),
+                Some(ItemType::Block(BlockType::Planks)),
+                Some(ItemType::Block(BlockType::Planks)),
+                Some(ItemType::Block(BlockType::Planks)),
+            ],
+            output: ItemStack::new(BlockType::Chest, 1),
+            mirrored: false,
+        }),
+        // 8 Cobblestone surrounding empty center (3x3) -> 1 Furnace
+        Recipe::Shaped(ShapedRecipe {
+            width: 3,
+            height: 3,
+            pattern: vec![
+                Some(ItemType::Block(BlockType::Cobblestone)),
+                Some(ItemType::Block(BlockType::Cobblestone)),
+                Some(ItemType::Block(BlockType::Cobblestone)),
+                Some(ItemType::Block(BlockType::Cobblestone)),
+                None,
+                Some(ItemType::Block(BlockType::Cobblestone)),
+                Some(ItemType::Block(BlockType::Cobblestone)),
+                Some(ItemType::Block(BlockType::Cobblestone)),
+                Some(ItemType::Block(BlockType::Cobblestone)),
+            ],
+            output: ItemStack::new(BlockType::Furnace, 1),
+            mirrored: false,
+        }),
         // 2x2 Compact tools (handy shortcuts)
         Recipe::Shaped(ShapedRecipe {
             width: 2,
@@ -524,5 +560,21 @@ mod tests {
 
         let out = match_recipe(&grid, 3, 3);
         assert_eq!(out, Some(ItemStack::tool(ToolType::Axe, ToolTier::Wood)));
+    }
+
+    #[test]
+    fn test_chest_recipe() {
+        let p = Some(ItemStack::block(BlockType::Planks, 1));
+        let grid = [p, p, p, p, None, p, p, p, p];
+        let out = match_recipe(&grid, 3, 3);
+        assert_eq!(out, Some(ItemStack::new(BlockType::Chest, 1)));
+    }
+
+    #[test]
+    fn test_furnace_recipe() {
+        let c = Some(ItemStack::block(BlockType::Cobblestone, 1));
+        let grid = [c, c, c, c, None, c, c, c, c];
+        let out = match_recipe(&grid, 3, 3);
+        assert_eq!(out, Some(ItemStack::new(BlockType::Furnace, 1)));
     }
 }

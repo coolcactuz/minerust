@@ -68,6 +68,94 @@ pub fn load_player_from_disk(path: &Path) -> Result<PlayerSaveData, std::io::Err
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ChestDiskEntry {
+    pos: [i32; 3],
+    slots: [Option<ItemStack>; crate::chest::CHEST_SLOTS],
+}
+
+/// Saves chest storage state to JSON on disk.
+pub fn save_chests_to_disk(
+    path: &Path,
+    data: &crate::chest::ChestStorage,
+) -> Result<(), std::io::Error> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let entries: Vec<ChestDiskEntry> = data
+        .containers
+        .iter()
+        .map(|(&pos, &slots)| ChestDiskEntry {
+            pos: [pos.x, pos.y, pos.z],
+            slots,
+        })
+        .collect();
+    let json = serde_json::to_string_pretty(&entries)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
+/// Loads chest storage state from a JSON file on disk.
+pub fn load_chests_from_disk(path: &Path) -> Result<crate::chest::ChestStorage, std::io::Error> {
+    let content = std::fs::read_to_string(path)?;
+    let entries: Vec<ChestDiskEntry> = serde_json::from_str(&content)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let mut storage = crate::chest::ChestStorage::default();
+    for entry in entries {
+        storage.containers.insert(
+            IVec3::new(entry.pos[0], entry.pos[1], entry.pos[2]),
+            entry.slots,
+        );
+    }
+    Ok(storage)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct FurnaceDiskEntry {
+    pos: [i32; 3],
+    data: crate::furnace::FurnaceData,
+}
+
+/// Saves furnace storage state to JSON on disk.
+pub fn save_furnaces_to_disk(
+    path: &Path,
+    data: &crate::furnace::FurnaceStorage,
+) -> Result<(), std::io::Error> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let entries: Vec<FurnaceDiskEntry> = data
+        .furnaces
+        .iter()
+        .map(|(&pos, d)| FurnaceDiskEntry {
+            pos: [pos.x, pos.y, pos.z],
+            data: d.clone(),
+        })
+        .collect();
+    let json = serde_json::to_string_pretty(&entries)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
+/// Loads furnace storage state from a JSON file on disk.
+pub fn load_furnaces_from_disk(
+    path: &Path,
+) -> Result<crate::furnace::FurnaceStorage, std::io::Error> {
+    let content = std::fs::read_to_string(path)?;
+    let entries: Vec<FurnaceDiskEntry> = serde_json::from_str(&content)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let mut storage = crate::furnace::FurnaceStorage::default();
+    for entry in entries {
+        storage.furnaces.insert(
+            IVec3::new(entry.pos[0], entry.pos[1], entry.pos[2]),
+            entry.data,
+        );
+    }
+    Ok(storage)
+}
+
 /// Persisted metadata of a saved world including seed, world name, creation timestamp, and engine version.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct WorldMetadata {
@@ -328,6 +416,8 @@ pub fn autosave_system(
     mut world: ResMut<WorldGrid>,
     inventory: Res<Inventory>,
     player_query: Query<(&Transform, &FpsCamera)>,
+    chest_storage: Option<Res<crate::chest::ChestStorage>>,
+    furnace_storage: Option<Res<crate::furnace::FurnaceStorage>>,
 ) {
     if world.chunks.is_empty() {
         return;
@@ -355,6 +445,26 @@ pub fn autosave_system(
                 tracing::warn!("Failed to auto-save player data to {path:?}: {e}");
             }
         }
+
+        // 3. Auto-save chests
+        if let Some(ref chests) = chest_storage {
+            if !chests.containers.is_empty() {
+                let path = get_world_dir(world.seed.0).join("chests.json");
+                if let Err(e) = save_chests_to_disk(&path, chests) {
+                    tracing::warn!("Failed to auto-save chests to {path:?}: {e}");
+                }
+            }
+        }
+
+        // 4. Auto-save furnaces
+        if let Some(ref furnaces) = furnace_storage {
+            if !furnaces.furnaces.is_empty() {
+                let path = get_world_dir(world.seed.0).join("furnaces.json");
+                if let Err(e) = save_furnaces_to_disk(&path, furnaces) {
+                    tracing::warn!("Failed to auto-save furnaces to {path:?}: {e}");
+                }
+            }
+        }
     }
 }
 
@@ -364,6 +474,8 @@ pub fn save_on_exit_system(
     mut world: ResMut<WorldGrid>,
     inventory: Res<Inventory>,
     player_query: Query<(&Transform, &FpsCamera)>,
+    chest_storage: Option<Res<crate::chest::ChestStorage>>,
+    furnace_storage: Option<Res<crate::furnace::FurnaceStorage>>,
 ) {
     if !exit_reader.is_empty() {
         if world.chunks.is_empty() {
@@ -378,6 +490,24 @@ pub fn save_on_exit_system(
             let path = world.player_save_path();
             if let Err(e) = save_player_to_disk(&path, &data) {
                 tracing::warn!("Failed to save player data on exit: {e}");
+            }
+        }
+
+        if let Some(ref chests) = chest_storage {
+            if !chests.containers.is_empty() {
+                let path = get_world_dir(world.seed.0).join("chests.json");
+                if let Err(e) = save_chests_to_disk(&path, chests) {
+                    tracing::warn!("Failed to save chests on exit: {e}");
+                }
+            }
+        }
+
+        if let Some(ref furnaces) = furnace_storage {
+            if !furnaces.furnaces.is_empty() {
+                let path = get_world_dir(world.seed.0).join("furnaces.json");
+                if let Err(e) = save_furnaces_to_disk(&path, furnaces) {
+                    tracing::warn!("Failed to save furnaces on exit: {e}");
+                }
             }
         }
 
@@ -512,5 +642,70 @@ mod tests {
 
         let last_world = get_last_world_file();
         assert!(last_world.ends_with("last_world.txt"));
+    }
+
+    #[test]
+    fn test_chest_storage_disk_roundtrip() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "minerust_chest_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let chest_file = temp_dir.join("chests.json");
+
+        let mut storage = crate::chest::ChestStorage::default();
+        let pos = IVec3::new(10, 64, -20);
+        {
+            let container = storage.get_or_create(pos);
+            container[0] = Some(ItemStack::block(BlockType::Wood, 10));
+            container[1] = Some(ItemStack::material(crate::item::MaterialType::IronIngot, 5));
+        }
+
+        save_chests_to_disk(&chest_file, &storage).expect("saving chests should succeed");
+        let loaded = load_chests_from_disk(&chest_file).expect("loading chests should succeed");
+
+        assert_eq!(loaded.containers.len(), 1);
+        let items = loaded.containers.get(&pos).expect("pos should exist");
+        assert_eq!(items[0], Some(ItemStack::block(BlockType::Wood, 10)));
+        assert_eq!(
+            items[1],
+            Some(ItemStack::material(crate::item::MaterialType::IronIngot, 5))
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_furnace_storage_disk_roundtrip() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "minerust_furnace_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let furnace_file = temp_dir.join("furnaces.json");
+
+        let mut storage = crate::furnace::FurnaceStorage::default();
+        let pos = IVec3::new(15, 64, -30);
+        {
+            let furnace = storage.get_or_create(pos);
+            furnace.input = Some(ItemStack::block(BlockType::IronOre, 8));
+            furnace.fuel = Some(ItemStack::material(crate::item::MaterialType::Coal, 2));
+            furnace.burn_time_remaining = 45.0;
+            furnace.burn_time_total = 80.0;
+            furnace.cook_progress = 3.5;
+        }
+
+        save_furnaces_to_disk(&furnace_file, &storage).expect("saving furnaces should succeed");
+        let loaded =
+            load_furnaces_from_disk(&furnace_file).expect("loading furnaces should succeed");
+
+        assert_eq!(loaded.furnaces.len(), 1);
+        let f = loaded.furnaces.get(&pos).expect("pos should exist");
+        assert_eq!(f.input, Some(ItemStack::block(BlockType::IronOre, 8)));
+        assert_eq!(f.burn_time_remaining, 45.0);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
