@@ -467,3 +467,44 @@ fn test_subchunk_section_isolation_and_empty_sections() {
         );
     }
 }
+
+#[test]
+fn test_mountain_and_wood_render_faces_against_leaves_no_hollow_interior() {
+    use crate::block::BlockFace;
+
+    // 1. Mountain stone against leaves: Stone face MUST render so interior of mountain is never visible
+    assert!(
+        should_render_face(BlockType::Stone, BlockType::Leaves, BlockFace::East),
+        "Stone mountain face touching leaves must render"
+    );
+
+    // 2. Dirt ground against leaves: Dirt face MUST render
+    assert!(
+        should_render_face(BlockType::Dirt, BlockType::Leaves, BlockFace::Top),
+        "Dirt ground face under leaves must render"
+    );
+
+    // 3. Tree trunk wood against leaves: Wood bark face MUST render inside leaf canopy
+    assert!(
+        should_render_face(BlockType::Wood, BlockType::Leaves, BlockFace::East),
+        "Tree trunk wood face inside leaves must render"
+    );
+
+    // 4. Leaves pressed against solid stone: redundant leaf face buried in rock is culled
+    assert!(
+        !should_render_face(BlockType::Leaves, BlockType::Stone, BlockFace::West),
+        "Leaf face flush against solid mountain rock should be culled"
+    );
+
+    // 5. Leaf-to-leaf: internal leaf faces render so trees look dense and volumetric (not hollow)
+    assert!(
+        should_render_face(BlockType::Leaves, BlockType::Leaves, BlockFace::East),
+        "Internal leaf-to-leaf faces must render so tree canopies are not hollow shells"
+    );
+}
+
+#[test]
+fn test_leaves_is_transparent() {
+    assert!(BlockType::Leaves.is_transparent());
+    assert!(!BlockType::Leaves.is_opaque());
+}

@@ -26,6 +26,9 @@ pub enum BlockType {
     Ice = 19,
     Glass = 20,
     CraftingTable = 21,
+    Chest = 22,
+    Furnace = 23,
+    LitFurnace = 24,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -76,10 +79,15 @@ impl BlockType {
                 preferred_tool: Some(ToolType::Pickaxe),
                 min_tier: Some(ToolTier::Wood),
             },
-            Self::Wood | Self::Planks | Self::CraftingTable => BlockProperties {
+            Self::Wood | Self::Planks | Self::CraftingTable | Self::Chest => BlockProperties {
                 hardness: 2.0,
                 preferred_tool: Some(ToolType::Axe),
                 min_tier: None,
+            },
+            Self::Furnace | Self::LitFurnace => BlockProperties {
+                hardness: 3.5,
+                preferred_tool: Some(ToolType::Pickaxe),
+                min_tier: Some(ToolTier::Wood),
             },
             Self::Leaves => BlockProperties {
                 hardness: 0.2,
@@ -170,7 +178,10 @@ impl BlockType {
 
     #[inline]
     pub const fn is_transparent(self) -> bool {
-        matches!(self, BlockType::Air | BlockType::Water | BlockType::Glass)
+        matches!(
+            self,
+            BlockType::Air | BlockType::Water | BlockType::Glass | BlockType::Leaves
+        )
     }
 
     #[inline]
@@ -212,6 +223,9 @@ impl BlockType {
             19 => BlockType::Ice,
             20 => BlockType::Glass,
             21 => BlockType::CraftingTable,
+            22 => BlockType::Chest,
+            23 => BlockType::Furnace,
+            24 => BlockType::LitFurnace,
             _ => BlockType::Air,
         }
     }
@@ -254,7 +268,15 @@ impl BlockType {
             BlockType::Gravel => ([0.46, 0.45, 0.45], face_shade(face)),
             BlockType::Ice => ([0.62, 0.82, 0.96], face_shade(face)),
             BlockType::Glass => ([0.85, 0.92, 0.96], face_shade(face)),
-            BlockType::CraftingTable => ([0.65, 0.45, 0.28], face_shade(face)),
+            BlockType::CraftingTable | BlockType::Chest => ([0.65, 0.45, 0.28], face_shade(face)),
+            BlockType::Furnace => match face {
+                BlockFace::North => ([0.35, 0.35, 0.38], face_shade(face)),
+                _ => ([0.42, 0.42, 0.44], face_shade(face)),
+            },
+            BlockType::LitFurnace => match face {
+                BlockFace::North => ([0.95, 0.55, 0.15], face_shade(face)),
+                _ => ([0.42, 0.42, 0.44], face_shade(face)),
+            },
         };
 
         [

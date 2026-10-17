@@ -201,6 +201,9 @@ impl ItemType {
                 BlockType::DiamondOre => "Diamond Ore".to_string(),
                 BlockType::Bedrock => "Bedrock".to_string(),
                 BlockType::CraftingTable => "Crafting Table".to_string(),
+                BlockType::Chest => "Chest".to_string(),
+                BlockType::Furnace => "Furnace".to_string(),
+                BlockType::LitFurnace => "Lit Furnace".to_string(),
             },
             Self::Material(m) => m.name().to_string(),
             Self::Tool { tool, tier } => format!("{} {}", tier.name(), tool.name()),
@@ -355,6 +358,7 @@ pub fn block_drop(block: BlockType) -> Option<ItemType> {
         BlockType::CoalOre => Some(ItemType::Material(MaterialType::Coal)),
         BlockType::DiamondOre => Some(ItemType::Material(MaterialType::Diamond)),
         BlockType::Leaves => Some(ItemType::Block(BlockType::Leaves)),
+        BlockType::LitFurnace => Some(ItemType::Block(BlockType::Furnace)),
         other => Some(ItemType::Block(other)),
     }
 }

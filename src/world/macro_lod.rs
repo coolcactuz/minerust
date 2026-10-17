@@ -198,6 +198,7 @@ pub fn flush_dirty_macro_chunks(
                 cull_mode: Some(bevy::render::render_resource::Face::Back),
                 perceptual_roughness: 0.85,
                 reflectance: 0.15,
+                alpha_mode: AlphaMode::Mask(0.5),
                 ..default()
             },
             extension: crate::voxel_material::VoxelExtension {
