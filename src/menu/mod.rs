@@ -1,5 +1,6 @@
 //! MineRust menu, HUD, settings, benchmark controls, and UI subsystems.
 
+pub mod audio_ui;
 pub mod descriptions;
 pub mod interactions;
 pub mod seed;
@@ -59,7 +60,8 @@ impl Plugin for MenuPlugin {
                         update_benchmark_banner_system,
                         update_benchmark_results_ui_system,
                     ),
-                ),
+                )
+                    .chain(),
             );
     }
 }

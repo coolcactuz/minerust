@@ -138,5 +138,39 @@ pub const fn get_option_description(action: &MenuButtonAction) -> Option<OptionD
             description: "Generates a fresh random 64-bit seed using high-resolution entropy.",
             impact: "- Each click generates a brand new terrain layout.",
         }),
+        MenuButtonAction::OpenAudioSettings => Some(OptionDescription {
+            header: "AUDIO & SOUND",
+            title: "Audio Settings",
+            description: "Configure master volume, sound effects, block breaking, and interface audio levels.",
+            impact: "- Real-time volume adjustments with instant audio feedback.",
+        }),
+        MenuButtonAction::BackFromAudioSettings => Some(OptionDescription {
+            header: "NAVIGATION",
+            title: "Done / Return",
+            description: "Save audio settings and return to previous menu.",
+            impact: "- Audio levels are automatically saved to settings.json.",
+        }),
+        MenuButtonAction::StepMasterVolumeLeft
+        | MenuButtonAction::StepMasterVolumeRight
+        | MenuButtonAction::SlideMasterVolume => Some(OptionDescription {
+            header: "AUDIO VOLUME",
+            title: "Master Volume Level",
+            description: "Controls the overall output level for all sounds and effects in the engine.",
+            impact: "- Scaled dynamically via Bevy GlobalVolume mixer.",
+        }),
+        MenuButtonAction::StepSfxVolumeLeft
+        | MenuButtonAction::StepSfxVolumeRight
+        | MenuButtonAction::SlideSfxVolume => Some(OptionDescription {
+            header: "AUDIO VOLUME",
+            title: "Sound Effects Volume Level",
+            description: "Controls the volume of block mining, breaking, item crafting, footsteps, and container interactions.",
+            impact: "- Allows balancing gameplay effects against master volume.",
+        }),
+        MenuButtonAction::TestAudioSample => Some(OptionDescription {
+            header: "AUDIO PREVIEW",
+            title: "Test Audio Sample",
+            description: "Plays a preview sound effect to verify your current volume and speaker configuration.",
+            impact: "- Plays immediate audio sample at active settings.",
+        }),
     }
 }

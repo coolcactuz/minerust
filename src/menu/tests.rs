@@ -91,6 +91,15 @@ fn test_get_option_description_all_actions() {
         MenuButtonAction::RandomizeSeed,
         MenuButtonAction::StartBenchmark,
         MenuButtonAction::BackFromBenchmark,
+        MenuButtonAction::OpenAudioSettings,
+        MenuButtonAction::BackFromAudioSettings,
+        MenuButtonAction::StepMasterVolumeLeft,
+        MenuButtonAction::StepMasterVolumeRight,
+        MenuButtonAction::SlideMasterVolume,
+        MenuButtonAction::StepSfxVolumeLeft,
+        MenuButtonAction::StepSfxVolumeRight,
+        MenuButtonAction::SlideSfxVolume,
+        MenuButtonAction::TestAudioSample,
     ];
 
     for action in actions {
@@ -102,6 +111,127 @@ fn test_get_option_description_all_actions() {
         assert!(!d.description.is_empty(), "Description must not be empty");
         assert!(!d.impact.is_empty(), "Impact must not be empty");
     }
+}
+
+#[test]
+fn test_audio_volume_slider_steps_and_ratios() {
+    let mut gs = GraphicsSettings::default();
+
+    // Default volume is 100%
+    assert_eq!(gs.master_volume, 100);
+    assert_eq!(gs.sfx_volume, 100);
+    assert_eq!(gs.master_volume_label(), "Master Volume: 100%");
+    assert_eq!(gs.sfx_volume_label(), "Sound Effects: 100%");
+    assert!((gs.master_volume_ratio() - 1.0).abs() < 1e-4);
+    assert!((gs.sfx_volume_ratio() - 1.0).abs() < 1e-4);
+
+    // Step down by 5%
+    gs.step_master_volume_left();
+    assert_eq!(gs.master_volume, 95);
+    assert_eq!(gs.master_volume_label(), "Master Volume: 95%");
+
+    gs.step_sfx_volume_left();
+    assert_eq!(gs.sfx_volume, 95);
+    assert_eq!(gs.sfx_volume_label(), "Sound Effects: 95%");
+
+    // Step up by 5%
+    gs.step_master_volume_right();
+    assert_eq!(gs.master_volume, 100);
+
+    gs.step_sfx_volume_right();
+    assert_eq!(gs.sfx_volume, 100);
+
+    // Set from ratio: 0.0 -> 0% (muted)
+    gs.set_master_volume_from_ratio(0.0);
+    assert_eq!(gs.master_volume, 0);
+    assert_eq!(gs.master_volume_label(), "Master Volume: OFF");
+
+    gs.set_sfx_volume_from_ratio(0.0);
+    assert_eq!(gs.sfx_volume, 0);
+    assert_eq!(gs.sfx_volume_label(), "Sound Effects: OFF");
+
+    // Set from ratio: 0.5 -> 50%
+    gs.set_master_volume_from_ratio(0.5);
+    assert_eq!(gs.master_volume, 50);
+    assert_eq!(gs.master_volume_label(), "Master Volume: 50%");
+
+    gs.set_sfx_volume_from_ratio(0.5);
+    assert_eq!(gs.sfx_volume, 50);
+    assert_eq!(gs.sfx_volume_label(), "Sound Effects: 50%");
+}
+
+#[test]
+fn test_spawn_audio_settings_menu_hierarchy() {
+    use crate::menu::audio_ui::spawn_audio_settings_menu;
+    use bevy::prelude::*;
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+
+    let world = app.world_mut();
+    let mut commands = world.commands();
+    spawn_audio_settings_menu(&mut commands, None);
+    world.flush();
+
+    // Verify AudioSettingsRoot exists
+    let mut query = world.query_filtered::<Entity, With<crate::menu::types::AudioSettingsRoot>>();
+    assert_eq!(query.iter(world).count(), 1, "AudioSettingsRoot must exist");
+
+    // Verify Button count inside Audio Settings
+    let mut btn_query = world.query::<&crate::menu::types::MenuButtonAction>();
+    let count = btn_query.iter(world).count();
+    assert!(
+        count >= 5,
+        "Audio settings must have buttons for sliders, test sample, and back (found {count})"
+    );
+}
+
+#[test]
+fn test_menu_state_navigation_stack_no_cycles() {
+    use crate::menu::types::{MenuScreen, MenuState};
+
+    let mut state = MenuState::default();
+    assert_eq!(state.screen, MenuScreen::Main);
+    assert_eq!(state.return_stack.len(), 0);
+
+    // Open Graphics Settings from Main
+    state.push_screen(MenuScreen::Settings);
+    assert_eq!(state.screen, MenuScreen::Settings);
+    assert_eq!(state.return_stack, vec![MenuScreen::Main]);
+
+    // Open Audio Settings from Graphics Settings
+    state.push_screen(MenuScreen::AudioSettings);
+    assert_eq!(state.screen, MenuScreen::AudioSettings);
+    assert_eq!(
+        state.return_stack,
+        vec![MenuScreen::Main, MenuScreen::Settings]
+    );
+
+    // Click Back from Audio Settings -> must return to Settings
+    let back1 = state.pop_screen();
+    assert_eq!(back1, MenuScreen::Settings);
+    assert_eq!(state.screen, MenuScreen::Settings);
+    assert_eq!(state.return_stack, vec![MenuScreen::Main]);
+
+    // Click Back from Settings -> must return to Main
+    let back2 = state.pop_screen();
+    assert_eq!(back2, MenuScreen::Main);
+    assert_eq!(state.screen, MenuScreen::Main);
+    assert_eq!(state.return_stack.len(), 0);
+
+    // Click Back again from Main -> fallback to Main without loops or deadlock
+    let back3 = state.pop_screen();
+    assert_eq!(back3, MenuScreen::Main);
+    assert_eq!(state.screen, MenuScreen::Main);
+
+    // Test from Pause menu
+    state.world_active = true;
+    state.set_root(MenuScreen::Pause);
+    state.push_screen(MenuScreen::AudioSettings);
+    assert_eq!(state.screen, MenuScreen::AudioSettings);
+    let back_pause = state.pop_screen();
+    assert_eq!(back_pause, MenuScreen::Pause);
+    assert_eq!(state.screen, MenuScreen::Pause);
 }
 
 #[test]
@@ -226,6 +356,8 @@ fn test_graphics_settings_serialization_roundtrip() {
         greedy_threshold: 4,
         distance_lod: true,
         lod_threshold: 16,
+        master_volume: 85,
+        sfx_volume: 70,
     };
 
     let json = serde_json::to_string(&original).expect("Serialization failed");

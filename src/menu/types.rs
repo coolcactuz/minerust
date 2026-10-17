@@ -14,6 +14,7 @@ pub struct Button;
 pub enum MenuScreen {
     Main,
     Settings,
+    AudioSettings,
     Pause,
     BenchmarkResults,
     None, // In-game gameplay
@@ -23,6 +24,7 @@ pub enum MenuScreen {
 pub struct MenuState {
     pub screen: MenuScreen,
     pub previous_screen: MenuScreen,
+    pub return_stack: Vec<MenuScreen>,
     pub world_active: bool,
 }
 
@@ -31,6 +33,7 @@ impl Default for MenuState {
         Self {
             screen: MenuScreen::Main, // Start in Main Menu!
             previous_screen: MenuScreen::Main,
+            return_stack: Vec::new(),
             world_active: false,
         }
     }
@@ -41,12 +44,51 @@ impl MenuState {
     pub const fn is_open(&self) -> bool {
         !matches!(self.screen, MenuScreen::None)
     }
+
+    /// Navigates to a new menu screen, recording the previous screen on the return stack.
+    pub fn push_screen(&mut self, next: MenuScreen) {
+        if self.screen != next {
+            self.return_stack.push(self.screen);
+            self.previous_screen = self.screen;
+            self.screen = next;
+        }
+    }
+
+    /// Pops the previous screen from the stack, guaranteed to unwind without loops.
+    pub fn pop_screen(&mut self) -> MenuScreen {
+        while let Some(prev) = self.return_stack.pop() {
+            if prev != self.screen {
+                self.previous_screen = self.screen;
+                self.screen = prev;
+                return prev;
+            }
+        }
+        let fallback = if self.world_active {
+            MenuScreen::Pause
+        } else {
+            MenuScreen::Main
+        };
+        self.previous_screen = fallback;
+        self.screen = fallback;
+        fallback
+    }
+
+    /// Resets the navigation stack and transitions to a root screen (Main, Pause, or None).
+    pub fn set_root(&mut self, root: MenuScreen) {
+        self.return_stack.clear();
+        self.previous_screen = root;
+        self.screen = root;
+    }
 }
 
 /// Global toggle for the real-time engine profiler HUD (accessible via F3).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ProfilerState {
     pub visible: bool,
+}
+
+const fn default_volume_percent() -> u32 {
+    100
 }
 
 #[derive(Resource, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -61,6 +103,10 @@ pub struct GraphicsSettings {
     pub greedy_threshold: i32, // Distance threshold in chunks: 2 (32m), 3 (48m), 4 (64m), 0 (all)
     pub distance_lod: bool,    // Distant Sloped Heightfield LOD
     pub lod_threshold: i32,    // 2 to 32 chunks
+    #[serde(default = "default_volume_percent")]
+    pub master_volume: u32, // 0 to 100 (%)
+    #[serde(default = "default_volume_percent")]
+    pub sfx_volume: u32, // 0 to 100 (%)
 }
 
 impl Default for GraphicsSettings {
@@ -76,6 +122,8 @@ impl Default for GraphicsSettings {
             greedy_threshold: 2,
             distance_lod: true,
             lod_threshold: 8,
+            master_volume: 100,
+            sfx_volume: 100,
         }
     }
 }
@@ -342,6 +390,60 @@ impl GraphicsSettings {
             )
         }
     }
+
+    #[must_use]
+    pub fn master_volume_label(&self) -> String {
+        if self.master_volume == 0 {
+            "Master Volume: OFF".to_string()
+        } else {
+            format!("Master Volume: {}%", self.master_volume)
+        }
+    }
+
+    #[must_use]
+    pub fn sfx_volume_label(&self) -> String {
+        if self.sfx_volume == 0 {
+            "Sound Effects: OFF".to_string()
+        } else {
+            format!("Sound Effects: {}%", self.sfx_volume)
+        }
+    }
+
+    #[must_use]
+    pub fn master_volume_ratio(&self) -> f32 {
+        (self.master_volume as f32 / 100.0).clamp(0.0, 1.0)
+    }
+
+    #[must_use]
+    pub fn sfx_volume_ratio(&self) -> f32 {
+        (self.sfx_volume as f32 / 100.0).clamp(0.0, 1.0)
+    }
+
+    pub fn set_master_volume_from_ratio(&mut self, ratio: f32) {
+        let pct = (ratio.clamp(0.0, 1.0) * 100.0).round() as u32;
+        self.master_volume = ((pct + 2) / 5 * 5).min(100);
+    }
+
+    pub fn set_sfx_volume_from_ratio(&mut self, ratio: f32) {
+        let pct = (ratio.clamp(0.0, 1.0) * 100.0).round() as u32;
+        self.sfx_volume = ((pct + 2) / 5 * 5).min(100);
+    }
+
+    pub fn step_master_volume_left(&mut self) {
+        self.master_volume = self.master_volume.saturating_sub(5);
+    }
+
+    pub fn step_master_volume_right(&mut self) {
+        self.master_volume = (self.master_volume + 5).min(100);
+    }
+
+    pub fn step_sfx_volume_left(&mut self) {
+        self.sfx_volume = self.sfx_volume.saturating_sub(5);
+    }
+
+    pub fn step_sfx_volume_right(&mut self) {
+        self.sfx_volume = (self.sfx_volume + 5).min(100);
+    }
 }
 
 pub const GREEDY_MESHING_STEPS: &[(bool, i32)] = &[
@@ -420,6 +522,15 @@ pub enum MenuButtonAction {
     ToggleDistanceLod,
     StartBenchmark,
     BackFromBenchmark,
+    OpenAudioSettings,
+    BackFromAudioSettings,
+    StepMasterVolumeLeft,
+    StepMasterVolumeRight,
+    SlideMasterVolume,
+    StepSfxVolumeLeft,
+    StepSfxVolumeRight,
+    SlideSfxVolume,
+    TestAudioSample,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -571,3 +682,31 @@ pub struct BenchmarkVerdictTitleText;
 
 #[derive(Component)]
 pub struct BenchmarkVerdictDescText;
+
+// Audio Settings Marker Components
+#[derive(Component)]
+pub struct AudioSettingsRoot;
+
+#[derive(Component)]
+pub struct MasterVolumeBtnText;
+
+#[derive(Component)]
+pub struct MasterVolumeTrack;
+
+#[derive(Component)]
+pub struct MasterVolumeFill;
+
+#[derive(Component)]
+pub struct MasterVolumeThumb;
+
+#[derive(Component)]
+pub struct SfxVolumeBtnText;
+
+#[derive(Component)]
+pub struct SfxVolumeTrack;
+
+#[derive(Component)]
+pub struct SfxVolumeFill;
+
+#[derive(Component)]
+pub struct SfxVolumeThumb;
