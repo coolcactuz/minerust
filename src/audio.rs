@@ -133,10 +133,81 @@ pub fn play_sound(commands: &mut Commands, handle: &Handle<AudioSource>, volume:
     ));
 }
 
+/// Synthesizes a valid 48 kHz 16-bit mono PCM WAV buffer in memory when external
+/// `assets/audio/*.wav` files are not present on disk (e.g., in CI or fresh clones).
+#[must_use]
+pub fn synthesize_fallback_wav(relative_path: &str) -> Vec<u8> {
+    const SAMPLE_RATE: u32 = 48_000;
+    let (duration_ms, base_freq, sweep_freq, noise_mix): (u32, f32, f32, f32) =
+        if relative_path.contains("click") {
+            (45, 950.0, 420.0, 0.25)
+        } else if relative_path.contains("pop") {
+            (65, 520.0, 1180.0, 0.10)
+        } else if relative_path.contains("dig_grass") || relative_path.contains("step") {
+            (90, 260.0, 140.0, 0.75)
+        } else if relative_path.contains("dig_sand") {
+            (85, 340.0, 190.0, 0.85)
+        } else if relative_path.contains("dig_wood") {
+            (95, 290.0, 160.0, 0.35)
+        } else if relative_path.contains("break_block") {
+            (160, 240.0, 95.0, 0.65)
+        } else if relative_path.contains("chest_open") {
+            (140, 310.0, 490.0, 0.20)
+        } else if relative_path.contains("chest_close") {
+            (130, 460.0, 240.0, 0.25)
+        } else if relative_path.contains("furnace_crackle") {
+            (150, 220.0, 380.0, 0.80)
+        } else {
+            // Default stone/mineral tap
+            (85, 420.0, 190.0, 0.45)
+        };
+
+    let num_samples = (SAMPLE_RATE.saturating_mul(duration_ms)) / 1000;
+    let data_bytes = num_samples.saturating_mul(2);
+    let riff_size = 36_u32.saturating_add(data_bytes);
+
+    let mut buf = Vec::with_capacity((44_u32.saturating_add(data_bytes)) as usize);
+    buf.extend_from_slice(b"RIFF");
+    buf.extend_from_slice(&riff_size.to_le_bytes());
+    buf.extend_from_slice(b"WAVE");
+    buf.extend_from_slice(b"fmt ");
+    buf.extend_from_slice(&16_u32.to_le_bytes()); // PCM chunk size
+    buf.extend_from_slice(&1_u16.to_le_bytes()); // AudioFormat = 1 (PCM)
+    buf.extend_from_slice(&1_u16.to_le_bytes()); // NumChannels = 1 (Mono)
+    buf.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
+    buf.extend_from_slice(&(SAMPLE_RATE * 2).to_le_bytes()); // ByteRate
+    buf.extend_from_slice(&2_u16.to_le_bytes()); // BlockAlign
+    buf.extend_from_slice(&16_u16.to_le_bytes()); // BitsPerSample
+    buf.extend_from_slice(b"data");
+    buf.extend_from_slice(&data_bytes.to_le_bytes());
+
+    let mut rng_state: u32 = 0x9E37_79B9 ^ (duration_ms.wrapping_mul(1_664_525));
+    let total = num_samples.max(1) as f32;
+    let mut phase: f32 = 0.0;
+
+    for i in 0..num_samples {
+        let progress = (i as f32) / total;
+        let envelope = (1.0 - progress).powi(2);
+        let freq = base_freq + (sweep_freq - base_freq) * progress;
+        phase += std::f32::consts::TAU * freq / (SAMPLE_RATE as f32);
+
+        rng_state = rng_state
+            .wrapping_mul(1_664_525)
+            .wrapping_add(1_013_904_223);
+        let white_noise = ((rng_state >> 16) as f32 / 32_768.0) - 1.0;
+
+        let tone = phase.sin();
+        let mixed = (tone * (1.0 - noise_mix) + white_noise * noise_mix) * envelope * 0.45;
+        let sample = (mixed.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
+        buf.extend_from_slice(&sample.to_le_bytes());
+    }
+
+    buf
+}
+
 fn load_audio_file(
     relative_path: &str,
     audio_assets: &mut Assets<AudioSource>,
-    asset_server: &AssetServer,
 ) -> Handle<AudioSource> {
     let disk_path = std::path::Path::new("assets").join(relative_path);
     if let Ok(bytes) = std::fs::read(&disk_path) {
@@ -156,31 +227,25 @@ fn load_audio_file(
             }
         }
     }
-    asset_server.load(relative_path.to_owned())
+    audio_assets.add(AudioSource {
+        bytes: synthesize_fallback_wav(relative_path).into(),
+    })
 }
 
 /// Startup system that opens the universal audio output sink and preloads all audio assets.
-pub fn setup_audio_assets(
-    mut commands: Commands,
-    mut audio_assets: ResMut<Assets<AudioSource>>,
-    asset_server: Res<AssetServer>,
-) {
+pub fn setup_audio_assets(mut commands: Commands, mut audio_assets: ResMut<Assets<AudioSource>>) {
     let sfx = SoundEffects {
-        click: load_audio_file("audio/click.wav", &mut audio_assets, &asset_server),
-        pop: load_audio_file("audio/pop.wav", &mut audio_assets, &asset_server),
-        dig_grass: load_audio_file("audio/dig_grass.wav", &mut audio_assets, &asset_server),
-        dig_stone: load_audio_file("audio/dig_stone.wav", &mut audio_assets, &asset_server),
-        dig_wood: load_audio_file("audio/dig_wood.wav", &mut audio_assets, &asset_server),
-        dig_sand: load_audio_file("audio/dig_sand.wav", &mut audio_assets, &asset_server),
-        break_block: load_audio_file("audio/break_block.wav", &mut audio_assets, &asset_server),
-        step: load_audio_file("audio/step.wav", &mut audio_assets, &asset_server),
-        chest_open: load_audio_file("audio/chest_open.wav", &mut audio_assets, &asset_server),
-        chest_close: load_audio_file("audio/chest_close.wav", &mut audio_assets, &asset_server),
-        furnace_crackle: load_audio_file(
-            "audio/furnace_crackle.wav",
-            &mut audio_assets,
-            &asset_server,
-        ),
+        click: load_audio_file("audio/click.wav", &mut audio_assets),
+        pop: load_audio_file("audio/pop.wav", &mut audio_assets),
+        dig_grass: load_audio_file("audio/dig_grass.wav", &mut audio_assets),
+        dig_stone: load_audio_file("audio/dig_stone.wav", &mut audio_assets),
+        dig_wood: load_audio_file("audio/dig_wood.wav", &mut audio_assets),
+        dig_sand: load_audio_file("audio/dig_sand.wav", &mut audio_assets),
+        break_block: load_audio_file("audio/break_block.wav", &mut audio_assets),
+        step: load_audio_file("audio/step.wav", &mut audio_assets),
+        chest_open: load_audio_file("audio/chest_open.wav", &mut audio_assets),
+        chest_close: load_audio_file("audio/chest_close.wav", &mut audio_assets),
+        furnace_crackle: load_audio_file("audio/furnace_crackle.wav", &mut audio_assets),
     };
 
     commands.insert_resource(sfx);
@@ -256,6 +321,34 @@ mod tests {
         assert_eq!(wood_sound, sfx.dig_wood);
         assert_eq!(grass_sound, sfx.dig_grass);
         assert_eq!(sand_sound, sfx.dig_sand);
+    }
+
+    #[test]
+    fn test_synthesize_fallback_wav_is_valid_decodable_pcm() {
+        for name in [
+            "audio/click.wav",
+            "audio/pop.wav",
+            "audio/dig_grass.wav",
+            "audio/dig_stone.wav",
+            "audio/dig_wood.wav",
+            "audio/dig_sand.wav",
+            "audio/break_block.wav",
+            "audio/step.wav",
+            "audio/chest_open.wav",
+            "audio/chest_close.wav",
+            "audio/furnace_crackle.wav",
+        ] {
+            let wav_bytes = synthesize_fallback_wav(name);
+            assert!(wav_bytes.len() > 44);
+            assert_eq!(&wav_bytes[0..4], b"RIFF");
+            assert_eq!(&wav_bytes[8..12], b"WAVE");
+            let source = AudioSource {
+                bytes: wav_bytes.into(),
+            };
+            // Verify rodio decodes the synthesized WAV header and samples without error
+            let mut decoder = source.decoder();
+            assert!(decoder.next().is_some());
+        }
     }
 
     #[test]

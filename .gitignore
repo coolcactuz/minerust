@@ -8,3 +8,4 @@ benchmark_telemetry.json
 test_*.json
 settings.json
 docs/adr/
+assets/audio/*.wav
