@@ -205,30 +205,70 @@ pub fn synthesize_fallback_wav(relative_path: &str) -> Vec<u8> {
     buf
 }
 
-fn load_audio_file(
-    relative_path: &str,
-    audio_assets: &mut Assets<AudioSource>,
-) -> Handle<AudioSource> {
+/// Resolves audio bytes for `relative_path` (e.g. `"audio/click.wav"`) using a 5-tier priority chain:
+/// 1. **User Data Dir Override**: `<data_dir>/assets/<relative_path>` (allows custom/Minecraft audio
+///    overrides even when running from a read-only Linux AppImage or macOS `.app` bundle).
+/// 2. **Local Working Directory**: `./assets/<relative_path>` (portable `.zip`/`.tar.gz` & local dev).
+/// 3. **`BEVY_ASSET_ROOT` Environment Variable**: `<BEVY_ASSET_ROOT>/assets/<relative_path>` (AppImage `AppRun`).
+/// 4. **Executable Bundle Ancestors**: `<ancestor>/assets/<relative_path>` and `<ancestor>/Resources/assets/<relative_path>` (macOS `.app`).
+/// 5. **In-Memory Procedural Fallback**: `synthesize_fallback_wav(relative_path)`.
+#[must_use]
+pub fn resolve_audio_bytes(relative_path: &str) -> Vec<u8> {
+    // 1. User data directory override (~/.local/share/minerust/assets/audio/..., etc.)
+    let user_override = crate::save::get_data_dir()
+        .join("assets")
+        .join(relative_path);
+    if let Ok(bytes) = std::fs::read(&user_override) {
+        return bytes;
+    }
+
+    // 2. Local working directory (./assets/audio/...)
     let disk_path = std::path::Path::new("assets").join(relative_path);
     if let Ok(bytes) = std::fs::read(&disk_path) {
-        return audio_assets.add(AudioSource {
-            bytes: bytes.into(),
-        });
+        return bytes;
     }
+
+    // 3. BEVY_ASSET_ROOT environment variable (set by AppImage AppRun)
+    if let Ok(asset_root) = std::env::var("BEVY_ASSET_ROOT") {
+        if !asset_root.is_empty() {
+            let root_candidate = std::path::Path::new(&asset_root)
+                .join("assets")
+                .join(relative_path);
+            if let Ok(bytes) = std::fs::read(&root_candidate) {
+                return bytes;
+            }
+        }
+    }
+
+    // 4. Executable bundle directory & ancestors (including macOS Contents/Resources/assets)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
             for ancestor in exe_dir.ancestors().take(4) {
-                let candidate = ancestor.join("assets").join(relative_path);
-                if let Ok(bytes) = std::fs::read(&candidate) {
-                    return audio_assets.add(AudioSource {
-                        bytes: bytes.into(),
-                    });
+                for candidate in [
+                    ancestor.join("assets").join(relative_path),
+                    ancestor
+                        .join("Resources")
+                        .join("assets")
+                        .join(relative_path),
+                ] {
+                    if let Ok(bytes) = std::fs::read(&candidate) {
+                        return bytes;
+                    }
                 }
             }
         }
     }
+
+    // 5. Zero-panic in-memory procedural WAV synthesis fallback
+    synthesize_fallback_wav(relative_path)
+}
+
+fn load_audio_file(
+    relative_path: &str,
+    audio_assets: &mut Assets<AudioSource>,
+) -> Handle<AudioSource> {
     audio_assets.add(AudioSource {
-        bytes: synthesize_fallback_wav(relative_path).into(),
+        bytes: resolve_audio_bytes(relative_path).into(),
     })
 }
 

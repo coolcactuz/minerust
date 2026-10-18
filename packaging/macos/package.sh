@@ -67,6 +67,11 @@ else
 fi
 
 # ---- assemble MineRust.app --------------------------------------------------------------------
+if [ ! -f "$ROOT/assets/audio/click.wav" ]; then
+  echo "==> generating procedural WAV audio assets"
+  (cd "$ROOT" && python3 scripts/generate_audio.py)
+fi
+
 echo "==> assembling $APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 /bin/cp -f "$WORK/bin/minerust" "$APP/Contents/MacOS/minerust"

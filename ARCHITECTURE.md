@@ -294,8 +294,12 @@ MineRust implements a custom, high-performance Axis-Aligned Bounding Box (AABB) 
 - **Cross-Platform Sound Server Routing (`open_universal_audio_sink`)**:
   - Replaces Bevy's raw default ALSA device selection with `UniversalAudioOutput` powered by `rodio`.
   - Honors `ALSA_PCM_NAME` when explicitly set, and on Linux/BSD automatically probes whether `"pipewire"` or `"pulse"` sound server PCMs are active when `"default"` would otherwise fall back to raw hardware Card 0 (`dmix:0`), before falling back to `DeviceSinkBuilder::open_default_sink()` on Windows (WASAPI), macOS (CoreAudio), or pure ALSA systems.
-- **Zero-Config Procedural WAV Fallback (`synthesize_fallback_wav`)**:
-  - To keep the Git repository 100% free of copyrighted third-party audio assets, `.wav` files in `assets/audio/` are untracked. If disk `.wav` files are absent (e.g., on GitHub Actions CI or a fresh clone), `load_audio_file` deterministically synthesizes valid 48 kHz 16-bit mono PCM WAV buffers in memory for all 11 sound categories.
+- **5-Tier Audio Resolution Priority & Procedural Fallback (`resolve_audio_bytes`)**:
+  1. **User Data Dir Override (`<data_dir>/assets/audio/*.wav`)**: Highest priority so users running read-only bundles (Linux `.AppImage` or macOS `.dmg`) can drop custom or extracted Minecraft `.wav` files into `~/.local/share/minerust/assets/audio/` (`--to-user-dir`).
+  2. **Local Working Directory (`./assets/audio/*.wav`)**: Used in local development and portable `.zip` / `.tar.gz` bundles.
+  3. **`BEVY_ASSET_ROOT` Environment Variable**: Used by the Linux AppImage `AppRun` launcher (`$HERE/usr/bin/assets/audio/*.wav`).
+  4. **Executable Bundle Ancestors**: Resolves `<ancestor>/assets/audio/*.wav` and macOS `<ancestor>/Resources/assets/audio/*.wav` (`MineRust.app/Contents/Resources/assets`).
+  5. **In-Memory Procedural WAV Synthesis (`synthesize_fallback_wav`)**: Deterministically synthesizes 48 kHz 16-bit mono PCM WAV buffers in memory if no external `.wav` file is present (e.g., on GitHub Actions CI or a fresh git clone).
 
 ---
 
@@ -392,10 +396,10 @@ The repository integrates a production-grade, automated CI/CD pipeline built on 
 
 ### 14.2 Multi-Platform Continuous Delivery (`.github/workflows/release.yml`)
 - **Cross-Platform Matrix**: Compiles native release binaries in parallel across:
-  - **Linux**: `ubuntu-latest` $\rightarrow$ `minerust-<version>-linux-x86_64.tar.gz`
-  - **Windows**: `windows-latest` $\rightarrow$ `minerust-<version>-windows-x86_64.zip`
-  - **macOS**: `macos-latest` (Apple Silicon) $\rightarrow$ `minerust-<version>-macos-arm64.tar.gz`
-- **Self-Contained Game Bundles**: Automatically bundles the compiled binary (`minerust` / `minerust.exe`), the runtime `assets/` directory (WGSL shaders, texture arrays), `README.md`, and license files into ready-to-extract archives.
+  - **Linux**: `ubuntu-latest` $\rightarrow$ `minerust-<version>-linux-x86_64.AppImage` and `.tar.gz`
+  - **Windows**: `windows-latest` $\rightarrow$ `minerust-<version>-windows-x64-portable.zip`
+  - **macOS**: `macos-latest` (Apple Silicon) $\rightarrow$ `minerust-<version>-macos-arm64.dmg`
+- **Self-Contained Game Bundles & Procedural Audio Generation**: The packaging scripts (`packaging/linux/package.sh`, `packaging/macos/package.sh`, `packaging/windows/package.ps1`) automatically invoke `scripts/generate_audio.py` if `assets/audio/*.wav` is absent in the clean CI checkout, bundling the compiled binary, WGSL shaders, 35-layer texture arrays, and royalty-free procedural WAV sound effects into ready-to-play packages.
 - **On-Demand & Tag Releases**: Supports downloadable artifacts via manual `workflow_dispatch` without creating public releases, and publishes automated GitHub Releases with attached platform bundles when version tags (`v*`) are pushed.
 
 ---

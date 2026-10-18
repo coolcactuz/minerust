@@ -131,11 +131,13 @@ cargo run --release -- --profile
 cargo run --release -- --seed "my_custom_seed"
 ```
 
-#### Optional Audio Assets (Bring Your Own Assets / Procedural Synthesis)
-To keep the repository 100% open-source compliant (`MIT / Apache-2.0`), external `.wav` files in `assets/audio/` are git-ignored.
-- **Zero-Config Fallback**: Out of the box (and in CI), MineRust automatically synthesizes 48 kHz 16-bit PCM WAV sound effects in memory (`synthesize_fallback_wav` in `src/audio.rs`), and procedurally generates any missing block/item textures.
-- **Procedural WAV Generator**: Run `python3 scripts/generate_audio.py` to generate `.wav` files on disk in `assets/audio/`.
-- **Local Minecraft Asset Extractor**: If you own a local installation of Minecraft Java Edition (`~/.minecraft/assets`), you can extract its local audio effects into `assets/audio/` for personal use via `python3 scripts/extract_minecraft_audio.py`.
+#### Audio Assets & Custom Sound Packs (Release Bundles & Local Override)
+To keep the repository 100% open-source compliant (`MIT / Apache-2.0`), external `.wav` files in `assets/audio/` are git-ignored:
+- **Release Bundles (`.AppImage`, `.tar.gz`, `.dmg`, `.zip`)**: During release packaging (`packaging/*/package.*`), `scripts/generate_audio.py` automatically generates and bundles 11 royalty-free procedural `.wav` files into `assets/audio/`.
+- **Replacing Audio with Custom / Minecraft Sounds**:
+  - **Portable `.zip` / `.tar.gz` or Local Dev**: Replace the `.wav` files directly inside `./assets/audio/`, or run `python3 scripts/extract_minecraft_audio.py` to extract and convert sounds from your local Minecraft Java Edition installation (`~/.minecraft/assets`).
+  - **Read-Only `.AppImage` (Linux) or `.dmg` (`MineRust.app` on macOS)**: Place custom `.wav` files inside `<User Data Dir>/assets/audio/` (`~/.local/share/minerust/assets/audio/` on Linux, `~/Library/Application Support/minerust/assets/audio/` on macOS, `%APPDATA%\minerust\assets\audio\` on Windows), or run `python3 scripts/extract_minecraft_audio.py --to-user-dir`. Files in the user data directory automatically take priority over bundled assets!
+- **In-Memory Fallback**: Even if all disk `.wav` files are deleted, MineRust deterministically synthesizes 48 kHz 16-bit PCM WAV sound effects in memory (`synthesize_fallback_wav` in `src/audio.rs`).
 
 ---
 
@@ -176,6 +178,7 @@ Inside the data directory:
 * `saves/world_<seed>/furnaces.json` — Input, fuel, output stacks, and active smelting progress of all placed Furnaces.
 * `saves/last_world.txt` — Tracks the seed of the most recently played world.
 * `settings.json` — User graphics and audio settings (view distance, LOD, FPS limit, greedy meshing, master volume, SFX volume).
+* `assets/audio/*.wav` *(optional)* — User-supplied audio overrides (loaded with highest priority even when running from a read-only AppImage or macOS `.app`).
 
 ### Portable Mode
 If you prefer a fully self-contained setup (e.g. running from a USB drive):
