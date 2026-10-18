@@ -145,15 +145,17 @@ The project mandates standard, battle-tested Rust ecosystem crates across all mo
 
 ## 4. Bevy & ECS Architectural Guidelines
 
-### 4.1 Modular Feature Plugins
-Every gameplay or engine domain must be encapsulated within an autonomous Bevy `Plugin`:
-- `WorldGenerationPlugin`
-- `ChunkStreamingPlugin`
-- `VoxelMeshingPlugin`
-- `FluidSimulationPlugin`
-- `VoxelInteractionPlugin`
-- `PlayerPhysicsPlugin`
-- `DevToolsUiPlugin`
+### 4.1 Modular Feature Plugins & Domain Boundaries
+Every gameplay or engine domain must be encapsulated within an autonomous Bevy `Plugin` or cohesive domain module:
+- `WorldGenerationPlugin` (`src/world/`)
+- `ChunkStreamingPlugin` (`src/world/streaming.rs`, `src/world/persistence.rs`)
+- `VoxelMeshingPlugin` (`src/mesher/`, `src/texture.rs`)
+- `FluidSimulationPlugin` (`src/fluid.rs`)
+- `VoxelInteractionPlugin` (`src/interaction/`)
+- `SurvivalContainersPlugin` (`src/inventory/`, `src/crafting/`, `src/chest.rs`, `src/furnace/`, `src/item.rs`, `src/item_icon.rs`)
+- `AudioPlugin` (`src/audio.rs` — cross-platform `UniversalAudioOutput` & procedural WAV fallback)
+- `PlayerPhysicsPlugin` (`src/player/`)
+- `DevToolsUiPlugin` (`src/menu/`, `src/profile.rs`, `src/benchmark.rs`)
 
 ### 4.2 System Design & Parameter Aggregation
 - **Parameter Limit Rule**: Systems must not declare more than 6 direct arguments. When a system requires extensive resources and queries, bundle related access into custom `#[derive(SystemParam)]` structs:

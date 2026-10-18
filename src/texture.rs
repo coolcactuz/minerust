@@ -1,3 +1,7 @@
+#![forbid(unsafe_code)]
+
+use std::path::Path;
+
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{Image, ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
@@ -6,7 +10,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use crate::block::{BlockFace, BlockType};
 
 pub const TILE_SIZE: usize = 16;
-pub const LAYER_COUNT: usize = 25;
+pub const LAYER_COUNT: usize = 35;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
@@ -36,12 +40,102 @@ pub enum TextureId {
     Gravel = 22,
     Ice = 23,
     Glass = 24,
+    CraftingTableTop = 25,
+    CraftingTableSide = 26,
+    CraftingTableFront = 27,
+    ChestTop = 28,
+    ChestSide = 29,
+    ChestFront = 30,
+    FurnaceTop = 31,
+    FurnaceSide = 32,
+    FurnaceFront = 33,
+    FurnaceLit = 34,
 }
 
 impl TextureId {
+    pub const ALL: [TextureId; LAYER_COUNT] = [
+        TextureId::GrassTop,
+        TextureId::GrassSide,
+        TextureId::Dirt,
+        TextureId::Stone,
+        TextureId::Cobblestone,
+        TextureId::WoodSide,
+        TextureId::WoodTop,
+        TextureId::Leaves,
+        TextureId::Planks,
+        TextureId::Sand,
+        TextureId::SandstoneSide,
+        TextureId::SandstoneTop,
+        TextureId::Water,
+        TextureId::Snow,
+        TextureId::SnowSide,
+        TextureId::Bedrock,
+        TextureId::CoalOre,
+        TextureId::IronOre,
+        TextureId::GoldOre,
+        TextureId::DiamondOre,
+        TextureId::CactusSide,
+        TextureId::CactusTop,
+        TextureId::Gravel,
+        TextureId::Ice,
+        TextureId::Glass,
+        TextureId::CraftingTableTop,
+        TextureId::CraftingTableSide,
+        TextureId::CraftingTableFront,
+        TextureId::ChestTop,
+        TextureId::ChestSide,
+        TextureId::ChestFront,
+        TextureId::FurnaceTop,
+        TextureId::FurnaceSide,
+        TextureId::FurnaceFront,
+        TextureId::FurnaceLit,
+    ];
+
     #[inline(always)]
+    #[must_use]
     pub const fn layer(self) -> f32 {
         self as usize as f32
+    }
+
+    #[must_use]
+    pub const fn filename(self) -> &'static str {
+        match self {
+            Self::GrassTop => "grass_top.png",
+            Self::GrassSide => "grass_side.png",
+            Self::Dirt => "dirt.png",
+            Self::Stone => "stone.png",
+            Self::Cobblestone => "cobblestone.png",
+            Self::WoodSide => "wood_side.png",
+            Self::WoodTop => "wood_top.png",
+            Self::Leaves => "leaves.png",
+            Self::Planks => "planks.png",
+            Self::Sand => "sand.png",
+            Self::SandstoneSide => "sandstone_side.png",
+            Self::SandstoneTop => "sandstone_top.png",
+            Self::Water => "water.png",
+            Self::Snow => "snow.png",
+            Self::SnowSide => "snow_side.png",
+            Self::Bedrock => "bedrock.png",
+            Self::CoalOre => "coal_ore.png",
+            Self::IronOre => "iron_ore.png",
+            Self::GoldOre => "gold_ore.png",
+            Self::DiamondOre => "diamond_ore.png",
+            Self::CactusSide => "cactus_side.png",
+            Self::CactusTop => "cactus_top.png",
+            Self::Gravel => "gravel.png",
+            Self::Ice => "ice.png",
+            Self::Glass => "glass.png",
+            Self::CraftingTableTop => "crafting_table_top.png",
+            Self::CraftingTableSide => "crafting_table_side.png",
+            Self::CraftingTableFront => "crafting_table_front.png",
+            Self::ChestTop => "chest_top.png",
+            Self::ChestSide => "chest_side.png",
+            Self::ChestFront => "chest_front.png",
+            Self::FurnaceTop => "furnace_top.png",
+            Self::FurnaceSide => "furnace_side.png",
+            Self::FurnaceFront => "furnace_front.png",
+            Self::FurnaceLit => "furnace_lit.png",
+        }
     }
 }
 
@@ -84,6 +178,28 @@ pub const fn block_texture(block: BlockType, face: BlockFace) -> TextureId {
         BlockType::Gravel => TextureId::Gravel,
         BlockType::Ice => TextureId::Ice,
         BlockType::Glass => TextureId::Glass,
+        BlockType::CraftingTable => match face {
+            BlockFace::Top => TextureId::CraftingTableTop,
+            BlockFace::Bottom => TextureId::Planks,
+            BlockFace::North => TextureId::CraftingTableFront,
+            _ => TextureId::CraftingTableSide,
+        },
+        BlockType::Chest => match face {
+            BlockFace::Top => TextureId::ChestTop,
+            BlockFace::Bottom => TextureId::Planks,
+            BlockFace::North => TextureId::ChestFront,
+            _ => TextureId::ChestSide,
+        },
+        BlockType::Furnace => match face {
+            BlockFace::Top | BlockFace::Bottom => TextureId::FurnaceTop,
+            BlockFace::North => TextureId::FurnaceFront,
+            _ => TextureId::FurnaceSide,
+        },
+        BlockType::LitFurnace => match face {
+            BlockFace::Top | BlockFace::Bottom => TextureId::FurnaceTop,
+            BlockFace::North => TextureId::FurnaceLit,
+            _ => TextureId::FurnaceSide,
+        },
     }
 }
 
@@ -97,393 +213,109 @@ pub const fn get_tile_uvs(_texture_id: TextureId) -> [[f32; 2]; 4] {
     quad_uvs(1.0, 1.0)
 }
 
-/// Generates at runtime the 2D Texture Array (25 layers of 16x16 pixel-art textures)
+/// Attempts to load and decode a 16x16 RGBA PNG image from disk.
+fn load_png_pixels(path: &Path) -> Option<[u8; TILE_SIZE * TILE_SIZE * 4]> {
+    let bytes = std::fs::read(path).ok()?;
+    let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png).ok()?;
+    let rgba = img.to_rgba8();
+    if rgba.width() == TILE_SIZE as u32 && rgba.height() == TILE_SIZE as u32 {
+        let raw = rgba.into_raw();
+        if raw.len() == TILE_SIZE * TILE_SIZE * 4 {
+            let mut out = [0u8; TILE_SIZE * TILE_SIZE * 4];
+            out.copy_from_slice(&raw);
+            return Some(out);
+        }
+    } else {
+        let resized = image::imageops::resize(
+            &rgba,
+            TILE_SIZE as u32,
+            TILE_SIZE as u32,
+            image::imageops::FilterType::Nearest,
+        );
+        let raw = resized.into_raw();
+        if raw.len() == TILE_SIZE * TILE_SIZE * 4 {
+            let mut out = [0u8; TILE_SIZE * TILE_SIZE * 4];
+            out.copy_from_slice(&raw);
+            return Some(out);
+        }
+    }
+    None
+}
+
+/// Fallback procedural pattern generator when a physical PNG texture is missing.
+fn fallback_tile_pixels(tile: TextureId) -> [u8; TILE_SIZE * TILE_SIZE * 4] {
+    let mut buf = [0u8; TILE_SIZE * TILE_SIZE * 4];
+    let base_color: [u8; 4] = match tile {
+        TextureId::GrassTop => [95, 159, 53, 255],
+        TextureId::GrassSide => [115, 80, 50, 255],
+        TextureId::Dirt => [134, 96, 67, 255],
+        TextureId::Stone => [125, 125, 125, 255],
+        TextureId::Cobblestone => [100, 100, 100, 255],
+        TextureId::WoodSide => [103, 77, 46, 255],
+        TextureId::WoodTop => [175, 138, 92, 255],
+        TextureId::Leaves => [55, 130, 40, 255],
+        TextureId::Planks => [175, 142, 88, 255],
+        TextureId::Sand => [218, 208, 152, 255],
+        TextureId::SandstoneSide | TextureId::SandstoneTop => [220, 210, 160, 255],
+        TextureId::Water => [45, 105, 215, 215],
+        TextureId::Snow | TextureId::SnowSide => [242, 245, 253, 255],
+        TextureId::Bedrock => [40, 40, 40, 255],
+        TextureId::CoalOre => [50, 50, 50, 255],
+        TextureId::IronOre => [190, 150, 130, 255],
+        TextureId::GoldOre => [235, 200, 50, 255],
+        TextureId::DiamondOre => [75, 210, 225, 255],
+        TextureId::CactusSide | TextureId::CactusTop => [60, 130, 40, 255],
+        TextureId::Gravel => [125, 120, 120, 255],
+        TextureId::Ice => [145, 190, 240, 220],
+        TextureId::Glass => [200, 225, 240, 30],
+        TextureId::CraftingTableTop
+        | TextureId::CraftingTableSide
+        | TextureId::CraftingTableFront => [165, 130, 80, 255],
+        TextureId::ChestTop | TextureId::ChestSide | TextureId::ChestFront => [160, 120, 60, 255],
+        TextureId::FurnaceTop | TextureId::FurnaceSide | TextureId::FurnaceFront => {
+            [110, 110, 110, 255]
+        }
+        TextureId::FurnaceLit => [240, 140, 30, 255],
+    };
+
+    for y in 0..TILE_SIZE {
+        for x in 0..TILE_SIZE {
+            let idx = (y * TILE_SIZE + x) * 4;
+            let shade = if (x + y) % 2 == 0 { 0 } else { 15 };
+            buf[idx] = base_color[0].saturating_sub(shade);
+            buf[idx + 1] = base_color[1].saturating_sub(shade);
+            buf[idx + 2] = base_color[2].saturating_sub(shade);
+            buf[idx + 3] = base_color[3];
+        }
+    }
+    buf
+}
+
+/// Loads a block texture by first checking physical PNG files on disk, then falling back cleanly.
+#[must_use]
+pub fn load_block_texture_pixels(tile: TextureId) -> [u8; TILE_SIZE * TILE_SIZE * 4] {
+    let block_dir = Path::new("assets").join("textures").join("blocks");
+    let file_path = block_dir.join(tile.filename());
+
+    if let Some(pixels) = load_png_pixels(&file_path) {
+        return pixels;
+    }
+
+    fallback_tile_pixels(tile)
+}
+
+/// Assembles the 2D Texture Array (35 layers of 16x16 pixel-art textures)
 /// with hardware Repeat addressing and Nearest-Neighbor filtering.
+#[must_use]
 pub fn create_texture_array() -> Image {
     let mut data = vec![0u8; LAYER_COUNT * TILE_SIZE * TILE_SIZE * 4];
 
-    // Helper to set pixel color in a specific layer (px, py in 0..16)
-    let mut set_px = |tile_id: TextureId, px: usize, py: usize, rgba: [u8; 4]| {
-        let layer = tile_id as usize;
-        let idx = (layer * (TILE_SIZE * TILE_SIZE) + py * TILE_SIZE + px) * 4;
-        data[idx..idx + 4].copy_from_slice(&rgba);
-    };
-
-    let p_hash = |x: usize, y: usize, salt: usize| -> usize {
-        (x * 374761393 + y * 668265263 + salt * 31) ^ (x * 127 + y * 311)
-    };
-
-    // 1. Dirt
-    for x in 0..16 {
-        for y in 0..16 {
-            let h = p_hash(x, y, 1) % 10;
-            let col = match h {
-                0..=2 => [108, 73, 47, 255],
-                3..=7 => [134, 96, 67, 255],
-                _ => [150, 108, 77, 255],
-            };
-            set_px(TextureId::Dirt, x, y, col);
-        }
-    }
-
-    // 2. Grass Top
-    for x in 0..16 {
-        for y in 0..16 {
-            let h = p_hash(x, y, 2) % 10;
-            let col = match h {
-                0..=2 => [76, 134, 39, 255],
-                3..=7 => [95, 159, 53, 255],
-                _ => [115, 178, 68, 255],
-            };
-            set_px(TextureId::GrassTop, x, y, col);
-        }
-    }
-
-    // 3. Grass Side (Green grass fringe on top, dirt underneath)
-    for x in 0..16 {
-        for y in 0..16 {
-            let overhang = 3 + (p_hash(x, 0, 3) % 3);
-            if y < overhang {
-                let h = p_hash(x, y, 2) % 3;
-                let col = if h == 0 {
-                    [76, 134, 39, 255]
-                } else {
-                    [95, 159, 53, 255]
-                };
-                set_px(TextureId::GrassSide, x, y, col);
-            } else {
-                let h = p_hash(x, y, 1) % 3;
-                let col = if h == 0 {
-                    [108, 73, 47, 255]
-                } else {
-                    [134, 96, 67, 255]
-                };
-                set_px(TextureId::GrassSide, x, y, col);
-            }
-        }
-    }
-
-    // 4. Stone
-    for x in 0..16 {
-        for y in 0..16 {
-            let h = p_hash(x, y, 4) % 10;
-            let col = match h {
-                0..=2 => [105, 105, 105, 255],
-                3..=7 => [125, 125, 125, 255],
-                _ => [145, 145, 145, 255],
-            };
-            set_px(TextureId::Stone, x, y, col);
-        }
-    }
-
-    // 5. Cobblestone (Rough cobblestones with dark seams)
-    for x in 0..16 {
-        for y in 0..16 {
-            let is_border = x == 0
-                || x == 8
-                || y == 0
-                || y == 5
-                || y == 11
-                || (y < 6 && x == 4)
-                || ((6..12).contains(&y) && x == 12);
-            let col = if is_border {
-                [65, 65, 65, 255]
-            } else {
-                let h = p_hash(x, y, 5) % 4;
-                if h == 0 {
-                    [100, 100, 100, 255]
-                } else {
-                    [135, 135, 135, 255]
-                }
-            };
-            set_px(TextureId::Cobblestone, x, y, col);
-        }
-    }
-
-    // 6. Wood Side (Bark with vertical striations)
-    for x in 0..16 {
-        for y in 0..16 {
-            let h = (x + p_hash(x, y / 4, 6) % 2) % 4;
-            let col = match h {
-                0 => [82, 58, 33, 255],
-                1 | 2 => [103, 77, 46, 255],
-                _ => [122, 91, 55, 255],
-            };
-            set_px(TextureId::WoodSide, x, y, col);
-        }
-    }
-
-    // 7. Wood Top (Concentric growth rings and bark rim)
-    for x in 0..16 {
-        for y in 0..16 {
-            let dx = (x as i32 - 8).abs();
-            let dy = (y as i32 - 8).abs();
-            let dist = dx.max(dy);
-            let col = if dist >= 7 {
-                [82, 58, 33, 255] // Bark
-            } else if dist == 4 || dist == 1 {
-                [140, 105, 65, 255] // Dark ring
-            } else {
-                [175, 138, 92, 255] // Light wood
-            };
-            set_px(TextureId::WoodTop, x, y, col);
-        }
-    }
-
-    // 8. Leaves (Foliage with transparency and varied green tones)
-    for x in 0..16 {
-        for y in 0..16 {
-            let h = p_hash(x, y, 8) % 10;
-            let col = match h {
-                0 => [30, 80, 22, 255],
-                1..=4 => [45, 115, 35, 255],
-                5..=8 => [62, 145, 48, 255],
-                _ => [75, 168, 58, 255],
-            };
-            set_px(TextureId::Leaves, x, y, col);
-        }
-    }
-
-    // 9. Planks (Horizontal wooden boards with seams)
-    for x in 0..16_usize {
-        for y in 0..16_usize {
-            let is_seam = y.is_multiple_of(4)
-                || (y < 4 && x == 7)
-                || ((4..8).contains(&y) && x == 14)
-                || ((8..12).contains(&y) && x == 4)
-                || (y >= 12 && x == 10);
-            let col = if is_seam {
-                [130, 95, 50, 255]
-            } else {
-                let h = p_hash(x, y, 9) % 3;
-                if h == 0 {
-                    [170, 130, 78, 255]
-                } else {
-                    [188, 146, 92, 255]
-                }
-            };
-            set_px(TextureId::Planks, x, y, col);
-        }
-    }
-
-    // 10. Sand
-    for x in 0..16 {
-        for y in 0..16 {
-            let h = p_hash(x, y, 10) % 10;
-            let col = match h {
-                0..=2 => [205, 195, 140, 255],
-                3..=7 => [218, 210, 158, 255],
-                _ => [230, 222, 175, 255],
-            };
-            set_px(TextureId::Sand, x, y, col);
-        }
-    }
-
-    // 11. Sandstone Side
-    for x in 0..16 {
-        for y in 0..16 {
-            let is_line = y == 0 || y == 4 || y == 12;
-            let col = if is_line {
-                [180, 165, 115, 255]
-            } else {
-                let h = p_hash(x, y, 11) % 3;
-                if h == 0 {
-                    [205, 192, 140, 255]
-                } else {
-                    [216, 204, 152, 255]
-                }
-            };
-            set_px(TextureId::SandstoneSide, x, y, col);
-        }
-    }
-
-    // 12. Sandstone Top
-    for x in 0..16 {
-        for y in 0..16 {
-            let col = if x == 0 || x == 15 || y == 0 || y == 15 {
-                [185, 170, 120, 255]
-            } else {
-                [216, 204, 152, 255]
-            };
-            set_px(TextureId::SandstoneTop, x, y, col);
-        }
-    }
-
-    // 13. Water (Blue ripple patterns)
-    for x in 0..16 {
-        for y in 0..16 {
-            let wave = (x + y * 2) % 6 == 0;
-            let col = if wave {
-                [65, 135, 240, 190]
-            } else {
-                [38, 95, 210, 160]
-            };
-            set_px(TextureId::Water, x, y, col);
-        }
-    }
-
-    // 14. Snow
-    for x in 0..16 {
-        for y in 0..16 {
-            let h = p_hash(x, y, 14) % 10;
-            let col = match h {
-                0..=2 => [225, 235, 245, 255],
-                _ => [245, 248, 252, 255],
-            };
-            set_px(TextureId::Snow, x, y, col);
-        }
-    }
-
-    // 15. Snow Side (Snow layer on top, dirt below)
-    for x in 0..16 {
-        for y in 0..16 {
-            if y < 4 {
-                set_px(TextureId::SnowSide, x, y, [245, 248, 252, 255]);
-            } else {
-                let h = p_hash(x, y, 1) % 3;
-                let col = if h == 0 {
-                    [108, 73, 47, 255]
-                } else {
-                    [134, 96, 67, 255]
-                };
-                set_px(TextureId::SnowSide, x, y, col);
-            }
-        }
-    }
-
-    // 16. Bedrock
-    for x in 0..16 {
-        for y in 0..16 {
-            let h = p_hash(x, y, 16) % 10;
-            let col = match h {
-                0..=2 => [15, 15, 15, 255],
-                3..=6 => [35, 35, 35, 255],
-                _ => [60, 60, 60, 255],
-            };
-            set_px(TextureId::Bedrock, x, y, col);
-        }
-    }
-
-    // Helper to draw ore flecks embedded in stone
-    let mut draw_ore = |ore_id: TextureId, fleck_color: [u8; 4], fleck_dark: [u8; 4]| {
-        for x in 0..16 {
-            for y in 0..16 {
-                let h = p_hash(x, y, 4) % 10;
-                let base = match h {
-                    0..=2 => [105, 105, 105, 255],
-                    3..=7 => [125, 125, 125, 255],
-                    _ => [145, 145, 145, 255],
-                };
-                set_px(ore_id, x, y, base);
-            }
-        }
-        // Scattered crystal/ore flecks
-        let spots = [
-            (3, 4),
-            (4, 4),
-            (3, 5),
-            (10, 8),
-            (11, 8),
-            (10, 9),
-            (6, 12),
-            (7, 12),
-            (13, 3),
-            (13, 4),
-        ];
-        for (sx, sy) in spots {
-            set_px(ore_id, sx, sy, fleck_color);
-            set_px(ore_id, (sx + 1) % 16, sy, fleck_dark);
-        }
-    };
-
-    // 17. Coal Ore
-    draw_ore(TextureId::CoalOre, [25, 25, 25, 255], [45, 45, 45, 255]);
-    // 18. Iron Ore
-    draw_ore(
-        TextureId::IronOre,
-        [210, 175, 145, 255],
-        [175, 135, 105, 255],
-    );
-    // 19. Gold Ore
-    draw_ore(TextureId::GoldOre, [250, 220, 60, 255], [215, 175, 35, 255]);
-    // 20. Diamond Ore
-    draw_ore(
-        TextureId::DiamondOre,
-        [75, 230, 235, 255],
-        [45, 185, 195, 255],
-    );
-
-    // 21. Cactus Side
-    for x in 0..16 {
-        for y in 0..16 {
-            let is_stripe = x % 4 == 0;
-            let is_thorn = (x + y * 3) % 11 == 0;
-            let col = if is_thorn {
-                [35, 30, 20, 255]
-            } else if is_stripe {
-                [42, 120, 45, 255]
-            } else {
-                [55, 155, 60, 255]
-            };
-            set_px(TextureId::CactusSide, x, y, col);
-        }
-    }
-
-    // 22. Cactus Top
-    for x in 0..16 {
-        for y in 0..16 {
-            let dx = (x as i32 - 8).abs();
-            let dy = (y as i32 - 8).abs();
-            let dist = dx.max(dy);
-            let col = if dist >= 7 {
-                [42, 120, 45, 255]
-            } else {
-                [55, 155, 60, 255]
-            };
-            set_px(TextureId::CactusTop, x, y, col);
-        }
-    }
-
-    // 23. Gravel
-    for x in 0..16 {
-        for y in 0..16 {
-            let h = p_hash(x, y, 23) % 10;
-            let col = match h {
-                0..=2 => [95, 90, 90, 255],
-                3..=7 => [120, 115, 115, 255],
-                _ => [140, 135, 135, 255],
-            };
-            set_px(TextureId::Gravel, x, y, col);
-        }
-    }
-
-    // 24. Ice (Translucent blue ice with white fracture lines)
-    for x in 0..16 {
-        for y in 0..16 {
-            let is_crack = (x + y) % 7 == 0 || (x == 10 && y > 3 && y < 12);
-            let col = if is_crack {
-                [230, 245, 255, 230]
-            } else {
-                [150, 205, 245, 210]
-            };
-            set_px(TextureId::Ice, x, y, col);
-        }
-    }
-
-    // 25. Glass (White border and diagonal transparent glares)
-    for x in 0..16 {
-        for y in 0..16 {
-            let is_border = x == 0 || x == 15 || y == 0 || y == 15;
-            let is_glare = (x == y + 2 || x == y + 3) && x > 3 && x < 12;
-            let col = if is_border {
-                [245, 250, 255, 180]
-            } else if is_glare {
-                [255, 255, 255, 160]
-            } else {
-                [210, 235, 255, 45]
-            };
-            set_px(TextureId::Glass, x, y, col);
-        }
+    for tile in TextureId::ALL {
+        let pixels = load_block_texture_pixels(tile);
+        let layer = tile as usize;
+        let start = layer * TILE_SIZE * TILE_SIZE * 4;
+        let end = start + TILE_SIZE * TILE_SIZE * 4;
+        data[start..end].copy_from_slice(&pixels);
     }
 
     let mut image = Image::new(
@@ -512,6 +344,35 @@ pub fn create_texture_array() -> Image {
 }
 
 /// Compatibility alias for `create_texture_array`
+#[must_use]
 pub fn create_texture_atlas() -> Image {
     create_texture_array()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_texture_array_dimensions_and_layers() {
+        let img = create_texture_array();
+        assert_eq!(img.texture_descriptor.size.width, TILE_SIZE as u32);
+        assert_eq!(img.texture_descriptor.size.height, TILE_SIZE as u32);
+        assert_eq!(
+            img.texture_descriptor.size.depth_or_array_layers,
+            LAYER_COUNT as u32
+        );
+        assert_eq!(img.texture_descriptor.dimension, TextureDimension::D2);
+        assert_eq!(img.texture_descriptor.format, TextureFormat::Rgba8UnormSrgb);
+    }
+
+    #[test]
+    fn test_all_block_textures_have_non_empty_pixel_data() {
+        for tile in TextureId::ALL {
+            let pixels = load_block_texture_pixels(tile);
+            assert_eq!(pixels.len(), TILE_SIZE * TILE_SIZE * 4);
+            // Alpha channel must be > 0
+            assert!(pixels.iter().skip(3).step_by(4).any(|&a| a > 0));
+        }
+    }
 }

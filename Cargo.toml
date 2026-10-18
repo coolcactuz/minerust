@@ -8,10 +8,12 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/coolcactuz/minerust"
 
 [dependencies]
-bevy = { version = "0.20", default-features = false, features = ["3d", "ui"] }
+bevy = { version = "0.20", default-features = false, features = ["3d", "ui", "bevy_audio", "wav"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 lz4_flex = "0.14.0"
 mimalloc = { version = "0.1", default-features = false }
 quick_cache = "0.7.0"
+rodio = { version = "=0.22.2", default-features = false, features = ["playback", "wav"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.21"
@@ -20,10 +22,11 @@ tracing = "0.1.44"
 # Ottimizzazioni raccomandate per Bevy durante lo sviluppo
 [profile.dev]
 opt-level = 1
+debug = 1
 
 [profile.dev.package."*"]
 opt-level = 3
-debug = 1
+debug = 0
 
 # Profilo release per massimizzare il framerate e le performance in-game
 [profile.release]
@@ -35,7 +38,7 @@ strip = true
 
 [dev-dependencies]
 criterion = "0.8.2"
-proptest = "1.11.0"
+proptest = "1.12.0"
 
 [[bench]]
 name = "bench_engine"
@@ -78,3 +81,4 @@ collapsible_if = "allow"
 collapsible_else_if = "allow"
 unnecessary_map_or = "allow"
 uninlined_format_args = "allow"
+

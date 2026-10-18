@@ -37,6 +37,7 @@ pub fn setup_menu_ui(
         graphics_settings.as_deref(),
         profiler_state.as_deref(),
     );
+    super::audio_ui::spawn_audio_settings_menu(&mut commands, graphics_settings.as_deref());
     spawn_benchmark_results_menu(&mut commands);
     spawn_benchmark_running_banner(&mut commands);
 }
@@ -202,6 +203,12 @@ fn spawn_main_menu(commands: &mut Commands, initial_seed_str: &str) {
                         MenuButtonAction::OpenSettings,
                         false,
                     );
+                    spawn_menu_button(
+                        btn_col,
+                        "Audio Settings",
+                        MenuButtonAction::OpenAudioSettings,
+                        false,
+                    );
                     spawn_menu_button(btn_col, "Quit Game", MenuButtonAction::QuitGame, false);
                 });
         });
@@ -252,6 +259,12 @@ fn spawn_pause_menu(commands: &mut Commands) {
                         btn_col,
                         "Graphics Settings",
                         MenuButtonAction::OpenSettings,
+                        false,
+                    );
+                    spawn_menu_button(
+                        btn_col,
+                        "Audio Settings",
+                        MenuButtonAction::OpenAudioSettings,
                         false,
                     );
                     spawn_menu_button(
@@ -508,6 +521,17 @@ fn spawn_settings_menu(
                             lod_ratio,
                             320.0,
                             42.0,
+                        );
+
+                        // Audio Settings Button
+                        spawn_menu_button_sized(
+                            btn_col,
+                            "🔊 Audio & Sound Settings...",
+                            MenuButtonAction::OpenAudioSettings,
+                            false,
+                            320.0,
+                            34.0,
+                            13.5,
                         );
 
                         // Run Hardware Benchmark Button

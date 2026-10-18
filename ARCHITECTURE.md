@@ -8,16 +8,17 @@ Welcome to the technical architecture guide of **MineRust**. This document detai
 1. [Core Design Philosophy](#1-core-design-philosophy)
 2. [Data Model & Semantic Coordinates](#2-data-model--semantic-coordinates)
 3. [Multi-Threaded Chunk Streaming Lifecycle](#3-multi-threaded-chunk-streaming-lifecycle)
-4. [Meshing Engine: Greedy Quad Merging & LOD](#4-meshing-engine-greedy-quad-merging--lod)
+4. [Meshing Engine: Greedy Quad Merging, Foliage & 35-Layer Texture Array](#4-meshing-engine-greedy-quad-merging-foliage--35-layer-texture-array)
 5. [Memory Architecture & GPU-Direct Streaming](#5-memory-architecture--gpu-direct-streaming)
 6. [Procedural Terrain & Cave Generation](#6-procedural-terrain--cave-generation)
 7. [Cellular Automaton Fluid Dynamics](#7-cellular-automaton-fluid-dynamics)
 8. [Physics & Discrete Voxel Collision](#8-physics--discrete-voxel-collision)
-9. [Persistence & Delta Compression](#9-persistence--delta-compression)
-10. [Performance Benchmarks & Profiling](#10-performance-benchmarks--profiling)
-11. [Real-Time Telemetry & Profiling Engine](#11-real-time-telemetry--profiling-engine)
-12. [Automated Hardware Benchmark Suite](#12-automated-hardware-benchmark-suite)
-13. [CI/CD & Multi-Platform Delivery Pipeline](#13-cicd--multi-platform-delivery-pipeline)
+9. [Survival Gameplay, Containers & Universal Audio Engine](#9-survival-gameplay-containers--universal-audio-engine)
+10. [Persistence & Delta Compression](#10-persistence--delta-compression)
+11. [Performance Benchmarks & Profiling](#11-performance-benchmarks--profiling)
+12. [Real-Time Telemetry & Profiling Engine](#12-real-time-telemetry--profiling-engine)
+13. [Automated Hardware Benchmark Suite](#13-automated-hardware-benchmark-suite)
+14. [CI/CD & Multi-Platform Delivery Pipeline](#14-cicd--multi-platform-delivery-pipeline)
 
 ---
 
@@ -33,7 +34,8 @@ MineRust was engineered with strict systems programming principles:
 +-------------------------------------------------------------------------+
 |                              Bevy Client                                |
 |  - Render Pipeline (WGPU / PBR)      - Input & FPS Camera Controller    |
-|  - In-Game UI / Settings Modals       - Real-time Diagnostic HUD (F3)    |
+|  - Crafting / Chest / Furnace UI     - Universal Audio Engine (Rodio)   |
+|  - In-Game UI / Settings Modals      - Real-time Diagnostic HUD (F3)    |
 +------------------------------------+------------------------------------+
                                      |
                                      v
@@ -41,6 +43,7 @@ MineRust was engineered with strict systems programming principles:
 |                          World Grid & ECS Stage                         |
 |  - Voxel Stages Scheduling            - Two-Tier Streaming Orchestration|
 |  - Chunk Cache (quick_cache LRU)      - Mesh Upload Frame Budget        |
+|  - WorldChests & WorldFurnaces        - Progressive Mining & Tool Tiers |
 +-------------------+--------------------------------+--------------------+
                     |                                |
                     v                                v
@@ -130,7 +133,7 @@ The chunk manager implements a **Two-Tier Lookahead Architecture**:
 
 ---
 
-## 4. Meshing Engine: Greedy Quad Merging & LOD
+## 4. Meshing Engine: Greedy Quad Merging, Foliage & 35-Layer Texture Array
 
 ### 2D Slice Sweeping & Coplanar Face Merging
 Standard voxel engines generate 2 triangles (6 vertices) for every visible voxel face. In terrain with large flat surfaces (seabeds, plateaus, cliffs, subterranean cave walls), this results in millions of redundant vertices.
@@ -171,10 +174,11 @@ During chunk procedural generation, the highest non-air block `max_y` is tracked
 - **Distant Sloped Heightfield LOD**: Replaces stepped voxel staircases on distant mountain slopes with smooth continuous angled surfaces and consolidates exposed ore veins into stone. Reduces distant triangle counts by up to **90%**, stabilizing 60+ FPS at render distances up to 32–64 chunks.
 - Evaluated continuously using 3D Euclidean distance (taking vertical flight into account) to ensure smooth transitions when ascending into the clouds.
 
-### Two-Pass Meshing: Opaque Solids & Semi-Transparent Water
-Voxel rendering separates opaque terrain from fluid surfaces into two distinct mesh components per chunk:
-1. **Opaque Pass**: Solid blocks (dirt, grass, stone, sand, wood, leaves) rendered with full early-Z depth writing and backface culling.
-2. **Transparent Pass**: Water blocks rendered via a dedicated alpha-blended WGSL material (`AlphaMode::Blend`). Underwater seabeds remain fully visible through water surfaces without depth-fighting or alpha-sorting artifacts.
+### Multi-Pass Meshing & Foliage Cutout Visibility
+Voxel rendering separates opaque terrain, alpha-masked foliage, and fluid surfaces:
+1. **Opaque & Alpha-Masked Pass (`AlphaMode::Mask(0.5)`)**: Solid blocks and `BlockType::Leaves` are rendered with early-Z depth writing and crisp alpha-cutout masking (`assets/shaders/voxel.wgsl`). `BlockType::Leaves` does not occlude adjacent solid tree trunks (`BlockType::Wood`) or internal leaf faces, preserving authentic tree canopy depth.
+2. **35-Layer 2D Texture Array (`src/texture.rs`)**: Block faces sample a 35-layer `16×16` RGBA texture array covering directional block faces (Grass Top/Side, Wood Top/Side, Sandstone Top/Side/Bottom, Crafting Table Top/Front/Side, Chest Top/Front/Side, Furnace Top/Front/Lit-Front/Side, Ores) plus a 10-stage mining crack overlay (`destroy_stage_0..9`, layers `21..=30`). If external PNGs are absent, `fallback_tile_pixels()` deterministically synthesizes all 35 layers in memory.
+3. **Transparent Pass (`AlphaMode::Blend`)**: Water blocks are rendered in a dedicated transparent pass so underwater seabeds remain visible without depth-fighting artifacts.
 
 ### Compact `u16` Index Buffers
 Because individual chunk meshes are bounded by $16 \times 128 \times 16$ dimensions, the total vertex count per chunk mesh never exceeds $65,535$. Indices are therefore encoded as `u16` (2 bytes) rather than `u32` (4 bytes), reducing index buffer VRAM consumption and GPU memory bus bandwidth by **50%**.
@@ -272,7 +276,34 @@ MineRust implements a custom, high-performance Axis-Aligned Bounding Box (AABB) 
 
 ---
 
-## 9. Persistence & Delta Compression
+## 9. Survival Gameplay, Containers & Universal Audio Engine
+
+### Progressive Block Mining & Tool Tiers (`src/item.rs`, `src/interaction/`)
+- **Unified `ItemKey` & `ItemStack` Domain**: Inventory slots hold blocks (`ItemKey::Block(BlockType)`), tiered tools (`ItemKey::Tool(ToolType, ToolTier)`), or raw materials (`ItemKey::Material(MaterialType)` such as `Stick`, `Coal`, `IronIngot`, `GoldIngot`, `Diamond`) with per-item durability tracking.
+- **Hardness & Mining Speed Calculation**: Holding Left-Click accumulates progress in `MiningProgress` according to block hardness, tool effectiveness (Pickaxe for stone/ores, Axe for wood, Shovel for dirt/sand/gravel/snow), and material speed multipliers (*Wood 2×, Stone 4×, Iron 6×, Gold 12×, Diamond 8×*).
+- **10-Stage Crack Overlay & 3D View-Model**: A dedicated crack-overlay cube tracks the targeted block (`destroy_stage_0..9`), while a child 3D view-model attached to the FPS camera renders the active block or tool with sinusoidal swing animation during mining.
+
+### Crafting & Interactive World Containers (`src/crafting/`, `src/chest.rs`, `src/furnace/`)
+- **2×2 & 3×3 Crafting Engine (`RecipeRegistry`)**: Evaluates bounding-box normalized shaped recipes and multiset shapeless recipes across both the 2×2 inventory grid and the 3×3 `BlockType::CraftingTable` modal.
+- **27-Slot World Chests (`WorldChests`)**: Maps `BlockPos -> [Option<ItemStack>; 27]`. Right-clicking a chest opens the 27-slot Chest UI (`ActiveChest`). Breaking a chest spawns floating 3D item drops for all stored stacks and removes the entry from `WorldChests`.
+- **Furnace Smelting & Dynamic Lighting (`WorldFurnaces`)**:
+  - `tick_furnaces_system` runs every frame during active gameplay (`AppState::InGame`), advancing `burn_time_remaining` and `smelt_progress` ($10.0\text{s}$ per item) across all active furnaces in the world even when the UI is closed.
+  - When a furnace transitions between idle and burning, the world block automatically toggles between `BlockType::Furnace` and `BlockType::LitFurnace`, marking the containing chunk dirty for remeshing and spawning a warm flickering `PointLight` (`FurnaceLightMarker`).
+
+### Universal Audio Engine (`src/audio.rs`)
+- **Cross-Platform Sound Server Routing (`open_universal_audio_sink`)**:
+  - Replaces Bevy's raw default ALSA device selection with `UniversalAudioOutput` powered by `rodio`.
+  - Honors `ALSA_PCM_NAME` when explicitly set, and on Linux/BSD automatically probes whether `"pipewire"` or `"pulse"` sound server PCMs are active when `"default"` would otherwise fall back to raw hardware Card 0 (`dmix:0`), before falling back to `DeviceSinkBuilder::open_default_sink()` on Windows (WASAPI), macOS (CoreAudio), or pure ALSA systems.
+- **5-Tier Audio Resolution Priority & Procedural Fallback (`resolve_audio_bytes`)**:
+  1. **User Data Dir Override (`<data_dir>/assets/audio/*.wav`)**: Highest priority so users running read-only bundles (Linux `.AppImage` or macOS `.dmg`) can drop custom or extracted Minecraft `.wav` files into `~/.local/share/minerust/assets/audio/` (`--to-user-dir`).
+  2. **Local Working Directory (`./assets/audio/*.wav`)**: Used in local development and portable `.zip` / `.tar.gz` bundles.
+  3. **`BEVY_ASSET_ROOT` Environment Variable**: Used by the Linux AppImage `AppRun` launcher (`$HERE/usr/bin/assets/audio/*.wav`).
+  4. **Executable Bundle Ancestors**: Resolves `<ancestor>/assets/audio/*.wav` and macOS `<ancestor>/Resources/assets/audio/*.wav` (`MineRust.app/Contents/Resources/assets`).
+  5. **In-Memory Procedural WAV Synthesis (`synthesize_fallback_wav`)**: Deterministically synthesizes 48 kHz 16-bit mono PCM WAV buffers in memory if no external `.wav` file is present (e.g., on GitHub Actions CI or a fresh git clone).
+
+---
+
+## 10. Persistence & Delta Compression
 
 ### Chunk Binary Delta Format
 Unmodified terrain is procedurally deterministic and regenerated on demand without storing bytes on disk. Only **player-modified chunks** are persisted:
@@ -281,17 +312,16 @@ Unmodified terrain is procedurally deterministic and regenerated on demand witho
 - Average storage: $\sim 2\text{ KB}$ per modified chunk (up to $16\times$ compression over raw voxel data).
 - File structure: `saves/world_{seed}/chunks/chunk_{x}_{z}.bin`.
 
-### Player State Serialization
-Player parameters are serialized into clean, human-readable JSON (`saves/world_{seed}/player.json`):
-- 3D Coordinates $[x, y, z]$
-- Camera rotation (Yaw and Pitch)
-- 9-Slot Hotbar items and stack counts
-- 27-Slot Main Inventory storage
-- Active selected slot index
+### Player & World Container Serialization
+Player parameters and world containers are serialized into human-readable JSON inside `saves/world_{seed}/`:
+- **`player.json`**: 3D coordinates $[x, y, z]$, camera rotation (Yaw and Pitch), 9-slot hotbar, 27-slot main inventory (supporting blocks, tools with durability, and materials), and active slot index (with legacy `BlockType` save-file backward compatibility).
+- **`chests.json`**: All non-empty 27-slot `BlockType::Chest` inventories keyed by world `[x, y, z]`.
+- **`furnaces.json`**: All active `BlockType::Furnace` / `LitFurnace` states (`input`, `fuel`, `output`, `burn_time_remaining`, `burn_time_total`, `smelt_progress`) keyed by world `[x, y, z]`.
+- **`settings.json`**: Persists both graphics parameters (view distance, LOD, shadows, fog, greedy meshing) and audio levels (`master_volume`, `sfx_volume`).
 
 ---
 
-## 10. Performance Benchmarks & Profiling
+## 11. Performance Benchmarks & Profiling
 
 Benchmarks executed on AMD Ryzen 9 / Linux 6.x using `criterion`:
 
@@ -306,7 +336,7 @@ Benchmarks executed on AMD Ryzen 9 / Linux 6.x using `criterion`:
 
 ---
 
-## 11. Real-Time Telemetry & Profiling Engine
+## 12. Real-Time Telemetry & Profiling Engine
 
 MineRust includes a built-in diagnostic subsystem (`src/profile.rs`) that runs with minimal overhead ($<0.05\text{ms}$ per frame) to continuously verify engine optimization in real time:
 
@@ -332,7 +362,7 @@ $$\text{VRAM}_{\text{Total}} \approx \text{VRAM}_{\text{Geom}} + \text{VRAM}_{\t
 
 ---
 
-## 12. Automated Hardware Benchmark Suite
+## 13. Automated Hardware Benchmark Suite
 
 MineRust includes a scientific automated benchmarking engine (`src/benchmark.rs`) designed to stress-test voxel generation, multithreaded meshing, and GPU rendering under identical, reproducible conditions:
 
@@ -354,22 +384,22 @@ MineRust includes a scientific automated benchmarking engine (`src/benchmark.rs`
 
 ---
 
-## 13. CI/CD & Multi-Platform Delivery Pipeline
+## 14. CI/CD & Multi-Platform Delivery Pipeline
 
 The repository integrates a production-grade, automated CI/CD pipeline built on GitHub Actions, carefully architected for the GitHub Free Tier:
 
-### 13.1 Continuous Integration Quality Gate (`.github/workflows/ci.yml`)
+### 14.1 Continuous Integration Quality Gate (`.github/workflows/ci.yml`)
 - **Single-VM Orchestration**: Executes code formatting (`cargo fmt --check`), static analysis (`cargo clippy --all-targets -- -D warnings`), and the full test suite (`cargo test --all-targets`) sequentially within a single `ubuntu-latest` VM runner, eliminating the VM spin-up and dependency download overhead of split jobs.
 - **Intelligent Caching (`swatinem/rust-cache@v2`)**: Preserves Cargo index, registry, and compiled target artifacts across runs. Drops warm CI durations from ~12 minutes to ~1-2 minutes.
 - **Concurrency Cancellation (`cancel-in-progress: true`)**: Automatically aborts stale builds when new commits are pushed to the same branch or PR, protecting runner minutes.
 - **Path Filtering (`paths-ignore`)**: Skips execution when commits modify only documentation (`docs/**`, `*.md`, `.gitignore`, license files).
 
-### 13.2 Multi-Platform Continuous Delivery (`.github/workflows/release.yml`)
+### 14.2 Multi-Platform Continuous Delivery (`.github/workflows/release.yml`)
 - **Cross-Platform Matrix**: Compiles native release binaries in parallel across:
-  - **Linux**: `ubuntu-latest` $\rightarrow$ `minerust-<version>-linux-x86_64.tar.gz`
-  - **Windows**: `windows-latest` $\rightarrow$ `minerust-<version>-windows-x86_64.zip`
-  - **macOS**: `macos-latest` (Apple Silicon) $\rightarrow$ `minerust-<version>-macos-arm64.tar.gz`
-- **Self-Contained Game Bundles**: Automatically bundles the compiled binary (`minerust` / `minerust.exe`), the runtime `assets/` directory (WGSL shaders, texture arrays), `README.md`, and license files into ready-to-extract archives.
+  - **Linux**: `ubuntu-latest` $\rightarrow$ `minerust-<version>-linux-x86_64.AppImage` and `.tar.gz`
+  - **Windows**: `windows-latest` $\rightarrow$ `minerust-<version>-windows-x64-portable.zip`
+  - **macOS**: `macos-latest` (Apple Silicon) $\rightarrow$ `minerust-<version>-macos-arm64.dmg`
+- **Self-Contained Game Bundles & Procedural Audio Generation**: The packaging scripts (`packaging/linux/package.sh`, `packaging/macos/package.sh`, `packaging/windows/package.ps1`) automatically invoke `scripts/generate_audio.py` if `assets/audio/*.wav` is absent in the clean CI checkout, bundling the compiled binary, WGSL shaders, 35-layer texture arrays, and royalty-free procedural WAV sound effects into ready-to-play packages.
 - **On-Demand & Tag Releases**: Supports downloadable artifacts via manual `workflow_dispatch` without creating public releases, and publishes automated GitHub Releases with attached platform bundles when version tags (`v*`) are pushed.
 
 ---
@@ -378,7 +408,7 @@ The repository integrates a production-grade, automated CI/CD pipeline built on 
 
 To guarantee enterprise-grade stability, every commit satisfies:
 ```bash
-# 1. 100% test pass rate across 81 unit, integration & property-based tests
+# 1. 100% test pass rate across 156 unit, integration & property-based tests
 cargo test
 
 # 2. Strict zero-warning compliance on pedantic lints

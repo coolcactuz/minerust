@@ -10,9 +10,11 @@ use super::types::{
     BenchmarkVerdictTitleText, BenchmarkVertsText, BenchmarkVramText, Button, DebugHudBtnText,
     DistanceFogBtnText, FpsCapBtnText, FpsCapFill, FpsCapThumb, FpsLimiter, FullscreenBtnText,
     GraphicsGreedyBtnText, GraphicsGreedyFill, GraphicsGreedyThumb, GraphicsLodBtnText,
-    GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, MenuButtonAction, OptionTooltipCard,
-    OptionTooltipDesc, OptionTooltipHeader, OptionTooltipImpact, OptionTooltipTitle, ProfilerState,
-    ShadowsBtnText, ViewDistanceBtnText, ViewDistanceFill, ViewDistanceThumb, VsyncBtnText,
+    GraphicsLodFill, GraphicsLodThumb, GraphicsSettings, MasterVolumeBtnText, MasterVolumeFill,
+    MasterVolumeThumb, MenuButtonAction, OptionTooltipCard, OptionTooltipDesc, OptionTooltipHeader,
+    OptionTooltipImpact, OptionTooltipTitle, ProfilerState, SfxVolumeBtnText, SfxVolumeFill,
+    SfxVolumeThumb, ShadowsBtnText, ViewDistanceBtnText, ViewDistanceFill, ViewDistanceThumb,
+    VsyncBtnText,
 };
 use crate::benchmark::{BenchmarkConfig, BenchmarkPhase, BenchmarkState, BenchmarkSummary};
 
@@ -30,6 +32,8 @@ pub fn update_settings_button_text_system(
         Option<&ViewDistanceBtnText>,
         Option<&GraphicsGreedyBtnText>,
         Option<&GraphicsLodBtnText>,
+        Option<&MasterVolumeBtnText>,
+        Option<&SfxVolumeBtnText>,
     )>,
 ) {
     let settings_changed = settings.is_changed();
@@ -40,7 +44,8 @@ pub fn update_settings_button_text_system(
 
     let hud_visible = profiler_state.as_ref().is_some_and(|p| p.visible);
 
-    for (mut text, vsync, fs, shadows, fog, hud, fps, dist, greedy, lod) in &mut query {
+    for (mut text, vsync, fs, shadows, fog, hud, fps, dist, greedy, lod, master, sfx) in &mut query
+    {
         if vsync.is_some() {
             *text = Text::new(format!(
                 "VSync: {}",
@@ -78,6 +83,10 @@ pub fn update_settings_button_text_system(
             *text = Text::new(settings.greedy_label());
         } else if lod.is_some() {
             *text = Text::new(settings.lod_label());
+        } else if master.is_some() {
+            *text = Text::new(settings.master_volume_label());
+        } else if sfx.is_some() {
+            *text = Text::new(settings.sfx_volume_label());
         }
     }
 }
@@ -90,12 +99,15 @@ pub fn sync_graphics_settings_to_bevy(
         (Entity, Option<&mut bevy::pbr::DistanceFog>),
         With<crate::camera::FpsCamera>,
     >,
-    mut last_config: Local<Option<(bool, i32, bool)>>,
+    mut global_volume: Option<ResMut<bevy::audio::GlobalVolume>>,
+    mut last_config: Local<Option<(bool, i32, bool, u32, u32)>>,
 ) {
     let current_config = (
         settings.distance_fog,
         settings.view_distance,
         settings.shadows,
+        settings.master_volume,
+        settings.sfx_volume,
     );
 
     // 1. If fog or view_distance changed, update Distance Fog in real-time
@@ -136,6 +148,18 @@ pub fn sync_graphics_settings_to_bevy(
     if last_config.map_or(true, |last| last.2 != current_config.2) {
         for mut light in &mut dir_lights {
             light.shadow_maps_enabled = settings.shadows;
+        }
+    }
+
+    // 3. Audio volume sync (master * sfx combined into Bevy GlobalVolume)
+    if last_config.map_or(true, |last| {
+        last.3 != current_config.3 || last.4 != current_config.4
+    }) {
+        if let Some(ref mut gv) = global_volume {
+            let master_ratio = settings.master_volume_ratio();
+            let sfx_ratio = settings.sfx_volume_ratio();
+            let combined = (master_ratio * sfx_ratio).clamp(0.0, 1.0);
+            gv.volume = bevy::audio::Volume::Linear(combined);
         }
     }
 
@@ -216,21 +240,49 @@ pub fn update_slider_visuals_system(
         Option<&GraphicsLodFill>,
         Option<&GraphicsGreedyThumb>,
         Option<&GraphicsLodThumb>,
+        Option<&MasterVolumeFill>,
+        Option<&MasterVolumeThumb>,
+        Option<&SfxVolumeFill>,
+        Option<&SfxVolumeThumb>,
     )>,
-    mut last_ratios: Local<Option<(f32, f32, f32, f32)>>,
+    mut last_ratios: Local<Option<(f32, f32, f32, f32, f32, f32)>>,
 ) {
     let fps_ratio = settings.fps_cap_ratio();
     let dist_ratio = settings.view_distance_ratio();
     let greedy_ratio = settings.greedy_ratio();
     let lod_ratio = settings.lod_ratio();
-    let current_ratios = (fps_ratio, dist_ratio, greedy_ratio, lod_ratio);
+    let master_ratio = settings.master_volume_ratio();
+    let sfx_ratio = settings.sfx_volume_ratio();
+    let current_ratios = (
+        fps_ratio,
+        dist_ratio,
+        greedy_ratio,
+        lod_ratio,
+        master_ratio,
+        sfx_ratio,
+    );
 
     if last_ratios.is_some_and(|r| r == current_ratios) {
         return;
     }
     *last_ratios = Some(current_ratios);
 
-    for (mut node, fps_f, fps_t, dist_f, dist_t, greedy_f, lod_f, greedy_t, lod_t) in &mut query {
+    for (
+        mut node,
+        fps_f,
+        fps_t,
+        dist_f,
+        dist_t,
+        greedy_f,
+        lod_f,
+        greedy_t,
+        lod_t,
+        master_f,
+        master_t,
+        sfx_f,
+        sfx_t,
+    ) in &mut query
+    {
         if fps_f.is_some() {
             let fill_pct = if fps_ratio <= 0.0 {
                 0.0
@@ -267,6 +319,24 @@ pub fn update_slider_visuals_system(
             node.width = Val::Percent(fill_pct);
         } else if lod_t.is_some() {
             node.left = Val::Percent(lod_ratio * 95.0);
+        } else if master_f.is_some() {
+            let fill_pct = if master_ratio <= 0.0 {
+                0.0
+            } else {
+                (master_ratio * 95.0 + 5.0).min(100.0)
+            };
+            node.width = Val::Percent(fill_pct);
+        } else if master_t.is_some() {
+            node.left = Val::Percent(master_ratio * 95.0);
+        } else if sfx_f.is_some() {
+            let fill_pct = if sfx_ratio <= 0.0 {
+                0.0
+            } else {
+                (sfx_ratio * 95.0 + 5.0).min(100.0)
+            };
+            node.width = Val::Percent(fill_pct);
+        } else if sfx_t.is_some() {
+            node.left = Val::Percent(sfx_ratio * 95.0);
         }
     }
 }

@@ -34,24 +34,34 @@ Rather than relying on ready-made high-level game features, the goal of this pro
 - **Voxel Meshing Strategies**: Implementing techniques like *Greedy Meshing* to merge adjacent coplanar block faces into larger quads, significantly reducing polygon and vertex counts compared to naive meshing.
 - **Level of Detail (LOD)**: Reducing geometry density for distant chunks with continuous heightfield approximations, keeping the horizon visible while preserving close-up block detail.
 - **Sub-Chunk Sections & Occlusion Culling**: Partitioning vertical chunk columns into 16x16x16 sub-chunks and computing directional face reachability graphs to eliminate rendering buried caves, underground ravines, and mountain cavities when viewing from the surface.
-- **Transparent Rendering (Two-Pass Water)**: Decoupling opaque terrain from transparent water into separate rendering passes, allowing smooth alpha blending without depth-fighting artifacts or early-Z culling penalties.
-- **Texture Arrays & Custom Shaders**: Using 2D texture arrays in custom WGSL shaders to tile textures seamlessly across merged surfaces without texture-bleeding artifacts.
+- **Transparent & Foliage Rendering**: Decoupling opaque terrain from semi-transparent water (`AlphaMode::Blend`) and alpha-masked foliage (`BlockType::Leaves` with crisp leaf cutouts and interior branch visibility).
+- **Texture Arrays & Custom Shaders**: Using a 35-layer 2D texture array in custom WGSL shaders (`assets/shaders/voxel.wgsl`) to tile directional block faces (Grass, Wood, Crafting Table, Chest, Furnace, Lit Furnace, Ores) and a 10-stage mining crack overlay seamlessly across merged surfaces.
 
 ### 2. World Streaming & Concurrency
 - **Asynchronous Background Processing**: Generating procedural terrain and generating chunk meshes concurrently on background worker threads using Bevy's task pool, ensuring 0ms blocking on the main render thread.
 - **Lookahead & Chunks Lifecycle**: Loading and unloading terrain smoothly as the player moves across the world, maintaining memory stability and avoiding sudden traversal hitches.
 
-### 3. Procedural Generation & Simulation
-- **Continuous Terrain**: Generating diverse biomes (plains, forests, deserts, mountains, oceans) and 3D subterranean cave networks using deterministic noise functions.
-- **Voxel Physics & Cellular Fluids**: Simple discrete collision detection, raymarching for block interactions, and real-time cellular automata for spreading water and waterfalls.
+### 3. Procedural Generation & Survival Gameplay
+- **Continuous Terrain**: Generating diverse biomes (plains, forests, deserts, snowy tundras, mountains, oceans) and 3D subterranean cave networks using deterministic noise functions.
+- **Voxel Physics & Cellular Fluids**: Discrete AABB collision detection, raymarching for block interactions, and real-time cellular automata for spreading water and waterfalls.
+- **Survival Mining & Tool Tiers**: Progressive block mining (`MiningProgress`) governed by block hardness, tool category matching (Pickaxe, Axe, Shovel, Sword), and material tier multipliers (*Wood 2×, Stone 4×, Iron 6×, Gold 12×, Diamond 8×*) with tool durability degradation and a 3D first-person held item swing animation.
+- **Crafting & Interactive Containers**:
+  - **Crafting System**: 2×2 player inventory crafting grid and 3×3 **Crafting Table** modal (`Right-Click`) with 25+ shaped and shapeless recipes.
+  - **Chest Storage (`BlockType::Chest`)**: Interactive 27-slot world storage container bound to world `BlockPos` coordinates with automatic item drop spill on destruction.
+  - **Furnace Smelting (`BlockType::Furnace` / `LitFurnace`)**: Continuous background tick simulation smelting ores, sand, wood, and cobblestone using burnable fuels, complete with animated flame & progress bars and warm dynamic point-light emission when lit.
 
-### 4. Performance Telemetry & Hardware Benchmarking
+### 4. Universal Audio Engine & Settings Architecture
+- **Cross-Platform Sound Server Routing (`src/audio.rs`)**: Automatically connects to the active desktop sound server on Linux (`pipewire` / `pulse` / `ALSA_PCM_NAME`) as well as Windows (WASAPI) and macOS (CoreAudio), avoiding exclusive hardware card locks.
+- **Interactive Soundscape**: Material-specific mining taps (stone, wood, grass, sand), block breakage, footstep cadence, UI clicks, item pops, chest open/close, and furnace crackling.
+- **Audio & Sound Settings Menu**: Real-time Master Volume (`0% – 100%`), Sound Effects Volume (`0% – 100%`), Quick Mute toggle, and Test Sound preview persisted in `settings.json`.
+
+### 5. Performance Telemetry & Hardware Benchmarking
 - **In-Game Telemetry (`F3`)**: An integrated real-time debug overlay monitoring FPS, 1% low frame latency, active chunk counts, vertex memory, and system RAM/VRAM usage.
 - **In-Game Hardware Benchmark**: A dedicated stress-test available directly from the Graphics Settings menu (`⚡ Run Hardware Benchmark`). It generates a standardized world (seed `BENCHMARK`) and flies the camera across a 5km trajectory at 50 m/s using your active graphics settings.
 - **Telemetry Dashboard & Hardware Verdict**: Upon completing the benchmark, displays a comprehensive report (average FPS, 1% low FPS, p99 frametimes, peak RAM/VRAM, active chunks/geometry) and personalized optimization advice to fine-tune graphics settings for your hardware.
 
-### 5. Automated CI/CD & Cross-Platform Delivery
-- **Free-Tier Optimized Quality Gate**: Automated GitHub Actions pipeline verifying formatting (`cargo fmt --check`), strict pedantic linter (`cargo clippy --all-targets -- -D warnings`), and 100% test pass rate across 81 unit and property-based tests in ~1-2 minutes with caching (`swatinem/rust-cache`).
+### 6. Automated CI/CD & Cross-Platform Delivery
+- **Free-Tier Optimized Quality Gate**: Automated GitHub Actions pipeline verifying formatting (`cargo fmt --check`), strict pedantic linter (`cargo clippy --all-targets -- -D warnings`), and 100% test pass rate across 156 unit, integration, and property-based tests in ~1-2 minutes with caching (`swatinem/rust-cache`).
 - **Multi-Platform Bundles**: Automated release workflow building standalone, ready-to-play packages for **Linux** (`x86_64`), **Windows** (`x86_64`), and **macOS** (`Apple Silicon arm64`) complete with assets and shaders.
 - **Pull Request Standardization**: Automated PR templates enforcing quality checklists, architectural details, and performance telemetry reporting.
 
@@ -67,12 +77,12 @@ Rather than relying on ready-made high-level game features, the goal of this pro
 | **`Shift`** | Sneak (crouch with ledge protection) / Dive / Fly downward |
 | **`Ctrl`** | Sprint |
 | **`F`** | Toggle Flight Mode (Creative no-clip) |
-| **Left Click** | Mine targeted block |
-| **Right Click** | Place active block |
+| **Left Click (Hold)** | Mine targeted block progressively (or pick/place stack in UI) |
+| **Right Click** | Interact with Crafting Table / Chest / Furnace, or place active block |
 | **`1` – `9` / Scroll** | Select hotbar slot |
-| **`E`** | Open / Close Inventory |
+| **`E`** | Open / Close Inventory (or close active container modal) |
 | **`F3`** | Toggle Performance & Profiler HUD |
-| **`ESC`** | Pause menu / Options |
+| **`ESC`** | Close active container modal / Pause menu / Options |
 
 ---
 
@@ -121,6 +131,14 @@ cargo run --release -- --profile
 cargo run --release -- --seed "my_custom_seed"
 ```
 
+#### Audio Assets & Custom Sound Packs (Release Bundles & Local Override)
+To keep the repository 100% open-source compliant (`MIT / Apache-2.0`), external `.wav` files in `assets/audio/` are git-ignored:
+- **Release Bundles (`.AppImage`, `.tar.gz`, `.dmg`, `.zip`)**: During release packaging (`packaging/*/package.*`), `scripts/generate_audio.py` automatically generates and bundles 11 royalty-free procedural `.wav` files into `assets/audio/`.
+- **Replacing Audio with Custom / Minecraft Sounds**:
+  - **Portable `.zip` / `.tar.gz` or Local Dev**: Replace the `.wav` files directly inside `./assets/audio/`, or run `python3 scripts/extract_minecraft_audio.py` to extract and convert sounds from your local Minecraft Java Edition installation (`~/.minecraft/assets`).
+  - **Read-Only `.AppImage` (Linux) or `.dmg` (`MineRust.app` on macOS)**: Place custom `.wav` files inside `<User Data Dir>/assets/audio/` (`~/.local/share/minerust/assets/audio/` on Linux, `~/Library/Application Support/minerust/assets/audio/` on macOS, `%APPDATA%\minerust\assets\audio\` on Windows), or run `python3 scripts/extract_minecraft_audio.py --to-user-dir`. Files in the user data directory automatically take priority over bundled assets!
+- **In-Memory Fallback**: Even if all disk `.wav` files are deleted, MineRust deterministically synthesizes 48 kHz 16-bit PCM WAV sound effects in memory (`synthesize_fallback_wav` in `src/audio.rs`).
+
 ---
 
 ### 3. Command-Line Options
@@ -142,7 +160,7 @@ Both the pre-built executables and `cargo run --release -- [OPTIONS]` support th
 
 ## 💾 Save Files & Data Persistence
 
-MineRust automatically persists world chunks, player coordinates, and graphics settings.
+MineRust automatically persists world chunks, player inventory, world containers, and graphics/audio settings.
 
 ### Default Storage Locations
 
@@ -154,9 +172,13 @@ MineRust automatically persists world chunks, player coordinates, and graphics s
 | **Local Development** | `./saves/` (repository root) |
 
 Inside the data directory:
-* `saves/world_<seed>/` — Binary chunk blocks and `player.json` (inventory, position, yaw/pitch).
+* `saves/world_<seed>/chunks/` — LZ4-compressed binary deltas of modified world chunks.
+* `saves/world_<seed>/player.json` — Player 3D position, camera yaw/pitch, 9-slot hotbar, 27-slot inventory, and tool durability.
+* `saves/world_<seed>/chests.json` — Contents of all placed 27-slot Chest containers indexed by world coordinates.
+* `saves/world_<seed>/furnaces.json` — Input, fuel, output stacks, and active smelting progress of all placed Furnaces.
 * `saves/last_world.txt` — Tracks the seed of the most recently played world.
-* `settings.json` — User graphics settings (view distance, LOD, FPS limit, greedy meshing).
+* `settings.json` — User graphics and audio settings (view distance, LOD, FPS limit, greedy meshing, master volume, SFX volume).
+* `assets/audio/*.wav` *(optional)* — User-supplied audio overrides (loaded with highest priority even when running from a read-only AppImage or macOS `.app`).
 
 ### Portable Mode
 If you prefer a fully self-contained setup (e.g. running from a USB drive):
@@ -183,7 +205,8 @@ Remove-Item -Recurse -Force "$env:APPDATA\minerust"
 ## 📖 Further Reading
 
 For those interested in technical implementation details and architectural specifics:
-- [**ARCHITECTURE.md**](ARCHITECTURE.md) — Detailed breakdown of coordinate systems, data structures, and streaming pipelines.
+- [**ARCHITECTURE.md**](ARCHITECTURE.md) — Detailed breakdown of coordinate systems, data structures, streaming pipelines, survival containers, and audio architecture.
+- [**docs/PROJECT_STANDARDS.md**](docs/PROJECT_STANDARDS.md) — Production-grade engineering standards, safety policies, and ECS modularization guidelines.
 
 ---
 

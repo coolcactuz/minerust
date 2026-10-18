@@ -37,8 +37,11 @@ Stability outranks feature additions. A panic or runtime crash in a game engine 
 - **File Length Limit**: Strictly **under 1,000 Lines of Code (LOC)** per file.
   - If a file approaches ~900 LOC, proactively split and extract cohesive submodules or helper structs into child files (e.g. `streaming.rs` -> helper modules).
 - **ECS Separation of Concerns**:
-  - Keep domain logic separate: World Grid (`src/world/grid.rs`), Meshing (`src/mesher/`), Fluid Simulation (`src/fluid.rs`), UI/Menu (`src/menu/`), Profiling (`src/profile.rs`), Benchmarking (`src/benchmark.rs`).
+  - Keep domain logic separate: World Grid (`src/world/grid.rs`), Meshing (`src/mesher/`), Fluid Simulation (`src/fluid.rs`), Items & Tools (`src/item.rs`, `src/item_icon.rs`), Inventory & Crafting (`src/inventory/`, `src/crafting/`), World Containers (`src/chest.rs`, `src/furnace/`), Voxel Interaction (`src/interaction/`), Universal Audio (`src/audio.rs`), UI/Menu (`src/menu/`), Profiling (`src/profile.rs`), Benchmarking (`src/benchmark.rs`).
   - Do not introduce circular dependencies between Bevy systems.
+- **Open-Source Asset & Fallback Policy**:
+  - Never commit copyrighted third-party game audio or textures to the repository (`assets/audio/*.wav` is git-ignored).
+  - Every external asset loader (`src/texture.rs`, `src/item_icon.rs`, `src/audio.rs`) must provide a deterministic, zero-panic procedural fallback in memory so fresh clones and CI pipelines pass 100% without external binary files.
 - **Resource & Memory Management**:
   - Maintain debouncing and frame pacing on GPU buffer uploads (`MAX_CHUNK_DISPATCH_PER_FRAME`, `MAX_MESHES_PER_FRAME`).
   - Minimize allocations inside hot frame loops; reuse scratch buffers where applicable.

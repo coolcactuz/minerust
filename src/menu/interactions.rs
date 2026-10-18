@@ -15,15 +15,17 @@ use crate::voxel_material::VoxelBlockMaterial;
 use crate::world::{WorldGrid, WorldSeed, find_safe_surface_spawn};
 
 use super::types::{
-    BenchmarkResultsRoot, Button, FpsCapTrack, GraphicsGreedyTrack, GraphicsLodTrack,
-    GraphicsSettings, MainMenuRoot, MenuButtonAction, MenuScreen, MenuState, PauseMenuRoot,
-    ProfilerState, SeedInputBox, SeedInputState, SettingsMenuRoot, SliderTrack, ViewDistanceTrack,
+    AudioSettingsRoot, BenchmarkResultsRoot, Button, FpsCapTrack, GraphicsGreedyTrack,
+    GraphicsLodTrack, GraphicsSettings, MainMenuRoot, MasterVolumeTrack, MenuButtonAction,
+    MenuScreen, MenuState, PauseMenuRoot, ProfilerState, SeedInputBox, SeedInputState,
+    SettingsMenuRoot, SfxVolumeTrack, SliderTrack, ViewDistanceTrack,
 };
 
 #[derive(SystemParam)]
 pub struct MenuAssets<'w> {
     pub meshes: ResMut<'w, Assets<Mesh>>,
     pub materials: ResMut<'w, Assets<VoxelBlockMaterial>>,
+    pub sfx: Option<Res<'w, crate::audio::SoundEffects>>,
 }
 
 #[derive(SystemParam)]
@@ -74,7 +76,7 @@ pub fn menu_input_system(
             if config.enabled && !state.completed {
                 config.enabled = false;
                 state.completed = true;
-                menu.screen = MenuScreen::Settings;
+                menu.set_root(MenuScreen::Settings);
                 cursor.grab_mode = CursorGrabMode::None;
                 cursor.visible = true;
                 return;
@@ -84,23 +86,22 @@ pub fn menu_input_system(
         match menu.screen {
             MenuScreen::None => {
                 // In game -> Open pause menu and unlock cursor
-                menu.screen = MenuScreen::Pause;
+                menu.set_root(MenuScreen::Pause);
                 cursor.grab_mode = CursorGrabMode::None;
                 cursor.visible = true;
             }
             MenuScreen::Pause => {
                 // In pause menu -> Resume game and lock cursor
-                menu.screen = MenuScreen::None;
+                menu.set_root(MenuScreen::None);
                 cursor.grab_mode = CursorGrabMode::Locked;
                 cursor.visible = false;
             }
-            MenuScreen::Settings => {
-                // Return to previous screen (Main or Pause)
-                menu.screen = menu.previous_screen;
+            MenuScreen::Settings | MenuScreen::AudioSettings => {
+                menu.pop_screen();
             }
             MenuScreen::BenchmarkResults => {
                 // Return to settings menu from benchmark results screen
-                menu.screen = MenuScreen::Settings;
+                menu.pop_screen();
             }
             MenuScreen::Main => {
                 // In main menu -> Do nothing on ESC
@@ -116,10 +117,11 @@ pub fn update_menu_visibility_system(
         Option<&MainMenuRoot>,
         Option<&PauseMenuRoot>,
         Option<&SettingsMenuRoot>,
+        Option<&AudioSettingsRoot>,
         Option<&BenchmarkResultsRoot>,
     )>,
 ) {
-    for (mut vis, main, pause, settings, bench) in &mut query {
+    for (mut vis, main, pause, settings, audio, bench) in &mut query {
         let target = if main.is_some() {
             if menu.screen == MenuScreen::Main {
                 Visibility::Inherited
@@ -134,6 +136,12 @@ pub fn update_menu_visibility_system(
             }
         } else if settings.is_some() {
             if menu.screen == MenuScreen::Settings {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            }
+        } else if audio.is_some() {
+            if menu.screen == MenuScreen::AudioSettings {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
@@ -215,6 +223,8 @@ pub fn menu_button_click_system(
         &mut PlayerPhysics,
     )>,
     mut inventory: Option<ResMut<Inventory>>,
+    mut chest_storage: Option<ResMut<crate::chest::ChestStorage>>,
+    mut furnace_storage: Option<ResMut<crate::furnace::FurnaceStorage>>,
     mut bench_control: MenuBenchmarkControl,
     interaction_query: Query<
         (&Interaction, &MenuButtonAction),
@@ -230,6 +240,12 @@ pub fn menu_button_click_system(
 
     for (interaction, action) in &interaction_query {
         if *interaction == Interaction::Pressed {
+            if *action != MenuButtonAction::TestAudioSample {
+                if let Some(ref sfx) = assets.sfx {
+                    crate::audio::play_sound(&mut commands, &sfx.click, 0.8);
+                }
+            }
+
             match action {
                 MenuButtonAction::ToggleEditSeed => {
                     if let Some(ref mut state) = seed_state {
@@ -301,10 +317,38 @@ pub fn menu_button_click_system(
 
                             window.title = format!("MineRust - Seed: {}", target_seed.0);
                             crate::save::set_last_played_world(target_seed.0);
+
+                            let chests_file =
+                                crate::save::get_world_dir(target_seed.0).join("chests.json");
+                            if let Some(ref mut cs) = chest_storage {
+                                if chests_file.exists() {
+                                    if let Ok(data) =
+                                        crate::save::load_chests_from_disk(&chests_file)
+                                    {
+                                        **cs = data;
+                                    }
+                                } else {
+                                    **cs = crate::chest::ChestStorage::default();
+                                }
+                            }
+
+                            let furnaces_file =
+                                crate::save::get_world_dir(target_seed.0).join("furnaces.json");
+                            if let Some(ref mut fs) = furnace_storage {
+                                if furnaces_file.exists() {
+                                    if let Ok(data) =
+                                        crate::save::load_furnaces_from_disk(&furnaces_file)
+                                    {
+                                        **fs = data;
+                                    }
+                                } else {
+                                    **fs = crate::furnace::FurnaceStorage::default();
+                                }
+                            }
                         }
                     }
                     menu.world_active = true;
-                    menu.screen = MenuScreen::None;
+                    menu.set_root(MenuScreen::None);
                     cursor.grab_mode = CursorGrabMode::Locked;
                     cursor.visible = false;
                 }
@@ -368,23 +412,50 @@ pub fn menu_button_click_system(
 
                         window.title = format!("MineRust - Seed: {}", target_seed.0);
                         crate::save::set_last_played_world(target_seed.0);
+
+                        let chests_file =
+                            crate::save::get_world_dir(target_seed.0).join("chests.json");
+                        if let Some(ref mut cs) = chest_storage {
+                            if chests_file.exists() {
+                                if let Ok(data) = crate::save::load_chests_from_disk(&chests_file) {
+                                    **cs = data;
+                                }
+                            } else {
+                                **cs = crate::chest::ChestStorage::default();
+                            }
+                        }
+
+                        let furnaces_file =
+                            crate::save::get_world_dir(target_seed.0).join("furnaces.json");
+                        if let Some(ref mut fs) = furnace_storage {
+                            if furnaces_file.exists() {
+                                if let Ok(data) =
+                                    crate::save::load_furnaces_from_disk(&furnaces_file)
+                                {
+                                    **fs = data;
+                                }
+                            } else {
+                                **fs = crate::furnace::FurnaceStorage::default();
+                            }
+                        }
                     }
                     menu.world_active = true;
-                    menu.screen = MenuScreen::None;
+                    menu.set_root(MenuScreen::None);
                     cursor.grab_mode = CursorGrabMode::Locked;
                     cursor.visible = false;
                 }
                 MenuButtonAction::ResumeGame => {
-                    menu.screen = MenuScreen::None;
+                    menu.set_root(MenuScreen::None);
                     cursor.grab_mode = CursorGrabMode::Locked;
                     cursor.visible = false;
                 }
                 MenuButtonAction::OpenSettings => {
-                    menu.previous_screen = menu.screen;
-                    menu.screen = MenuScreen::Settings;
+                    menu.push_screen(MenuScreen::Settings);
                 }
-                MenuButtonAction::BackFromSettings => {
-                    menu.screen = menu.previous_screen;
+                MenuButtonAction::BackFromSettings
+                | MenuButtonAction::BackFromAudioSettings
+                | MenuButtonAction::BackFromBenchmark => {
+                    menu.pop_screen();
                 }
                 MenuButtonAction::BackToMain => {
                     if let Some(ref mut config) = bench_control.config.as_deref_mut() {
@@ -406,10 +477,25 @@ pub fn menu_button_click_system(
                                     crate::save::save_player_to_disk(&w.player_save_path(), &data);
                             }
                         }
+                        if let Some(ref mut cs) = chest_storage {
+                            if !cs.containers.is_empty() {
+                                let path = crate::save::get_world_dir(w.seed.0).join("chests.json");
+                                let _ = crate::save::save_chests_to_disk(&path, cs);
+                            }
+                            **cs = crate::chest::ChestStorage::default();
+                        }
+                        if let Some(ref mut fs) = furnace_storage {
+                            if !fs.furnaces.is_empty() {
+                                let path =
+                                    crate::save::get_world_dir(w.seed.0).join("furnaces.json");
+                                let _ = crate::save::save_furnaces_to_disk(&path, fs);
+                            }
+                            **fs = crate::furnace::FurnaceStorage::default();
+                        }
                         w.despawn_all_chunks(&mut commands);
                     }
                     menu.world_active = false;
-                    menu.screen = MenuScreen::Main;
+                    menu.set_root(MenuScreen::Main);
                     window.title = "MineRust".to_string();
                     cursor.grab_mode = CursorGrabMode::None;
                     cursor.visible = true;
@@ -519,17 +605,36 @@ pub fn menu_button_click_system(
                     }
 
                     menu.world_active = true;
-                    menu.screen = MenuScreen::None;
+                    menu.set_root(MenuScreen::None);
                     cursor.grab_mode = CursorGrabMode::Locked;
                     cursor.visible = false;
                 }
-                MenuButtonAction::BackFromBenchmark => {
-                    menu.screen = MenuScreen::Settings;
+                MenuButtonAction::OpenAudioSettings => {
+                    menu.push_screen(MenuScreen::AudioSettings);
+                }
+                MenuButtonAction::StepMasterVolumeLeft => {
+                    settings.step_master_volume_left();
+                }
+                MenuButtonAction::StepMasterVolumeRight => {
+                    settings.step_master_volume_right();
+                }
+                MenuButtonAction::StepSfxVolumeLeft => {
+                    settings.step_sfx_volume_left();
+                }
+                MenuButtonAction::StepSfxVolumeRight => {
+                    settings.step_sfx_volume_right();
+                }
+                MenuButtonAction::TestAudioSample => {
+                    if let Some(ref sfx) = assets.sfx {
+                        crate::audio::play_sound(&mut commands, &sfx.pop, 1.0);
+                    }
                 }
                 MenuButtonAction::SlideFpsCap
                 | MenuButtonAction::SlideViewDistance
                 | MenuButtonAction::SlideGreedyMeshing
-                | MenuButtonAction::SlideDistanceLod => {}
+                | MenuButtonAction::SlideDistanceLod
+                | MenuButtonAction::SlideMasterVolume
+                | MenuButtonAction::SlideSfxVolume => {}
             }
         }
     }
@@ -545,6 +650,8 @@ pub fn slider_interaction_system(
             Option<&ViewDistanceTrack>,
             Option<&GraphicsGreedyTrack>,
             Option<&GraphicsLodTrack>,
+            Option<&MasterVolumeTrack>,
+            Option<&SfxVolumeTrack>,
         ),
         With<Button>,
     >,
@@ -553,6 +660,8 @@ pub fn slider_interaction_system(
     mut dragging_dist: Local<bool>,
     mut dragging_greedy: Local<bool>,
     mut dragging_lod: Local<bool>,
+    mut dragging_master: Local<bool>,
+    mut dragging_sfx: Local<bool>,
 ) {
     let mouse_down = mouse_buttons.pressed(MouseButton::Left);
     if !mouse_down {
@@ -560,9 +669,11 @@ pub fn slider_interaction_system(
         *dragging_dist = false;
         *dragging_greedy = false;
         *dragging_lod = false;
+        *dragging_master = false;
+        *dragging_sfx = false;
     }
 
-    for (interaction, rcp, is_fps, is_dist, is_greedy, is_lod) in &track_query {
+    for (interaction, rcp, is_fps, is_dist, is_greedy, is_lod, is_master, is_sfx) in &track_query {
         let is_pressed = *interaction == Interaction::Pressed;
         if is_pressed {
             if is_fps.is_some() {
@@ -577,14 +688,29 @@ pub fn slider_interaction_system(
             if is_lod.is_some() {
                 *dragging_lod = true;
             }
+            if is_master.is_some() {
+                *dragging_master = true;
+            }
+            if is_sfx.is_some() {
+                *dragging_sfx = true;
+            }
         }
 
         let is_active_fps = is_fps.is_some() && (*dragging_fps || is_pressed);
         let is_active_dist = is_dist.is_some() && (*dragging_dist || is_pressed);
         let is_active_greedy = is_greedy.is_some() && (*dragging_greedy || is_pressed);
         let is_active_lod = is_lod.is_some() && (*dragging_lod || is_pressed);
+        let is_active_master = is_master.is_some() && (*dragging_master || is_pressed);
+        let is_active_sfx = is_sfx.is_some() && (*dragging_sfx || is_pressed);
 
-        if (is_active_fps || is_active_dist || is_active_greedy || is_active_lod) && mouse_down {
+        if (is_active_fps
+            || is_active_dist
+            || is_active_greedy
+            || is_active_lod
+            || is_active_master
+            || is_active_sfx)
+            && mouse_down
+        {
             if let Some(norm) = rcp.normalized {
                 let ratio = (norm.x + 0.5).clamp(0.0, 1.0);
                 if is_active_fps {
@@ -598,6 +724,12 @@ pub fn slider_interaction_system(
                 }
                 if is_active_lod {
                     settings.set_lod_from_ratio(ratio);
+                }
+                if is_active_master {
+                    settings.set_master_volume_from_ratio(ratio);
+                }
+                if is_active_sfx {
+                    settings.set_sfx_volume_from_ratio(ratio);
                 }
             }
         }

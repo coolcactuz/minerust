@@ -1,14 +1,22 @@
 #![forbid(unsafe_code)]
 
+pub mod audio;
 pub mod benchmark;
 pub mod block;
 pub mod camera;
+pub mod chest;
 pub mod chunk;
 pub mod coords;
+pub mod crack;
+pub mod crafting;
 pub mod error;
 pub mod fluid;
+pub mod furnace;
+pub mod held_item;
 pub mod interaction;
 pub mod inventory;
+pub mod item;
+pub mod item_icon;
 pub mod menu;
 pub mod mesher;
 pub mod noise;

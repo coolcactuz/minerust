@@ -7,9 +7,14 @@ use bevy::window::WindowResolution;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+use minerust::audio::AudioPlugin;
 use minerust::benchmark::BenchmarkConfig;
 use minerust::camera::{CameraPlugin, FpsCamera};
+use minerust::chest::ChestPlugin;
+use minerust::crafting::CraftingPlugin;
 use minerust::fluid::FluidPlugin;
+use minerust::furnace::FurnacePlugin;
+use minerust::held_item::HeldItemPlugin;
 use minerust::interaction::InteractionPlugin;
 use minerust::inventory::InventoryPlugin;
 use minerust::menu::{
@@ -125,6 +130,7 @@ fn main() {
         MenuState {
             screen: MenuScreen::None,
             previous_screen: MenuScreen::None,
+            return_stack: Vec::new(),
             world_active: true,
         }
     } else {
@@ -166,9 +172,17 @@ fn main() {
     };
 
     let asset_plugin = {
+        let mut plugin = bevy::asset::AssetPlugin::default();
+        if let Ok(cwd) = std::env::current_dir() {
+            let cwd_assets = cwd.join("assets");
+            if cwd_assets.exists() {
+                if let Some(path_str) = cwd_assets.to_str() {
+                    plugin.file_path = path_str.to_string();
+                }
+            }
+        }
         #[cfg(target_os = "macos")]
         {
-            let mut plugin = bevy::asset::AssetPlugin::default();
             if let Ok(current_exe) = std::env::current_exe() {
                 if let Some(contents) = current_exe.parent().and_then(|p| p.parent()) {
                     let resources_assets = contents.join("Resources").join("assets");
@@ -179,12 +193,8 @@ fn main() {
                     }
                 }
             }
-            plugin
         }
-        #[cfg(not(target_os = "macos"))]
-        {
-            bevy::asset::AssetPlugin::default()
-        }
+        plugin
     };
 
     App::new()
@@ -204,7 +214,12 @@ fn main() {
                     }),
                     ..default()
                 })
-                .set(asset_plugin),
+                .set(asset_plugin)
+                .set(bevy::log::LogPlugin {
+                    filter: "wgpu=error,naga=warn".to_string(),
+                    ..default()
+                })
+                .disable::<bevy::audio::AudioPlugin>(),
         )
         .insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.98))) // Sky blue
         .insert_resource(WorldGrid::new(seed))
@@ -232,11 +247,16 @@ fn main() {
             FluidPlugin,
             WorldPlugin,
             InteractionPlugin,
+            HeldItemPlugin,
             InventoryPlugin,
+            CraftingPlugin,
             MenuPlugin,
             SavePlugin,
             ProfilePlugin,
             minerust::benchmark::BenchmarkPlugin,
+            ChestPlugin,
+            FurnacePlugin,
+            AudioPlugin,
         ))
         .add_systems(Startup, setup)
         .run();

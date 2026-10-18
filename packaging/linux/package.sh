@@ -53,6 +53,12 @@ if [ -f "$BIN/bench_cpu" ]; then
 fi
 strip "$STAGE/usr/bin/minerust" 2>/dev/null || true
 
+# Ensure royalty-free procedural WAV audio assets exist when packaging in clean CI environments
+if [ ! -f "$ROOT/assets/audio/click.wav" ]; then
+  echo "==> generating procedural WAV audio assets"
+  (cd "$ROOT" && python3 scripts/generate_audio.py)
+fi
+
 # Copy assets and icon
 /bin/cp -rf "$ROOT/assets" "$STAGE/usr/bin/"
 install -Dm644 "$HERE/$APP_ID.desktop" "$STAGE/usr/share/applications/$APP_ID.desktop"

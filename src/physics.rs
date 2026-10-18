@@ -37,6 +37,7 @@ pub struct PlayerPhysics {
     pub is_grounded: bool,
     pub is_flying: bool,
     pub in_water: bool,
+    pub step_accumulator: f32,
 }
 
 impl Default for PlayerPhysics {
@@ -46,6 +47,7 @@ impl Default for PlayerPhysics {
             is_grounded: false,
             is_flying: false,
             in_water: false,
+            step_accumulator: 0.0,
         }
     }
 }
@@ -91,12 +93,14 @@ pub fn is_in_water(feet_pos: Vec3, world: &WorldGrid) -> bool {
 }
 
 pub fn player_physics_system(
+    mut commands: Commands,
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     inventory: Option<Res<Inventory>>,
     menu: Option<Res<MenuState>>,
     world: Res<WorldGrid>,
     mut query: Query<(&FpsCamera, &mut Transform, &mut PlayerPhysics)>,
+    sfx: Option<Res<crate::audio::SoundEffects>>,
 ) {
     if menu.is_some_and(|m| m.is_open()) || inventory.is_some_and(|inv| inv.is_open) {
         return;
@@ -115,6 +119,7 @@ pub fn player_physics_system(
     }
 
     let mut feet = transform.translation - Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0);
+    let prev_feet = feet;
 
     // 1. FLIGHT MODE (No-Clip / Creative)
     if physics.is_flying {
@@ -336,6 +341,20 @@ pub fn player_physics_system(
     if !in_water && physics.velocity.y <= 0.0 {
         let ground_check = feet - Vec3::new(0.0, 0.05, 0.0);
         physics.is_grounded = check_collision(ground_check, &world);
+    }
+
+    // Footstep audio triggered at cadence during ground walking
+    if physics.is_grounded && !in_water && !physics.is_flying {
+        let h_dist = Vec2::new(feet.x - prev_feet.x, feet.z - prev_feet.z).length();
+        physics.step_accumulator += h_dist;
+        if physics.step_accumulator >= 2.2 {
+            physics.step_accumulator = 0.0;
+            if let Some(ref sfx) = sfx {
+                crate::audio::play_sound(&mut commands, &sfx.step, 0.65);
+            }
+        }
+    } else {
+        physics.step_accumulator = 0.0;
     }
 
     // Void fall protection (Safe surface respawn)

@@ -58,6 +58,13 @@ if (-not (Test-Path (Join-Path $Bin 'minerust.exe'))) {
 }
 
 # ---- portable zip ------------------------------------------------------------------------------
+if (-not (Test-Path (Join-Path $Root 'assets\audio\click.wav'))) {
+  Invoke-Native "generate procedural WAV audio assets" {
+    Push-Location $Root
+    try { python scripts/generate_audio.py } finally { Pop-Location }
+  }
+}
+
 $Portable = Join-Path $TargetDir "windows-package\minerust-$Version-windows-$Arch-portable"
 Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null

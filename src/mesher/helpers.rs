@@ -69,11 +69,19 @@ impl MeshBuffers {
 #[inline(always)]
 pub const fn should_render_face(block: BlockType, neighbor: BlockType, _face: BlockFace) -> bool {
     if block as u8 == neighbor as u8 {
+        // Between two leaf blocks: render internal faces so tree canopies look full,
+        // dense, and volumetric instead of hollow shells with empty voids inside.
+        if matches!(block, BlockType::Leaves) {
+            return true;
+        }
         return false;
     }
 
     if block.is_water() {
-        matches!(neighbor, BlockType::Air | BlockType::Glass)
+        matches!(
+            neighbor,
+            BlockType::Air | BlockType::Glass | BlockType::Leaves
+        )
     } else if block.is_solid() {
         neighbor.is_transparent()
     } else {
